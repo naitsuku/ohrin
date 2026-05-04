@@ -32,7 +32,7 @@ if(NOT WIN32)
         message(STATUS "Platform: Linux (wxWidgets port)")
     endif()
 
-    find_package(wxWidgets REQUIRED COMPONENTS core base xml net)
+    find_package(wxWidgets REQUIRED COMPONENTS core base stc aui xml net)
     include(${wxWidgets_USE_FILE})
     message(STATUS "wxWidgets found: ${wxWidgets_VERSION}")
 

@@ -313,20 +313,201 @@ inline constexpr FieldDef kEditFields[] = {
 };
 
 // ============================================================
+// 「タブバー」タブ — Phase 13a メタ化対象
+//   CommonSetting_TabBar に対応。LOGFONT / wide 文字列はメタ化対象外
+//   (Color/String widget 実装後に再評価)。
+// ============================================================
+inline constexpr ChoiceItem kTabPositionChoices[] = {
+    {0, "上"},
+    {1, "下"},
+    {2, "左"},
+    {3, "右"},
+};
+
+inline constexpr ChoiceItem kDispTabCloseChoices[] = {
+    {0, "なし"},
+    {1, "常に表示"},
+    {2, "自動表示"},
+};
+
+inline constexpr FieldDef kTabBarFields[] = {
+    {"m_bDispTabWnd",
+        "タブを表示",
+        "タブウィンドウを表示する",
+        FieldKind::Bool, 1, 0, 1, nullptr, 0, true},
+    {"m_bDispTabWndMultiWin",
+        "タブをまとめない",
+        "ウィンドウごとにタブを別管理する",
+        FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+    {"m_bTab_RetainEmptyWin",
+        "空ウィンドウを残す",
+        "最後の文書を閉じても (無題) を残す",
+        FieldKind::Bool, 1, 0, 1, nullptr, 0, true},
+    {"m_bTab_CloseOneWin",
+        "閉じるボタンで現タブのみ閉じる",
+        "ウィンドウの閉じるボタンで現在のタブのみ閉じる",
+        FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+    {"m_bNewWindow",
+        "外部起動は新ウィンドウ",
+        "外部から起動するときは新しいウィンドウで開く",
+        FieldKind::Bool, 1, 0, 1, nullptr, 0, true},
+    {"m_bTabMultiLine",
+        "タブ多段表示",
+        "タブを多段で表示する",
+        FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+    {"m_eTabPosition",
+        "タブ位置",
+        "タブの表示位置",
+        FieldKind::Choice, 0, 0, 3,
+        kTabPositionChoices, std::size(kTabPositionChoices), true},
+    {"m_bSameTabWidth",
+        "タブを等幅にする",
+        "全てのタブを同じ幅で表示",
+        FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+    {"m_bDispTabIcon",
+        "タブにアイコンを表示",
+        "ファイルタイプのアイコンをタブに表示",
+        FieldKind::Bool, 1, 0, 1, nullptr, 0, true},
+    {"m_bDispTabClose",
+        "タブの閉じるボタン",
+        "個々のタブに閉じるボタンを表示",
+        FieldKind::Choice, 1, 0, 2,
+        kDispTabCloseChoices, std::size(kDispTabCloseChoices), true},
+    {"m_bSortTabList",
+        "タブ一覧をソート",
+        "タブ一覧ダイアログでソート表示",
+        FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+    {"m_bTab_ListFull",
+        "タブ一覧をフルパス表示",
+        "タブ一覧でファイルのフルパスを表示",
+        FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+    {"m_bChgWndByWheel",
+        "ホイールでウィンドウ切替",
+        "マウスホイールでタブ間を切り替える",
+        FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+    {"m_nPointSize",
+        "タブフォントサイズ (1/10 pt)",
+        "タブのフォントサイズ (90 = 9.0pt)",
+        FieldKind::Int, 90, 60, 240, nullptr, 0, true},
+    {"m_nTabMaxWidth",
+        "タブ幅の最大値",
+        "個々のタブの最大幅 (px)",
+        FieldKind::Int, 200, 50, 1000, nullptr, 0, true},
+    {"m_nTabMinWidth",
+        "タブ幅の最小値",
+        "個々のタブの最小幅 (px)",
+        FieldKind::Int, 50, 20, 500, nullptr, 0, true},
+    {"m_nTabMinWidthOnMulti",
+        "タブ幅最小値 (多段時)",
+        "多段時のタブ最小幅 (px)",
+        FieldKind::Int, 50, 20, 500, nullptr, 0, true},
+};
+
+// ============================================================
+// 「バックアップ」タブ — Phase 13a メタ化対象
+//   CommonSetting_Backup に対応。SFilePath (バックアップフォルダ指定) は
+//   String widget 実装後に追加 (Phase 13b)。
+//   *_Opt1〜6 のビット詰め込みフィールドは GUI 専用ロジックのため除外。
+// ============================================================
+inline constexpr ChoiceItem kBackUpTypeChoices[] = {
+    {1, "ファイル名 + .bak"},
+    {2, "ファイル名 + 日付"},
+    {3, "ファイル名 + 連番"},
+};
+
+inline constexpr FieldDef kBackupFields[] = {
+    {"m_bBackUp",
+        "バックアップを作成",
+        "保存時にバックアップを作成する",
+        FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+    {"m_bBackUpDialog",
+        "作成前に確認",
+        "バックアップの作成前に確認ダイアログを出す",
+        FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+    {"m_bBackUpFolder",
+        "指定フォルダに作成",
+        "指定したフォルダにバックアップを作成する",
+        FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+    {"m_bBackUpFolderRM",
+        "リムーバブル時のみ指定フォルダ",
+        "リムーバブルメディア編集時のみ指定フォルダにバックアップ",
+        FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+    {"m_nBackUpType",
+        "バックアップファイル名形式",
+        "バックアップファイルの命名規則",
+        FieldKind::Choice, 1, 1, 3,
+        kBackUpTypeChoices, std::size(kBackUpTypeChoices), true},
+    {"m_bBackUpDustBox",
+        "ごみ箱に放り込む",
+        "バックアップファイルをごみ箱に移動",
+        FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+    {"m_bBackUpPathAdvanced",
+        "バックアップパスの詳細設定",
+        "バックアップ先フォルダを詳細設定する",
+        FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+};
+
+// ============================================================
+// 「書式」タブ — Phase 13a メタ化対象
+//   CommonSetting_Format に対応。WCHAR 配列 (日付書式, 引用符等) は
+//   String widget 実装後に追加 (Phase 13b)。
+// ============================================================
+inline constexpr ChoiceItem kDateFormatTypeChoices[] = {
+    {0, "システム標準"},
+    {1, "ユーザ指定 (Phase 13b 以降)"},
+};
+
+inline constexpr ChoiceItem kTimeFormatTypeChoices[] = {
+    {0, "システム標準"},
+    {1, "ユーザ指定 (Phase 13b 以降)"},
+};
+
+inline constexpr FieldDef kFormatFields[] = {
+    {"m_nDateFormatType",
+        "日付書式",
+        "日付の挿入時に使う書式",
+        FieldKind::Choice, 0, 0, 1,
+        kDateFormatTypeChoices, std::size(kDateFormatTypeChoices), true},
+    {"m_nTimeFormatType",
+        "時刻書式",
+        "時刻の挿入時に使う書式",
+        FieldKind::Choice, 0, 0, 1,
+        kTimeFormatTypeChoices, std::size(kTimeFormatTypeChoices), true},
+};
+
+// ============================================================
+// 「ファイル名表示」タブ — Phase 13a メタ化対象
+//   CommonSetting_FileName に対応。ファイル名簡易表示変換テーブル
+//   (m_szTransformFileNameFrom/To 配列) は専用 GUI editor 必要のため除外。
+// ============================================================
+inline constexpr FieldDef kFileNameFields[] = {
+    {"m_bTransformShortPath",
+        "ファイル名の省略表記",
+        "長いパスを省略形で表示する",
+        FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+    {"m_nTransformShortMaxWidth",
+        "省略表記の最大長",
+        "省略表記時の最大文字数",
+        FieldKind::Int, 80, 20, 200, nullptr, 0, true},
+};
+
+// ============================================================
 // タブテーブル
-//   Phase 11 で「全般」、Phase 12 で「ウィンドウ」「編集」をメタ化。
-//   残り 15 タブは Phase 13+ で順次追加予定。
+//   Phase 11: 「全般」 (1 タブ)
+//   Phase 12: 「ウィンドウ」「編集」 (3 タブ)
+//   Phase 13a: 「タブバー」「バックアップ」「書式」「ファイル名表示」 (7 タブ)
+//   残り 11 タブは Phase 13b+ で順次追加。
 //   タブ並び順は upstream CPropCommon.cpp の AddPage 順 (18 タブ) と一致させる。
 // ============================================================
 inline constexpr TabDef kSettingsTabs[] = {
-    {"general",   "全般",         kGeneralFields, std::size(kGeneralFields), true},
-    {"window",    "ウィンドウ",   kWindowFields,  std::size(kWindowFields),  true},
-    {"tabbar",    "タブバー",     nullptr, 0, false},
-    {"edit",      "編集",         kEditFields,    std::size(kEditFields),    true},
+    {"general",   "全般",         kGeneralFields,  std::size(kGeneralFields),  true},
+    {"window",    "ウィンドウ",   kWindowFields,   std::size(kWindowFields),   true},
+    {"tabbar",    "タブバー",     kTabBarFields,   std::size(kTabBarFields),   true},
+    {"edit",      "編集",         kEditFields,     std::size(kEditFields),     true},
     {"file",      "ファイル",     nullptr, 0, false},
-    {"backup",    "バックアップ", nullptr, 0, false},
-    {"format",    "書式",         nullptr, 0, false},
-    {"filename",  "ファイル名表示", nullptr, 0, false},
+    {"backup",    "バックアップ", kBackupFields,   std::size(kBackupFields),   true},
+    {"format",    "書式",         kFormatFields,   std::size(kFormatFields),   true},
+    {"filename",  "ファイル名表示", kFileNameFields, std::size(kFileNameFields), true},
     {"keyword",   "強調キーワード", nullptr, 0, false},
     {"customize", "カスタマイズ",   nullptr, 0, false},
     {"keybind",   "キー割り当て",   nullptr, 0, false},

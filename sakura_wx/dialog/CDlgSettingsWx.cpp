@@ -82,19 +82,15 @@ void CDlgSettingsWx::BuildUI() {
     addPlaceholder(wxT("ツールバー"),
                    wxT("ツールバー項目の選択。Phase 10 以降で対応予定。\n"
                        "現在は upstream DEFAULT_TOOL_BUTTONS 準拠の固定配列。"));            // 4
-    addPlaceholder(wxT("タブバー"),
-                   wxT("タブバーの表示／配色設定。Phase 10 以降で対応予定。"));             // 5
+    addMetaPanel(wxT("タブバー"), wxT("tabbar"));                                 // 5 (Phase 13a メタ化)
     addPlaceholder(wxT("ステータスバー"),
                    wxT("ステータスバーの表示項目。Phase 10 以降で対応予定。"));             // 6
     addMetaPanel(wxT("編集"), wxT("edit"));                                       // 7 (Phase 12 メタ化)
     addPlaceholder(wxT("ファイル"),
                    wxT("既定の文字コード／改行コード／BOM 設定。Phase 10 以降で対応予定。"));// 8
-    addPlaceholder(wxT("ファイル名表示"),
-                   wxT("タイトルバーのファイル名表示形式。Phase 10 以降で対応予定。"));     // 9
-    addPlaceholder(wxT("バックアップ"),
-                   wxT("自動バックアップ設定。Phase 10 以降で対応予定。"));                 // 10
-    addPlaceholder(wxT("書式"),
-                   wxT("整形ルール (改行幅、インデント等)。Phase 10 以降で対応予定。"));    // 11
+    addMetaPanel(wxT("ファイル名表示"), wxT("filename"));                         // 9 (Phase 13a メタ化)
+    addMetaPanel(wxT("バックアップ"),   wxT("backup"));                            // 10 (Phase 13a メタ化)
+    addMetaPanel(wxT("書式"),           wxT("format"));                            // 11 (Phase 13a メタ化)
     addPlaceholder(wxT("検索"),
                    wxT("検索／Grep のデフォルト設定。Phase 10 以降で対応予定。"));          // 12
     addPanel(wxT("キー割り当て"),    &CDlgSettingsWx::BuildTabKeybind);        // 13

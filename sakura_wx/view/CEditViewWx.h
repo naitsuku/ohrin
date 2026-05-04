@@ -80,6 +80,13 @@ public:
     // wxSTC は Alt+ドラッグで矩形選択になるが、複数選択編集を有効化する。
     void EnableRectangularEditing();
 
+    // --- DarkMode 色スキーム (Phase 15a 追加) ---
+    //   true: VS Code Dark+ 風の暗色プリセットに切替
+    //   false: サクラエディタ伝統色 (薄ピンク背景) に戻す
+    //   設定後、再ハイライトのため SetupSyntaxHighlighting も再実行する。
+    void SetDarkMode(bool dark);
+    bool IsDarkMode() const { return m_darkMode; }
+
 private:
     void InitializeEditor();
     void SetupSyntaxHighlighting(const wxString& filePath);
@@ -106,6 +113,7 @@ private:
     bool      m_currentLineUnderline = false;
     bool      m_showEofMark         = false;
     bool      m_showEol              = false;
+    bool      m_darkMode             = false;  // Phase 15a
     // [EOF] アノテーション更新中の再入防止フラグ
     // (EOLAnnotationSetText/ClearAll が SC_MOD_CHANGEEOLANNOTATION の
     //  modification event を発火し OnModified を再帰呼出することを防ぐ)

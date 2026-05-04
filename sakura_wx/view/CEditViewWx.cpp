@@ -129,16 +129,35 @@ void CEditViewWx::ApplyColorScheme() {
     // sakura_core/doc/CDocTypeSetting.cpp の ColorInfoIni 定義より引用。
     // 2000.10.08 に「眩しさを押さえる」目的で 真っ白 → 薄ピンクに変更された
     // 伝統色 RGB(255, 251, 240) を採用する。
-    static const wxColour kBgText      (255, 251, 240);  // テキスト背景
-    static const wxColour kFgText      (  0,   0,   0);  // テキスト前景
-    static const wxColour kBgRuler     (239, 239, 239);  // ルーラー／行番号 背景
-    static const wxColour kFgLineNo    (  0,   0, 255);  // 行番号 (青)
-    static const wxColour kCaretFg     (  0,   0,   0);  // キャレット
-    static const wxColour kSelBg       ( 49, 106, 197);  // 選択範囲背景
-    static const wxColour kSelFg       (255, 255, 255);  // 選択範囲文字色（白）
-    static const wxColour kCaretLineBg (255, 255, 232);  // 現在行ハイライト
-                                                          // (オリジナル CVL=透過なので
-                                                          //  視認性のため淡い黄を使用)
+    //
+    // Phase 15a: m_darkMode が true なら VS Code Dark+ 風プリセットに切替。
+    static const wxColour kBgText_L      (255, 251, 240);  // テキスト背景 (light)
+    static const wxColour kFgText_L      (  0,   0,   0);
+    static const wxColour kBgRuler_L     (239, 239, 239);
+    static const wxColour kFgLineNo_L    (  0,   0, 255);
+    static const wxColour kCaretFg_L     (  0,   0,   0);
+    static const wxColour kSelBg_L       ( 49, 106, 197);
+    static const wxColour kSelFg_L       (255, 255, 255);
+    static const wxColour kCaretLineBg_L (255, 255, 232);
+
+    static const wxColour kBgText_D      ( 30,  30,  30);  // テキスト背景 (dark)
+    static const wxColour kFgText_D      (212, 212, 212);
+    static const wxColour kBgRuler_D     ( 45,  45,  48);
+    static const wxColour kFgLineNo_D    (133, 133, 133);
+    static const wxColour kCaretFg_D     (255, 255, 255);
+    static const wxColour kSelBg_D       ( 38,  79, 120);
+    static const wxColour kSelFg_D       (212, 212, 212);
+    static const wxColour kCaretLineBg_D ( 45,  45,  45);
+
+    const bool dark = m_darkMode;
+    const wxColour& kBgText      = dark ? kBgText_D      : kBgText_L;
+    const wxColour& kFgText      = dark ? kFgText_D      : kFgText_L;
+    const wxColour& kBgRuler     = dark ? kBgRuler_D     : kBgRuler_L;
+    const wxColour& kFgLineNo    = dark ? kFgLineNo_D    : kFgLineNo_L;
+    const wxColour& kCaretFg     = dark ? kCaretFg_D     : kCaretFg_L;
+    const wxColour& kSelBg       = dark ? kSelBg_D       : kSelBg_L;
+    const wxColour& kSelFg       = dark ? kSelFg_D       : kSelFg_L;
+    const wxColour& kCaretLineBg = dark ? kCaretLineBg_D : kCaretLineBg_L;
 
     StyleSetBackground(wxSTC_STYLE_DEFAULT, kBgText);
     StyleSetForeground(wxSTC_STYLE_DEFAULT, kFgText);
@@ -159,8 +178,18 @@ void CEditViewWx::ApplyColorScheme() {
     SetSelBackground(true, kSelBg);
     SetSelForeground(true, kSelFg);
 
-    // 空白可視化色（オリジナル: 半角空白 RGB(192,192,192)）
-    SetWhitespaceForeground(true, wxColour(192, 192, 192));
+    // 空白可視化色 (light: 薄灰、dark: やや明るい灰)
+    SetWhitespaceForeground(true,
+        dark ? wxColour(80, 80, 80) : wxColour(192, 192, 192));
+}
+
+void CEditViewWx::SetDarkMode(bool dark) {
+    if (m_darkMode == dark) return;
+    m_darkMode = dark;
+    ApplyColorScheme();
+    // 現在開いているファイルに応じてシンタックス色も再適用
+    SetupSyntaxHighlighting(m_currentPath);
+    Refresh();
 }
 
 bool CEditViewWx::LoadFile(const wxString& path) {
@@ -410,25 +439,29 @@ void CEditViewWx::SetupSyntaxHighlighting(const wxString& filePath) {
             "volatile wchar_t while xor xor_eq"));
 
         // === サクラエディタ初期色 (CDocTypeSetting.cpp ColorInfoIni より) ===
-        // STR_COLOR_COMMENT       RGB(  0, 128,   0)  緑
-        // STR_COLOR_DOUBLE_QUOTE  RGB(128,   0,  64)  暗紫
-        // STR_COLOR_SINGLE_QUOTE  RGB( 64, 128, 128)  暗青緑
-        // STR_COLOR_KEYWORD1      RGB(  0,   0, 255)  青 (Bold)
-        // STR_COLOR_KEYWORD2      RGB(255, 128,   0)  オレンジ (Bold) ← プリプロ等
-        // STR_COLOR_NUMBER        RGB(235,   0,   0)  赤
-        wxColour cComment = PickSyntaxColor(wxT("cpp"), wxT("comment"), wxColour(  0, 128,   0));
-        wxColour cString  = PickSyntaxColor(wxT("cpp"), wxT("string"),  wxColour(128,   0,  64));
-        wxColour cKeyword = PickSyntaxColor(wxT("cpp"), wxT("keyword"), wxColour(  0,   0, 255));
-        wxColour cNumber  = PickSyntaxColor(wxT("cpp"), wxT("number"),  wxColour(235,   0,   0));
+        // ライト: COMMENT 緑、STRING 暗紫、KEYWORD 青、NUMBER 赤
+        // Phase 15a ダーク: VS Code Dark+ 風プリセット (m_darkMode 時)
+        const bool dark = m_darkMode;
+        const wxColour defComment = dark ? wxColour(106, 153,  85) : wxColour(  0, 128,   0);
+        const wxColour defString  = dark ? wxColour(206, 145, 120) : wxColour(128,   0,  64);
+        const wxColour defKeyword = dark ? wxColour( 86, 156, 214) : wxColour(  0,   0, 255);
+        const wxColour defNumber  = dark ? wxColour(181, 206, 168) : wxColour(235,   0,   0);
+        const wxColour defChar    = dark ? wxColour(206, 145, 120) : wxColour( 64, 128, 128);
+        const wxColour defPrep    = dark ? wxColour(155, 155, 155) : wxColour(255, 128,   0);
+
+        wxColour cComment = PickSyntaxColor(wxT("cpp"), wxT("comment"), defComment);
+        wxColour cString  = PickSyntaxColor(wxT("cpp"), wxT("string"),  defString);
+        wxColour cKeyword = PickSyntaxColor(wxT("cpp"), wxT("keyword"), defKeyword);
+        wxColour cNumber  = PickSyntaxColor(wxT("cpp"), wxT("number"),  defNumber);
 
         StyleSetForeground(wxSTC_C_COMMENT,      cComment);
         StyleSetForeground(wxSTC_C_COMMENTLINE,  cComment);
         StyleSetForeground(wxSTC_C_COMMENTDOC,   cComment);
         StyleSetForeground(wxSTC_C_STRING,       cString);
-        StyleSetForeground(wxSTC_C_CHARACTER,    wxColour( 64, 128, 128));
+        StyleSetForeground(wxSTC_C_CHARACTER,    defChar);
         StyleSetForeground(wxSTC_C_WORD,         cKeyword);
         StyleSetForeground(wxSTC_C_NUMBER,       cNumber);
-        StyleSetForeground(wxSTC_C_PREPROCESSOR, wxColour(255, 128,   0));
+        StyleSetForeground(wxSTC_C_PREPROCESSOR, defPrep);
         StyleSetBold(wxSTC_C_WORD, true);
         StyleSetBold(wxSTC_C_PREPROCESSOR, true);
 
@@ -438,15 +471,22 @@ void CEditViewWx::SetupSyntaxHighlighting(const wxString& filePath) {
             "False None True and as assert async await break class continue "
             "def del elif else except finally for from global if import in "
             "is lambda nonlocal not or pass raise return try while with yield"));
-        wxColour pyComment = PickSyntaxColor(wxT("py"), wxT("comment"), wxColour(  0, 128,   0));
-        wxColour pyString  = PickSyntaxColor(wxT("py"), wxT("string"),  wxColour(128,   0,  64));
-        wxColour pyKeyword = PickSyntaxColor(wxT("py"), wxT("keyword"), wxColour(  0,   0, 255));
-        wxColour pyNumber  = PickSyntaxColor(wxT("py"), wxT("number"),  wxColour(235,   0,   0));
+        const bool dark = m_darkMode;
+        const wxColour defComment = dark ? wxColour(106, 153,  85) : wxColour(  0, 128,   0);
+        const wxColour defString  = dark ? wxColour(206, 145, 120) : wxColour(128,   0,  64);
+        const wxColour defKeyword = dark ? wxColour( 86, 156, 214) : wxColour(  0,   0, 255);
+        const wxColour defNumber  = dark ? wxColour(181, 206, 168) : wxColour(235,   0,   0);
+        const wxColour defChar    = dark ? wxColour(206, 145, 120) : wxColour( 64, 128, 128);
+
+        wxColour pyComment = PickSyntaxColor(wxT("py"), wxT("comment"), defComment);
+        wxColour pyString  = PickSyntaxColor(wxT("py"), wxT("string"),  defString);
+        wxColour pyKeyword = PickSyntaxColor(wxT("py"), wxT("keyword"), defKeyword);
+        wxColour pyNumber  = PickSyntaxColor(wxT("py"), wxT("number"),  defNumber);
 
         StyleSetForeground(wxSTC_P_COMMENTLINE,  pyComment);
         StyleSetForeground(wxSTC_P_COMMENTBLOCK, pyComment);
         StyleSetForeground(wxSTC_P_STRING,       pyString);
-        StyleSetForeground(wxSTC_P_CHARACTER,    wxColour( 64, 128, 128));
+        StyleSetForeground(wxSTC_P_CHARACTER,    defChar);
         StyleSetForeground(wxSTC_P_TRIPLE,       pyString);
         StyleSetForeground(wxSTC_P_TRIPLEDOUBLE, pyString);
         StyleSetForeground(wxSTC_P_WORD,         pyKeyword);

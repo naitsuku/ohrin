@@ -797,6 +797,7 @@ void CEditWndWx::ApplyMetaSettingsToAllViews() {
     bool scrollHorz = cfg->GetMetaBool(wxT("window"),  wxT("m_bScrollBarHorz"), true);
     bool dispToolbar   = cfg->GetMetaBool(wxT("window"), wxT("m_bDispTOOLBAR"),   true);
     bool dispStatusbar = cfg->GetMetaBool(wxT("window"), wxT("m_bDispSTATUSBAR"), true);
+    bool darkMode      = cfg->GetMetaBool(wxT("window"), wxT("m_bDarkMode"),      false);
 
     // wxSTC への適用 (m_nCaretType: 0=Win 風 (細線), 1=DOS 風 (ブロック))
     const int caretStyle = (caretType == 1) ? wxSTC_CARETSTYLE_BLOCK
@@ -818,8 +819,8 @@ void CEditWndWx::ApplyMetaSettingsToAllViews() {
             // wxSTC は SetMouseWheelLineDelta を直接公開していないので
             // SCI_SETMOUSEWHEELZOOMS / SCI_SETMOUSEWHEELLINES を SendMsg で
             view->SendMsg(2723, scrollLines, 0); // SCI_SETMOUSEWHEELLINES (Scintilla 5.x)
-            // フォールバック: wxSTC が古い場合に備えて Scintilla 標準のメソッドも呼ぶ
-            // (失敗しても無害)
+            // Phase 15a: DarkMode を反映 (差分があればスキーム再適用 + ハイライト再構築)
+            view->SetDarkMode(darkMode);
         }
     }
 

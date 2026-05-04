@@ -36,9 +36,11 @@ target_compile_options(sakura_wx_core PRIVATE
 set(SAKURA_WX_GUI_SOURCES
     app/SakuraApp.cpp
     window/CEditWndWx.cpp
+    window/CSakuraToolBar.cpp
     view/CEditViewWx.cpp
     dialog/CDlgSearchWx.cpp
     dialog/CDlgGrepWx.cpp
+    dialog/CDlgSettingsWx.cpp
 )
 
 if(APPLE)
@@ -60,3 +62,45 @@ target_compile_options(sakura_wx PRIVATE
     -Wno-unused-parameter
     -Wno-deprecated-declarations
 )
+
+# ------------------------------------------------------------
+# リソース: ツールバーアイコン (my_icons.bmp / mytool.bmp) を埋め込む。
+# - macOS: .app/Contents/Resources/ へコピー
+# - Linux: build/bin/resources/ へコピーして実行時にロード
+# - 開発時のフォールバック用に SAKURA_RESOURCE_SRCDIR を define
+# upstream の src/main/resources/ を読み取り専用で参照する。
+# ------------------------------------------------------------
+set(SAKURA_RESOURCE_SRC "${CMAKE_SOURCE_DIR}/src/main/resources/images")
+
+target_compile_definitions(sakura_wx PRIVATE
+    SAKURA_RESOURCE_SRCDIR="${SAKURA_RESOURCE_SRC}"
+)
+
+if(APPLE)
+    # .app バンドル内 Resources/ にコピー
+    set(SAKURA_BUNDLE_RES_DIR
+        "$<TARGET_FILE_DIR:sakura_wx>/../Resources")
+    add_custom_command(TARGET sakura_wx POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+                "${SAKURA_BUNDLE_RES_DIR}"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${SAKURA_RESOURCE_SRC}/my_icons.bmp"
+                "${SAKURA_BUNDLE_RES_DIR}/my_icons.bmp"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${SAKURA_RESOURCE_SRC}/mytool.bmp"
+                "${SAKURA_BUNDLE_RES_DIR}/mytool.bmp"
+        COMMENT "Copying sakura toolbar icons into .app bundle"
+    )
+else()
+    add_custom_command(TARGET sakura_wx POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+                "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/resources"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${SAKURA_RESOURCE_SRC}/my_icons.bmp"
+                "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/resources/my_icons.bmp"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${SAKURA_RESOURCE_SRC}/mytool.bmp"
+                "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/resources/mytool.bmp"
+        COMMENT "Copying sakura toolbar icons next to executable"
+    )
+endif()

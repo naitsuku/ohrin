@@ -78,8 +78,12 @@ CEditWndWx::CEditWndWx(const wxString& filePath)
               wxDefaultPosition, wxSize(900, 700))
 {
     CreateMenuBarImpl();
-    sakura_wx::ui::CSakuraToolBar::Build(this);
     CreateStatusBarImpl();
+
+    // ツールバー: 通常の wxToolBar を子として作り、タイトル直下に配置。
+    // wxFrame::CreateToolBar() / SetToolBar() は使わない（macOS で NSToolbar
+    // になり、タイトルバー右側に大アイコン表示されてしまうため）。
+    auto* toolBar = sakura_wx::ui::CSakuraToolBar::Build(this);
 
     // wxAuiNotebook をフレーム全体に配置。各タブが個別の CEditViewWx を持つ。
     m_notebook = new wxAuiNotebook(this, wxID_ANY,
@@ -88,6 +92,9 @@ CEditWndWx::CEditWndWx(const wxString& filePath)
             | wxAUI_NB_WINDOWLIST_BUTTON);
 
     auto* sizer = new wxBoxSizer(wxVERTICAL);
+    if (toolBar) {
+        sizer->Add(toolBar, 0, wxEXPAND);
+    }
     sizer->Add(m_notebook, 1, wxEXPAND);
     SetSizer(sizer);
 

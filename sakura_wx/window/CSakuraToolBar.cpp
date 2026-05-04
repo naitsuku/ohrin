@@ -92,8 +92,12 @@ wxBitmap CSakuraToolBar::GetFallback(const wxString& artId) {
 
 wxToolBar* CSakuraToolBar::Build(CEditWndWx* frame) {
     if (!frame) return nullptr;
-    auto* tb = frame->CreateToolBar(
-        wxTB_HORIZONTAL | wxTB_FLAT | wxTB_NODIVIDER, wxID_ANY);
+    // 通常の wxToolBar を frame の子として作成。
+    // wxFrame::CreateToolBar() は macOS で NSToolbar（タイトルバー統合の
+    // 大アイコン）になってしまうため使わない。呼び出し側で sizer に Add する。
+    auto* tb = new wxToolBar(frame, wxID_ANY,
+        wxDefaultPosition, wxDefaultSize,
+        wxTB_HORIZONTAL | wxTB_FLAT | wxTB_NODIVIDER);
     tb->SetToolBitmapSize(wxSize(kCellSize, kCellSize));
 
     wxBitmap strip = LoadIconStrip();

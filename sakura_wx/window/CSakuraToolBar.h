@@ -14,6 +14,10 @@ namespace sakura_wx::ui {
  *
  * Phase 7 では主要 12 アイコンのみ使用。残りは Phase 8 以降で拡張。
  *
+ * macOS 注: wxFrame::CreateToolBar() を使うと NSToolbar (タイトルバー統合の
+ * 大アイコン) になる。Windows サクラ風の通常ツールバーストリップにするため、
+ * wxToolBar を frame の通常子として直接生成し、呼び出し側で sizer 配置する。
+ *
  * 実行時のアイコン探索順:
  *   1. macOS: <app>.app/Contents/Resources/my_icons.bmp
  *   2. Linux: <bin>/resources/my_icons.bmp
@@ -22,9 +26,9 @@ namespace sakura_wx::ui {
 class CSakuraToolBar {
 public:
     /**
-     * 新しい wxToolBar を frame に作成し、サクラのアイコンを並べて返す。
-     * 失敗（アイコンファイルが見つからない）時は空のツールバーを返し、
-     * UseFallbackArtIcons() で wxArt 標準アイコンに切り替えられる。
+     * frame の子として通常 wxToolBar を作成して返す。
+     * 呼び出し側で sizer に Add すること（タイトル直下、タブの上に配置）。
+     * NSToolbar / Unity HUD 等のネイティブ統合は使わない。
      */
     static wxToolBar* Build(CEditWndWx* frame);
 

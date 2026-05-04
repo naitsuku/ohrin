@@ -49,7 +49,7 @@ System（パス・OS情報）、SharedMemory（IPC）。
 
 ## 絶対に守るルール（変更禁止）
 
-1. **`sakura/` ディレクトリ内のファイルは一切変更しない**（Win32版エントリポイント）
+1. **`src/` `sakura_lang/` `sakura.sln` `tools/`（upstream 由来）`externals/` `help/` `installer/` 内のファイルを一切変更しない**（Win32 版エントリ／上流資産）
 2. **`sakura_core/` の既存 `.cpp/.h` ファイルの既存ロジックを変更しない**
    - インクルード追加は OK
    - `#ifdef SAKURA_PLATFORM_WX` による条件分岐追加は OK
@@ -60,25 +60,37 @@ System（パス・OS情報）、SharedMemory（IPC）。
 ## ディレクトリ構成（移植後）
 
 ```
-sakura-editor/
-├── sakura/              # Win32版（変更禁止）
+sakuramac/
+├── src/                 # Win32版（変更禁止、upstream のまま）
+│   ├── main/            # sakura.exe 本体（cmake/cpp/msbuild/resources）
+│   └── test/cpp/tests1/ # GoogleTest 既存ユニットテスト
 ├── sakura_core/         # 共有コアライブラリ（最小限の変更のみ）
-│   └── platform/        # 新規追加: プラットフォーム抽象化レイヤー
-├── sakura_wx/           # 新規追加: wxWidgets フロントエンド
+│   └── platform/        # Phase 0 で追加: プラットフォーム抽象化レイヤー (PAL)
+├── sakura_lang/         # ローカライズ DLL（Win32専用、変更禁止）
+├── sakura_wx/           # Phase 2 で追加: wxWidgets フロントエンド
 │   ├── app/
 │   ├── window/
 │   ├── view/
 │   └── dialog/
-├── tests/
-│   └── wx_tests/        # 新規追加: wxWidgets版のテスト
-├── docs/
-│   └── porting/         # 移植作業ドキュメント
-└── CMakeLists.txt       # 新規追加: クロスプラットフォームビルド
+├── tests/wx_tests/      # Phase 1 以降で追加: wxWidgets版のテスト
+├── tools/               # upstream のビルドツール（変更禁止）
+│   └── porting/         # Phase 0 で追加: 移植用解析スクリプト・検証用 mini プロジェクト
+├── externals/           # upstream のサードパーティ依存（変更禁止）
+├── help/, installer/    # upstream のドキュメント・インストーラ（変更禁止）
+├── docs/porting/        # Phase 0 で追加: 移植作業ドキュメント
+├── CMakeLists.txt       # 既存（Win32向け）— Phase 1 で非Windows分岐を追加
+└── sakura.sln           # Visual Studio ソリューション（変更禁止）
 ```
+
+> **注意**: 当初 CLAUDE.md は `sakura/` ディレクトリを Win32 エントリと記述していたが、
+> 現 upstream master では Win32 エントリは `src/main/` に置かれている。
+> 「変更禁止」の対象は実態として `src/`、`sakura_lang/`、`sakura.sln`、
+> `tools/`（upstream 由来部分）、`externals/`、`help/`、`installer/`、ルート `*.bat`、
+> ルート `CMakeLists.txt` の **既存 Windows 向けロジック部分**。
 
 ## 技術スタック
 
-- **フレームワーク**: wxWidgets 3.2.x
+- **フレームワーク**: wxWidgets 3.2.x または 3.3.x（macOS Homebrew 提供版は現在 3.3.2）
 - **ビルド**: CMake 3.20+, Ninja
 - **C++標準**: C++17
 - **テキスト制御**: wxStyledTextCtrl (Scintilla)
@@ -129,5 +141,6 @@ Windows ビルドは既存の `*.sln` を Visual Studio で開く（CMake は使
 ## コンパイルエラーの許容範囲
 
 - `sakura_wx/` 内のエラー: 積極的に修正
+- `sakura_core/platform/` 内のエラー: 積極的に修正
 - `sakura_core/` 内の `#ifdef SAKURA_PLATFORM_WX` 分岐のエラー: 修正 OK
-- `sakura/` 内のエラー: **絶対に触らない**。報告のみ。
+- `src/` `sakura_lang/` 内のエラー: **絶対に触らない**。報告のみ。

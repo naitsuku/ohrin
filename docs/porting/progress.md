@@ -1,5 +1,95 @@
 # 移植作業進捗ログ
 
+## 2026-05-04 — Phase 9 完了（同日、UX 改善 + 基盤強化）
+
+Phase 7-8 の申し送り項目から、影響度・安全性順に着手した結果。
+
+### 実施内容
+
+- [x] **CEditViewWx::GetCurrentPath() 公開アクセサ**
+  - `m_currentPath` を const 参照で公開（LoadFile/SaveFile 成功時に更新）
+  - CSakuraOutline がタブタイトルから拡張子を推定する簡易実装を解消し、
+    正規にビューから取得するように修正
+
+- [x] **アウトライン階層化 + 編集中自動更新 (debounce)**
+  - `Hit` 構造に `depth` フィールドを追加
+  - C/C++: class/struct/namespace は depth 0、関数定義はインデントから推定
+  - Python: `def`/`class` をインデントスペース ÷ 4 で階層化
+  - Markdown: # の数 - 1 を depth に
+  - `wxTreeCtrl::AppendItem` を depth スタックで階層挿入、`ExpandAll`
+  - `wxTimer` debounce 800ms で連続編集中の負荷を抑制
+  - `CEditWndWx::NotifyOutlineDirty()` を経由して view → outline 通知
+  - 編集モディフィケーション (INSERTTEXT/DELETETEXT) のみで発火
+
+- [x] **設定即時反映（全タブ）**
+  - `OnFont` (設定ダイアログ) の OK 後、`m_notebook` の全 `CEditViewWx` に
+    SetEditorFont / SetLineNumbersVisible / SetWordWrapEnabled / SetTabWidth
+    を一斉適用
+  - 旧実装はアクティブビューのみだったため、複数タブ開いている時の整合性
+    が改善
+
+- [x] **win32_types_stub.h 拡充 (Phase 10 への足がかり)**
+  - `CHAR` (= `char`)、`_MAX_PATH` (= `MAX_PATH`)、`STRUNCATE` (= 80)
+  - `errno_t` (= `int`、Annex K)
+  - `_vswprintf` (POSIX `vswprintf` ベース)
+  - `_vsnprintf_s` / `_vsnwprintf_s` / `_snprintf_s` / `_snwprintf_s` /
+    `vswprintf_s` (MSVC safe-printf 系)
+  - `<cstdarg>` `<cstdio>` を追加 include
+  - sakura_core/CMakeLists.txt の include path に
+    `${CMAKE_CURRENT_SOURCE_DIR}/../src/main/cpp` を追加
+    （`cxx/ResourceHolder.hpp` 等 portable な C++20 ヘッダ群を参照可能に）
+
+### 試行して保留した項目
+
+- **`util/string_ex.cpp` / `basis/CMyString.cpp` の取り込み**
+  - 上記基盤強化で string_ex.h のヘッダ自体は通過するが、
+    `charset/charcode.h` 経由で GDI (LOGFONT, FontHolder, MemDcHolder,
+    DeleteObject, SelectObject 等) と `IsValidCodePage` (Win32 API) に
+    深く依存しているため、本セッション中の取り込みは保留
+  - `basis/CMyString.h` の `std::filesystem::path → wstring` 変換が
+    POSIX で型不一致になる問題も判明
+  - excluded_files.md と CMakeLists のコメントに残課題として記録
+  - 本格対応は Phase 10 で `charset/` 系の GDI 依存を切り離す PAL 拡張が必要
+
+### Phase 9 で発生した問題
+
+1. **EOF アノテーション再帰 (Phase 7 の即時パッチ後の再発無し)** — そのまま
+2. **アウトラインの自動更新ループの懸念** — debounce 800ms と
+   modification type フィルタで安定動作
+
+### 検証結果
+
+- 30/30 全テストパス
+- GUI smoke test 全パス
+- アウトライン: C++ ファイルで関数 + クラスが階層表示
+- 設定変更: 複数タブで一斉に反映確認 (フォント / 行番号 / 折り返し)
+
+### Phase 9 完了チェックリスト
+
+- [x] CEditViewWx::GetCurrentPath() 公開
+- [x] アウトライン階層化 + debounce 自動更新
+- [x] 設定即時反映 (全タブ)
+- [x] win32_types_stub.h 拡充
+
+### Phase 10 への申し送り
+
+- **GUI 残課題**:
+  - ツールバー アイコン index の MainMenu.ini ベース正規化
+  - タブのミラーフィールド廃止 (`m_editView` / `m_currentFile` /
+    `m_modified` を ActiveState 直接参照に統一)
+  - 印刷ヘッダフッタ カスタマイズ UI
+- **sakura_core 取り込み拡大** (Phase 10 の本丸):
+  - charset/ 系の GDI 依存切り離し (LOGFONT, FontHolder の PAL 化)
+  - basis/CMyString.h の filesystem::path 変換修正
+  - util/string_ex.cpp 取り込み
+  - 上流 DLLSHAREDATA 取り込み
+- **リリース準備**:
+  - 実 IME 対話確認 (Phase 6 carryover、ユーザー環境必須)
+  - .dmg / AppImage CI のリリースタグでの動作確認
+  - README 整備、スクリーンショット
+
+---
+
 ## 2026-05-04 — Phase 8 完了（同日、Tier 2 GUI 機能群）
 
 ### 実施内容

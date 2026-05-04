@@ -1,5 +1,75 @@
 # 移植作業進捗ログ
 
+## 2026-05-05 — Phase 12 完了（メタテーブル拡充 + 永続化 + Funccode テスト）
+
+### 実施内容
+
+- **SettingsMeta.h を拡充: ウィンドウタブ + 編集タブをメタ化**
+  - `kWindowFields[]`: 13 フィールド (ツールバー表示、ステータスバー、
+    ファンクションキーバー、ミニマップ、メニューアイコン、水平スクロールバー、
+    ダークモード、ウィンドウサイズ／位置の保存方法、ファンクションキー位置、
+    ルーラー高さ、分割ウィンドウのスクロール同期 ×2)
+  - `kEditFields[]`: 13 フィールド (折り返し改行コピー、選択なしコピー、
+    コピー後選択解除、ラインモード貼付、改行変換貼付、改行非上書き、
+    文字幅スペース詰め、矩形入力削除、OLE D&D、URL クリック選択、
+    ファイルダイアログ初期位置、NEL/PS/LS 改行扱い、矩形選択ロック)
+  - `kSettingsTabs[]`: 全 18 タブ中 3 タブが `supported=true` に
+    (Phase 11: 1 タブ → Phase 12: 3 タブ)
+
+- **SakuraConfig に汎用メタ値ストア API を追加**
+  - `bool GetMetaBool(tab, field, default)` / `SetMetaBool(tab, field, value)`
+  - `int  GetMetaInt (tab, field, default)` / `SetMetaInt (tab, field, value)`
+  - 内部キー命名: `meta_<tab>_<field>` で既存キー (font_face, syn_*) と衝突回避
+  - 専用 getter/setter を毎回追加せず、メタテーブル拡充だけで設定が増やせる
+
+- **CDlgSettingsWx をデータ駆動化 (Phase 11 の試行をプロダクション化)**
+  - 共通ビルダ `BuildTabFromMeta(page, tabId)` を切り出し:
+    - tabId で `kSettingsTabs[]` から TabDef を検索
+    - フィールド種別に応じて wxCheckBox / wxSpinCtrl / wxChoice を生成
+    - 初期値は `m_config->GetMetaBool/Int` から取得 (なければデフォルト)
+    - 生成 widget を `m_metaWidgets` に記録
+  - 「ウィンドウ」「編集」タブが Phase 10 までの placeholder から実フォームへ
+  - OnOk で `m_metaWidgets` を反復し `SakuraConfig::SetMetaBool/Int` で保存
+
+- **新規テスト 3 個追加 (全 33 テスト pass)**
+  - `SakuraConfig.MetaStoreRoundTrip`: 8 個のメタ値の書込／読戻と
+    未設定キーのデフォルト返却
+  - `Funccode.SentinelValuesMatchUpstream`: F_INVALID/F_DEFAULT/F_SEPARATOR の
+    値が upstream Funccode_x.hsrc と一致
+  - `Funccode.EditCommandCodesPresent`: 編集系 11 コマンドの定義存在確認
+    (= gen_funccode.py 生成パイプラインのスモーク)
+  - `tests/wx_tests/CMakeLists.txt` で `sakura_funccode_headers` 依存と
+    `sakura_core` リンクを追加 (生成 include path 取得のため)
+
+### 設計上の収穫
+
+- メタテーブル方式は **「フィールド追加 = SettingsMeta.h を 1 行足すだけ」**
+  まで簡素化できた。Win32 側でも同じテーブルを読めば AddPage / DDX が
+  ほぼ自動化可能 (Phase 13+ で upstream PR 化候補)
+- `dynamic_cast<wxCheckBox*>` 等で widget 型分岐するのは安全だが、
+  RTTI ON が必要。wxWidgets はデフォルト ON なので問題なし
+
+### Phase 12 完了チェックリスト
+
+- [x] SettingsMeta.h に「ウィンドウ」「編集」タブを追加 (各 13 フィールド)
+- [x] SakuraConfig::{Get,Set}Meta{Bool,Int} を追加
+- [x] CDlgSettingsWx::BuildTabFromMeta 共通ビルダ
+- [x] OnOk でメタ widget を一括永続化
+- [x] MetaStoreRoundTrip テスト
+- [x] Funccode_enum.h スモークテスト 2 件
+- [x] 全 33 テスト pass (旧 30 + 新 3)
+
+### Phase 13 への申し送り
+
+1. メタ化を残りタブ (タブバー、ファイル、書式、バックアップ等) へ拡大
+2. Color / String / KeyCode 種別の widget 対応
+   (現状は Bool / Int / Choice のみ実装済み)
+3. メタ駆動 widget の値が実際のエディタ動作に反映されるよう接続
+   (現状は永続化のみ。CEditViewWx 等での参照は未接続)
+4. upstream Win32 `CPropCommon.cpp` での同テーブル参照 (PR 化候補)
+5. `func/CKeyBind.cpp` を狭い範囲で取り込む試行 (Funccode テストで道は通った)
+
+
 ## 2026-05-05 — Phase 11 完了（HeaderMake 移植 + メタテーブル方式の試行）
 
 ### 実施内容

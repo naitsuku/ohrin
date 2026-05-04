@@ -69,9 +69,14 @@ void CDlgSettingsWx::BuildUI() {
         m_notebook->AddPage(page, title);
     };
 
+    auto addMetaPanel = [&](const wxString& title, const wxString& tabId) {
+        auto* page = new wxPanel(m_notebook);
+        BuildTabFromMeta(page, tabId);
+        m_notebook->AddPage(page, title);
+    };
+
     addPanel(wxT("全般"),         &CDlgSettingsWx::BuildTabGeneral);          // 1
-    addPlaceholder(wxT("ウィンドウ"),
-                   wxT("ウィンドウのサイズ・位置・配色設定。Phase 10 以降で対応予定。"));   // 2
+    addMetaPanel(wxT("ウィンドウ"), wxT("window"));                              // 2 (Phase 12 メタ化)
     addPlaceholder(wxT("メインメニュー"),
                    wxT("メインメニューのカスタマイズ。Phase 10 以降で対応予定。"));         // 3
     addPlaceholder(wxT("ツールバー"),
@@ -81,9 +86,7 @@ void CDlgSettingsWx::BuildUI() {
                    wxT("タブバーの表示／配色設定。Phase 10 以降で対応予定。"));             // 5
     addPlaceholder(wxT("ステータスバー"),
                    wxT("ステータスバーの表示項目。Phase 10 以降で対応予定。"));             // 6
-    addPlaceholder(wxT("編集"),
-                   wxT("自動インデント、矩形選択挙動など編集動作の詳細。\n"
-                       "現状は CEditViewWx::InitializeEditor 内のハードコード値を使用。"));  // 7
+    addMetaPanel(wxT("編集"), wxT("edit"));                                       // 7 (Phase 12 メタ化)
     addPlaceholder(wxT("ファイル"),
                    wxT("既定の文字コード／改行コード／BOM 設定。Phase 10 以降で対応予定。"));// 8
     addPlaceholder(wxT("ファイル名表示"),
@@ -176,88 +179,130 @@ void CDlgSettingsWx::BuildTabGeneral(wxPanel* page) {
     note->Wrap(540);
     sizer->Add(note, 0, wxALL, 8);
 
-    // ----------------------------------------------------------
-    // Phase 11: メタテーブル駆動セクション
-    //   sakura_core/env/SettingsMeta.h の kGeneralFields を読み、
-    //   フィールド種別に応じた wx widget を自動生成する。
-    //   Win32 版でも同じテーブルを読んで dialog を組めるよう設計。
-    //   現状は値の永続化未接続 (Phase 12 で CommonSetting と接続予定)。
-    // ----------------------------------------------------------
+    // 「全般」タブの拡張: メタテーブル駆動セクション (Phase 11/12)
     sizer->Add(new wxStaticLine(page, wxID_ANY), 0, wxEXPAND | wxALL, 6);
     {
         auto* heading = new wxStaticText(page, wxID_ANY,
-            wxT("--- 共通設定メタテーブル試行 (Phase 11) ---"));
+            wxT("--- 共通設定メタテーブル (sakura_core/env/SettingsMeta.h) ---"));
         wxFont hf = heading->GetFont();
         hf.MakeBold();
         heading->SetFont(hf);
         sizer->Add(heading, 0, wxLEFT | wxRIGHT | wxTOP, 8);
     }
-    namespace meta = sakura::settings_meta;
-    const meta::TabDef& generalTab = meta::kSettingsTabs[0]; // "general"
-    auto* metaGrid = new wxFlexGridSizer(2, wxSize(8, 4));
-    metaGrid->AddGrowableCol(1, 1);
-    for (std::size_t i = 0; i < generalTab.field_count; ++i) {
-        const meta::FieldDef& f = generalTab.fields[i];
-        if (!f.visible) continue;
-        wxString label = wxString::FromUTF8(std::string(f.label).c_str());
-        wxString tip   = wxString::FromUTF8(std::string(f.tooltip).c_str());
 
-        wxWindow* ctl = nullptr;
+    // メタ駆動 widget を生成しコンテナに追加
+    auto* metaPanel = new wxPanel(page);
+    BuildTabFromMeta(metaPanel, wxT("general"));
+    sizer->Add(metaPanel, 1, wxEXPAND | wxALL, 8);
+
+    page->SetSizer(sizer);
+}
+
+// ============================================================
+// Phase 11/12: メタテーブル駆動タブビルダー
+//   tabId に該当する SettingsMeta::TabDef を引数 page に展開する。
+//   生成された widget は m_metaWidgets に記録され、OnOk で SakuraConfig へ保存。
+// ============================================================
+void CDlgSettingsWx::BuildTabFromMeta(wxPanel* page, const wxString& tabId) {
+    namespace meta = sakura::settings_meta;
+
+    // tabId に対応する TabDef を検索
+    const meta::TabDef* tab = nullptr;
+    std::string tabIdUtf8 = tabId.ToStdString(wxConvUTF8);
+    for (std::size_t i = 0; i < meta::kSettingsTabCount; ++i) {
+        if (meta::kSettingsTabs[i].id == tabIdUtf8) {
+            tab = &meta::kSettingsTabs[i];
+            break;
+        }
+    }
+    auto* sizer = new wxBoxSizer(wxVERTICAL);
+    if (!tab || !tab->fields || tab->field_count == 0) {
+        sizer->Add(new wxStaticText(page, wxID_ANY,
+            wxT("(このタブはメタテーブル未登録です)")), 0, wxALL, 8);
+        page->SetSizer(sizer);
+        return;
+    }
+
+    auto* grid = new wxFlexGridSizer(2, wxSize(8, 4));
+    grid->AddGrowableCol(1, 1);
+
+    for (std::size_t i = 0; i < tab->field_count; ++i) {
+        const meta::FieldDef& f = tab->fields[i];
+        if (!f.visible) continue;
+        wxString label    = wxString::FromUTF8(std::string(f.label).c_str());
+        wxString tip      = wxString::FromUTF8(std::string(f.tooltip).c_str());
+        wxString fieldId  = wxString::FromUTF8(std::string(f.id).c_str());
+
+        MetaWidget mw{};
+        mw.tabId        = tabId;
+        mw.fieldId      = fieldId;
+        mw.kind         = static_cast<int>(f.kind);
+        mw.defaultValue = f.default_value;
+
         switch (f.kind) {
         case meta::FieldKind::Bool: {
+            bool initial = m_config
+                ? m_config->GetMetaBool(tabId, fieldId, f.default_value != 0)
+                : (f.default_value != 0);
             auto* cb = new wxCheckBox(page, wxID_ANY, label);
-            cb->SetValue(f.default_value != 0);
+            cb->SetValue(initial);
             cb->SetToolTip(tip);
-            metaGrid->Add(cb, 0, wxALIGN_CENTER_VERTICAL);
-            metaGrid->AddSpacer(0);
-            ctl = cb;
+            grid->Add(cb, 0, wxALIGN_CENTER_VERTICAL);
+            grid->AddSpacer(0);
+            mw.widget = cb;
             break;
         }
         case meta::FieldKind::Int: {
-            metaGrid->Add(new wxStaticText(page, wxID_ANY, label),
-                          0, wxALIGN_CENTER_VERTICAL);
+            int initial = m_config
+                ? m_config->GetMetaInt(tabId, fieldId,
+                                       static_cast<int>(f.default_value))
+                : static_cast<int>(f.default_value);
+            grid->Add(new wxStaticText(page, wxID_ANY, label),
+                      0, wxALIGN_CENTER_VERTICAL);
             auto* sp = new wxSpinCtrl(page, wxID_ANY, wxEmptyString,
                 wxDefaultPosition, wxDefaultSize, wxSP_ARROW_KEYS,
                 static_cast<int>(f.min_value),
                 static_cast<int>(f.max_value),
-                static_cast<int>(f.default_value));
+                initial);
             sp->SetToolTip(tip);
-            metaGrid->Add(sp, 0, wxEXPAND);
-            ctl = sp;
+            grid->Add(sp, 0, wxEXPAND);
+            mw.widget = sp;
             break;
         }
         case meta::FieldKind::Choice: {
-            metaGrid->Add(new wxStaticText(page, wxID_ANY, label),
-                          0, wxALIGN_CENTER_VERTICAL);
+            int initial = m_config
+                ? m_config->GetMetaInt(tabId, fieldId,
+                                       static_cast<int>(f.default_value))
+                : static_cast<int>(f.default_value);
+            grid->Add(new wxStaticText(page, wxID_ANY, label),
+                      0, wxALIGN_CENTER_VERTICAL);
             wxArrayString items;
-            int defaultIdx = 0;
+            int sel = 0;
             for (std::size_t k = 0; k < f.choice_count; ++k) {
                 items.Add(wxString::FromUTF8(
                     std::string(f.choices[k].label).c_str()));
-                if (f.choices[k].value == static_cast<int>(f.default_value)) {
-                    defaultIdx = static_cast<int>(k);
-                }
+                mw.choiceValues.push_back(f.choices[k].value);
+                if (f.choices[k].value == initial) sel = static_cast<int>(k);
             }
             auto* ch = new wxChoice(page, wxID_ANY,
                 wxDefaultPosition, wxDefaultSize, items);
-            ch->SetSelection(defaultIdx);
+            ch->SetSelection(sel);
             ch->SetToolTip(tip);
-            metaGrid->Add(ch, 0, wxEXPAND);
-            ctl = ch;
+            grid->Add(ch, 0, wxEXPAND);
+            mw.widget = ch;
             break;
         }
         default:
-            metaGrid->Add(new wxStaticText(page, wxID_ANY, label),
-                          0, wxALIGN_CENTER_VERTICAL);
-            metaGrid->Add(new wxStaticText(page, wxID_ANY,
+            grid->Add(new wxStaticText(page, wxID_ANY, label),
+                      0, wxALIGN_CENTER_VERTICAL);
+            grid->Add(new wxStaticText(page, wxID_ANY,
                 wxT("(未対応の種別)")), 0);
-            break;
+            continue; // 未対応種別は永続化対象外
         }
-        (void)ctl;
+        m_metaWidgets.push_back(std::move(mw));
     }
-    sizer->Add(metaGrid, 0, wxEXPAND | wxALL, 8);
 
-    sizer->AddStretchSpacer(1);
+    sizer->Add(grid, 1, wxEXPAND | wxALL, 8);
     page->SetSizer(sizer);
 }
 
@@ -409,6 +454,39 @@ void CDlgSettingsWx::OnOk(wxCommandEvent& event) {
                                          m_pkKeyword->GetColour());
                 m_config->SetSyntaxColor(typeKey, wxT("number"),
                                          m_pkNumber->GetColour());
+            }
+        }
+
+        // メタテーブル駆動 widget の永続化 (Phase 12)
+        namespace meta = sakura::settings_meta;
+        for (const auto& mw : m_metaWidgets) {
+            if (!mw.widget) continue;
+            switch (static_cast<meta::FieldKind>(mw.kind)) {
+            case meta::FieldKind::Bool: {
+                if (auto* cb = dynamic_cast<wxCheckBox*>(mw.widget)) {
+                    m_config->SetMetaBool(mw.tabId, mw.fieldId, cb->GetValue());
+                }
+                break;
+            }
+            case meta::FieldKind::Int: {
+                if (auto* sp = dynamic_cast<wxSpinCtrl*>(mw.widget)) {
+                    m_config->SetMetaInt(mw.tabId, mw.fieldId, sp->GetValue());
+                }
+                break;
+            }
+            case meta::FieldKind::Choice: {
+                if (auto* ch = dynamic_cast<wxChoice*>(mw.widget)) {
+                    int sel = ch->GetSelection();
+                    if (sel >= 0 &&
+                        sel < static_cast<int>(mw.choiceValues.size())) {
+                        m_config->SetMetaInt(mw.tabId, mw.fieldId,
+                                             mw.choiceValues[sel]);
+                    }
+                }
+                break;
+            }
+            default:
+                break;
             }
         }
         m_config->Save();

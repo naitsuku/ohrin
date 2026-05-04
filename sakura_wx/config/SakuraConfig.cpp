@@ -179,3 +179,37 @@ void SakuraConfig::ClearSyntaxColors() {
         }
     }
 }
+
+// === メタテーブル汎用ストア (Phase 12) ===
+namespace {
+std::wstring MetaKey(const wxString& tab, const wxString& field) {
+    // 名前空間: meta_<tab>_<field>。既存キー (font_face, syn_*) と衝突しない。
+    return L"meta_" + tab.ToStdWstring() + L"_" + field.ToStdWstring();
+}
+} // namespace
+
+bool SakuraConfig::GetMetaBool(const wxString& tab, const wxString& field,
+                               bool def) const {
+    if (!m_store) return def;
+    bool v = def;
+    return m_store->GetBool(MetaKey(tab, field), v) ? v : def;
+}
+
+void SakuraConfig::SetMetaBool(const wxString& tab, const wxString& field,
+                               bool value) {
+    if (!m_store) return;
+    m_store->SetBool(MetaKey(tab, field), value);
+}
+
+int SakuraConfig::GetMetaInt(const wxString& tab, const wxString& field,
+                             int def) const {
+    if (!m_store) return def;
+    int v = def;
+    return m_store->GetInt(MetaKey(tab, field), v) ? v : def;
+}
+
+void SakuraConfig::SetMetaInt(const wxString& tab, const wxString& field,
+                              int value) {
+    if (!m_store) return;
+    m_store->SetInt(MetaKey(tab, field), value);
+}

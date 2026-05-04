@@ -70,6 +70,15 @@ public:
     static constexpr const wchar_t* kSynKindKeyword = L"keyword";
     static constexpr const wchar_t* kSynKindNumber  = L"number";
 
+    // === メタテーブル汎用ストア (Phase 12 追加) ===
+    // sakura_core/env/SettingsMeta.h の (tab id, field id) でキーされた
+    // 個別フィールド値を IConfigStore に永続化する。
+    // 専用 getter/setter を毎回追加せず、メタテーブル拡充だけで設定が増やせる。
+    bool GetMetaBool(const wxString& tab, const wxString& field, bool def) const;
+    void SetMetaBool(const wxString& tab, const wxString& field, bool value);
+    int  GetMetaInt (const wxString& tab, const wxString& field, int def) const;
+    void SetMetaInt (const wxString& tab, const wxString& field, int value);
+
 private:
     std::unique_ptr<SakuraPlatform::IConfigStore> m_store;
 

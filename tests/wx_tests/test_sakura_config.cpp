@@ -104,3 +104,34 @@ TEST(SakuraConfig, RecentFilesAddDeduplicateAndCap) {
     c.ClearRecentFiles();
     c.Save();
 }
+
+// === メタテーブル汎用ストア (Phase 12) ===
+TEST(SakuraConfig, MetaStoreRoundTrip) {
+    // 書き込み
+    {
+        SakuraConfig c;
+        c.SetMetaBool(wxT("general"), wxT("m_bIsINSMode"),         false);
+        c.SetMetaBool(wxT("general"), wxT("m_bIsFreeCursorMode"),  true);
+        c.SetMetaInt (wxT("general"), wxT("m_nRepeatedScrollLineNum"), 7);
+        c.SetMetaInt (wxT("general"), wxT("m_nCaretType"),         1);
+        c.SetMetaBool(wxT("window"),  wxT("m_bDarkMode"),          true);
+        c.SetMetaInt (wxT("window"),  wxT("m_nRulerHeight"),       20);
+        c.SetMetaBool(wxT("edit"),    wxT("m_bAddCRLFWhenCopy"),   true);
+        c.Save();
+    }
+    // 読み戻し
+    {
+        SakuraConfig c;
+        c.Load();
+        EXPECT_FALSE(c.GetMetaBool(wxT("general"), wxT("m_bIsINSMode"), true));
+        EXPECT_TRUE (c.GetMetaBool(wxT("general"), wxT("m_bIsFreeCursorMode"), false));
+        EXPECT_EQ   (c.GetMetaInt (wxT("general"), wxT("m_nRepeatedScrollLineNum"), 0), 7);
+        EXPECT_EQ   (c.GetMetaInt (wxT("general"), wxT("m_nCaretType"), 0), 1);
+        EXPECT_TRUE (c.GetMetaBool(wxT("window"),  wxT("m_bDarkMode"), false));
+        EXPECT_EQ   (c.GetMetaInt (wxT("window"),  wxT("m_nRulerHeight"), 0), 20);
+        EXPECT_TRUE (c.GetMetaBool(wxT("edit"),    wxT("m_bAddCRLFWhenCopy"), false));
+        // 未設定キーは default を返す
+        EXPECT_EQ   (c.GetMetaInt (wxT("general"), wxT("nonexistent"), 42), 42);
+        EXPECT_TRUE (c.GetMetaBool(wxT("general"), wxT("nonexistent"), true));
+    }
+}

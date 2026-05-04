@@ -161,15 +161,168 @@ inline constexpr FieldDef kGeneralFields[] = {
 };
 
 // ============================================================
+// 「ウィンドウ」タブ — Phase 12 メタ化対象
+//   CommonSetting_Window に対応。
+// ============================================================
+inline constexpr ChoiceItem kFuncKeyPlaceChoices[] = {
+    {0, "上"},
+    {1, "下"},
+};
+
+inline constexpr ChoiceItem kSaveModeChoices[] = {
+    {0, "指定なし (前回値を継承)"},
+    {1, "保存して継承"},
+    {2, "直接指定で固定"},
+};
+
+inline constexpr FieldDef kWindowFields[] = {
+    {"m_bDispTOOLBAR",
+        "ツールバーを表示",
+        "次回ウィンドウを開いたときツールバーを表示する",
+        FieldKind::Bool, 1, 0, 1, nullptr, 0, true},
+    {"m_bDispSTATUSBAR",
+        "ステータスバーを表示",
+        "次回ウィンドウを開いたときステータスバーを表示する",
+        FieldKind::Bool, 1, 0, 1, nullptr, 0, true},
+    {"m_bDispFUNCKEYWND",
+        "ファンクションキーバーを表示",
+        "次回ウィンドウを開いたときファンクションキーを表示する",
+        FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+    {"m_bDispMiniMap",
+        "ミニマップを表示",
+        "右側にミニマップを表示する",
+        FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+    {"m_bMenuIcon",
+        "メニューアイコン",
+        "メニュー項目にアイコンを付ける",
+        FieldKind::Bool, 1, 0, 1, nullptr, 0, true},
+    {"m_bScrollBarHorz",
+        "水平スクロールバー",
+        "水平スクロールバーを使う",
+        FieldKind::Bool, 1, 0, 1, nullptr, 0, true},
+    {"m_bDarkMode",
+        "ダークモード",
+        "ダークモードで表示する",
+        FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+    {"m_eSaveWindowSize",
+        "ウィンドウサイズの保存方法",
+        "次回起動時のウィンドウサイズの扱い",
+        FieldKind::Choice, 1, 0, 2,
+        kSaveModeChoices, std::size(kSaveModeChoices), true},
+    {"m_eSaveWindowPos",
+        "ウィンドウ位置の保存方法",
+        "次回起動時のウィンドウ位置の扱い",
+        FieldKind::Choice, 1, 0, 2,
+        kSaveModeChoices, std::size(kSaveModeChoices), true},
+    {"m_nFUNCKEYWND_Place",
+        "ファンクションキー表示位置",
+        "ファンクションキーバーを上下どちらに置くか",
+        FieldKind::Choice, 1, 0, 1,
+        kFuncKeyPlaceChoices, std::size(kFuncKeyPlaceChoices), true},
+    {"m_nRulerHeight",
+        "ルーラー高さ (px)",
+        "ルーラーの高さ (ピクセル)",
+        FieldKind::Int, 13, 8, 30, nullptr, 0, true},
+    {"m_bSplitterWndHScroll",
+        "分割ウィンドウの横スクロール同期",
+        "分割ビュー間で水平スクロールを同期",
+        FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+    {"m_bSplitterWndVScroll",
+        "分割ウィンドウの縦スクロール同期",
+        "分割ビュー間で垂直スクロールを同期",
+        FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+};
+
+// ============================================================
+// 「編集」タブ — Phase 12 メタ化対象
+//   CommonSetting_Edit に対応。
+// ============================================================
+inline constexpr ChoiceItem kOpenDialogDirChoices[] = {
+    {0, "カレントフォルダ"},
+    {1, "最近使ったフォルダ"},
+    {2, "指定フォルダ"},
+};
+
+inline constexpr FieldDef kEditFields[] = {
+    // コピー
+    {"m_bAddCRLFWhenCopy",
+        "折り返し行に改行を付けてコピー",
+        "コピー時、ソフト改行位置に CRLF を入れる",
+        FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+    {"m_bEnableNoSelectCopy",
+        "選択なしでコピーを有効化",
+        "選択範囲がないときに行全体をコピー",
+        FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+    {"m_bCopyAndDisablSelection",
+        "コピー後に選択解除",
+        "コピー操作後、選択範囲を解除する",
+        FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+    {"m_bEnableLineModePaste",
+        "ラインモード貼り付けを有効化",
+        "行コピーを行末に貼り付ける",
+        FieldKind::Bool, 1, 0, 1, nullptr, 0, true},
+    {"m_bConvertEOLPaste",
+        "改行コードを変換して貼り付け",
+        "貼り付け時、改行コードを編集中の文書に合わせる",
+        FieldKind::Bool, 1, 0, 1, nullptr, 0, true},
+
+    // 上書き
+    {"m_bNotOverWriteCRLF",
+        "改行は上書きしない",
+        "上書きモードでも改行コードは上書きせず挿入",
+        FieldKind::Bool, 1, 0, 1, nullptr, 0, true},
+    {"m_bOverWriteFixMode",
+        "文字幅にスペース詰め",
+        "上書き時、文字幅に合わせてスペースで詰める",
+        FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+    {"m_bOverWriteBoxDelete",
+        "矩形入力で選択削除",
+        "上書きモード矩形入力で選択範囲を削除する",
+        FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+
+    // ドラッグ&ドロップ
+    {"m_bUseOLE_DragDrop",
+        "OLE ドラッグ&ドロップを使う",
+        "ドラッグ&ドロップに OLE を使用 (Win32 のみ意味あり)",
+        FieldKind::Bool, 1, 0, 1, nullptr, 0, true},
+
+    // URL
+    {"m_bSelectClickedURL",
+        "URL クリックで選択",
+        "クリッカブル URL がクリックされたら選択状態にする",
+        FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+
+    // ファイルダイアログ
+    {"m_eOpenDialogDir",
+        "ファイルダイアログの初期位置",
+        "[開く] ダイアログを開いたときの初期フォルダ",
+        FieldKind::Choice, 0, 0, 2,
+        kOpenDialogDirChoices, std::size(kOpenDialogDirChoices), true},
+
+    // 拡張改行
+    {"m_bEnableExtEol",
+        "NEL/PS/LS を改行として扱う",
+        "Unicode の追加改行コードを改行として認識",
+        FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+
+    // 矩形選択
+    {"m_bBoxSelectLock",
+        "矩形選択を移動でロック",
+        "矩形選択中、カーソル移動でロック維持",
+        FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+};
+
+// ============================================================
 // タブテーブル
-//   現在は「全般」のみメタ化。他タブは Phase 12+ で順次追加。
+//   Phase 11 で「全般」、Phase 12 で「ウィンドウ」「編集」をメタ化。
+//   残り 15 タブは Phase 13+ で順次追加予定。
 //   タブ並び順は upstream CPropCommon.cpp の AddPage 順 (18 タブ) と一致させる。
 // ============================================================
 inline constexpr TabDef kSettingsTabs[] = {
     {"general",   "全般",         kGeneralFields, std::size(kGeneralFields), true},
-    {"window",    "ウィンドウ",   nullptr, 0, false},
+    {"window",    "ウィンドウ",   kWindowFields,  std::size(kWindowFields),  true},
     {"tabbar",    "タブバー",     nullptr, 0, false},
-    {"edit",      "編集",         nullptr, 0, false},
+    {"edit",      "編集",         kEditFields,    std::size(kEditFields),    true},
     {"file",      "ファイル",     nullptr, 0, false},
     {"backup",    "バックアップ", nullptr, 0, false},
     {"format",    "書式",         nullptr, 0, false},

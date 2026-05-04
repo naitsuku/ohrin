@@ -1,6 +1,9 @@
 #pragma once
 #include <wx/dialog.h>
 #include <wx/notebook.h>
+#include <wx/string.h>
+
+#include <vector>
 
 class SakuraConfig;
 class wxFontPickerCtrl;
@@ -10,6 +13,7 @@ class wxChoice;
 class wxColourPickerCtrl;
 class wxColourPickerEvent;
 class wxListBox;
+class wxWindow;
 
 namespace sakura_wx::dialog {
 
@@ -55,7 +59,13 @@ private:
     void BuildTabKeybind(wxPanel* page);    // 13
     void BuildTabKeyword(wxPanel* page);    // 15 (旧「タイプ別」と同等)
 
-    // プレースホルダタブ (Phase 10 以降で実装予定)
+    // メタテーブル駆動タブ (Phase 11/12)
+    //   sakura_core/env/SettingsMeta.h の TabDef を引数に取り、フィールド種別に応じて
+    //   wxCheckBox / wxSpinCtrl / wxChoice を自動生成する。
+    //   生成された widget は m_metaWidgets に記録され、OnOk で SakuraConfig に保存。
+    void BuildTabFromMeta(wxPanel* page, const wxString& tabId);
+
+    // プレースホルダタブ (未対応)
     void BuildTabPlaceholder(wxPanel* page,
                              const wxString& title,
                              const wxString& note);
@@ -80,6 +90,20 @@ private:
     wxColourPickerCtrl* m_pkString   = nullptr;
     wxColourPickerCtrl* m_pkKeyword  = nullptr;
     wxColourPickerCtrl* m_pkNumber   = nullptr;
+
+    // メタテーブル駆動タブの widget レジストリ (Phase 12)
+    //   tabId / fieldId は SettingsMeta.h の文字列をコピーして保持。
+    //   wxString::FromUTF8 で日本語ラベルとは別に英語 ID を持つ前提。
+    struct MetaWidget {
+        wxString    tabId;
+        wxString    fieldId;
+        int         kind;        // sakura::settings_meta::FieldKind を int 化
+        wxWindow*   widget;      // wxCheckBox / wxSpinCtrl / wxChoice のいずれか
+        long long   defaultValue;
+        // Choice は idx→value のマップを持つ
+        std::vector<int> choiceValues;
+    };
+    std::vector<MetaWidget> m_metaWidgets;
 
     wxDECLARE_EVENT_TABLE();
 };

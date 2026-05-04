@@ -93,6 +93,10 @@ private:
     bool      m_foldingEnabled      = false;
     bool      m_currentLineUnderline = false;
     bool      m_showEofMark         = false;
+    // [EOF] アノテーション更新中の再入防止フラグ
+    // (EOLAnnotationSetText/ClearAll が SC_MOD_CHANGEEOLANNOTATION の
+    //  modification event を発火し OnModified を再帰呼出することを防ぐ)
+    bool      m_updatingEofMark     = false;
 
     wxDECLARE_EVENT_TABLE();
 };

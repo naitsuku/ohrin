@@ -304,16 +304,15 @@ void CEditViewWx::SetCurrentLineUnderline(bool visible) {
 
 void CEditViewWx::SetEofMarkVisible(bool visible) {
     m_showEofMark = visible;
+    m_updatingEofMark = true;  // 再帰防止
     EOLAnnotationClearAll();
     if (visible) {
-        // 全 EOL アノテーションのスタイル: STR_COLOR_EOF (前 cyan / 背 黒)
-        // EOLAnnotationSetStyleOffset で予約スタイル領域を設定する手もあるが、
-        // 簡易には wxSTC のデフォルト EOL アノテーションスタイルに依存。
         EOLAnnotationSetVisible(wxSTC_EOLANNOTATION_STANDARD);
         int last = GetLineCount() - 1;
         if (last < 0) last = 0;
         EOLAnnotationSetText(last, "[EOF]");
     }
+    m_updatingEofMark = false;
 }
 
 void CEditViewWx::ToggleBookmarkAtCurrent() {
@@ -439,13 +438,18 @@ void CEditViewWx::UpdateStatusBarPos() {
 }
 
 void CEditViewWx::OnModified(wxStyledTextEvent& event) {
-    // 行数変動 / テキスト挿入削除で [EOF] 位置が変わるため再配置
-    if (m_showEofMark) {
-        // 連続編集時のチラつきと再帰呼出を避けるため最終行のみ更新
+    // 実テキストの挿入／削除でだけ [EOF] 再配置する。
+    // EOLAnnotationSetText/ClearAll は SC_MOD_CHANGEEOLANNOTATION を発火するので、
+    // それを拾って再帰すると無限ループでクラッシュ (実機で stack overflow を確認)。
+    const int mt = event.GetModificationType();
+    const bool textChanged = (mt & (wxSTC_MOD_INSERTTEXT | wxSTC_MOD_DELETETEXT)) != 0;
+    if (m_showEofMark && textChanged && !m_updatingEofMark) {
+        m_updatingEofMark = true;
         int last = GetLineCount() - 1;
         if (last < 0) last = 0;
         EOLAnnotationClearAll();
         EOLAnnotationSetText(last, "[EOF]");
+        m_updatingEofMark = false;
     }
     event.Skip();
 }

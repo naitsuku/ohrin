@@ -46,9 +46,8 @@ list(APPEND SAKURA_CORE_SOURCES
     basis/CStrictRect.cpp
     basis/CStrictRange.cpp
     basis/CLaxInteger.cpp
+    basis/CStrictInteger.cpp  # Phase 7: STRICTINT_LEFT_INT_CMP(LONG) を Win32 限定にして取り込み成功
 )
-# CStrictInteger.cpp は C++20 spaceship 演算子と既存比較演算子の重複定義により
-# ビルドエラー (CStrictInteger.h の既存ロジック修正が必要)。Phase 7 で対応。
 
 # ------------------------------------------------------------
 # 取り込み保留 (Phase 6 後半／Phase 7 で再挑戦):

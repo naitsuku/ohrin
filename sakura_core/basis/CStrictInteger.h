@@ -172,6 +172,10 @@ private:
 STRICTINT_LEFT_INT_CMP(int)
 STRICTINT_LEFT_INT_CMP(short)
 STRICTINT_LEFT_INT_CMP(size_t)
+#ifdef _WIN32
+// 非 Windows では LONG = int32_t = int となり、上の int 版と重複定義になる。
+// Win32 ABI では LONG は 32 ビット固定、x64 でも int と区別される。
 STRICTINT_LEFT_INT_CMP(LONG)
+#endif
 
 #endif /* SAKURA_CSTRICTINTEGER_5B7614A0_282F_48F6_9420_CE672061CF3E_H_ */

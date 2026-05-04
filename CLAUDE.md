@@ -32,8 +32,24 @@ phase_*.md は実装手順を記述したもの。**矛盾がある場合は本 
 - `phase1_prompt.md` — CMake ビルドシステム、sakura_core の段階的ポータブル化
 - `phase2_prompt.md` — wxWidgets フロントエンド本体（sakura_wx）の実装
 - `phase3_5_prompt.md` — 後期統合、テスト、リリース準備
+- **Phase 6 以降は専用プロンプトファイルなし**。`docs/porting/PORTING_GUIDE.md`
+  のロードマップ表と `docs/porting/feature_gap.md` の機能対応表を作業計画として参照する。
 
 新しいタスクを始めるときは、まず該当フェーズのプロンプトを読むこと。
+Phase 6 以降は `docs/porting/PORTING_GUIDE.md` のロードマップ表に従う。
+
+### Phase 6 以降の戦略（確定済み）
+
+- **Phase 6**（2-3 週）: StdAfx.h 解体（`#ifdef _WIN32` ガード追加）、
+  実 IME 検証、Grep ダイアログ、macOS .dmg / Linux AppImage
+- **Phase 7**（3-4 週）: Tier 1 GUI 機能群（ツールバー、タブ、ブックマーク、
+  折りたたみ、可視化、文字コード／改行コード手動指定、設定ダイアログ基本タブ）
+- **Phase 8**（3-4 週）: Tier 2 GUI 機能群（アウトライン、印刷、矩形選択、
+  タイプ別設定ダイアログ）
+- **Tier 3 は断念**（マクロ／自動補完／ファイル比較／タグジャンプ）。
+  詳細と代替案は `docs/porting/feature_gap.md` 参照。
+- **ツールバーアイコンはオリジナル流用**（`src/main/resources/images/my_icons.bmp`、
+  zlib license で再配布可）。
 
 ## アーキテクチャの核
 

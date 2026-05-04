@@ -285,14 +285,30 @@ macOS 14 (Apple Silicon) で configure / build / ctest を実行する。
 
 ## 11. ロードマップ
 
-| フェーズ | 状況 | 内容 |
-|---|---|---|
-| Phase 0 | ✅ 完了 | 環境構築、Win32 依存解析、PAL 設計 |
-| Phase 1 | ✅ 完了 | CMake 構築、PAL 実装、CI、テスト基盤 |
-| Phase 2 | ✅ 完了 | sakura_wx GUI 骨格、wxStyledTextCtrl、検索 |
-| Phase 3 | ✅ 部分完了 | SakuraConfig、SakuraSharedData (portable 版) |
-| Phase 4 | ⏳ 部分完了 | 文字コード round-trip テスト。実 IME 対話確認は未 |
-| Phase 5 | ⏳ 部分完了 | 検索置換ダイアログ、PORTING_GUIDE.md。Grep / .dmg / AppImage は未 |
-| Phase 6+ | 🔜 計画中 | StdAfx.h 解体、sakura_core 段階的取り込み、IME 詳細調整、リリース |
+| フェーズ | 状況 | 内容 | 工数目安 |
+|---|---|---|---|
+| Phase 0 | ✅ 完了 | 環境構築、Win32 依存解析、PAL 設計 | – |
+| Phase 1 | ✅ 完了 | CMake 構築、PAL 実装、CI、テスト基盤 | – |
+| Phase 2 | ✅ 完了 | sakura_wx GUI 骨格、wxStyledTextCtrl、検索 | – |
+| Phase 3 | ✅ 完了 | SakuraConfig、SakuraSharedData（portable 版） | – |
+| Phase 4 | ✅ 部分完了 | 文字コード round-trip テスト（実 IME 検証は Phase 6 で） | – |
+| Phase 5 | ✅ 部分完了 | 検索置換ダイアログ、PORTING_GUIDE.md（Grep は Phase 6 へ） | – |
+| **Phase 6** | 🔜 次期 | StdAfx.h 解体（`#ifdef _WIN32` ガード追加）、sakura_core 段階的取り込み、実 IME 対話確認、Grep ダイアログ、macOS .dmg / Linux AppImage CI | **2-3 週** |
+| **Phase 7** | 📅 | **Tier 1 GUI 機能群**: ツールバー（オリジナル `my_icons.bmp` 流用）、タブ表示（wxAuiNotebook）、文字コード／改行コード手動指定 UI、ブックマーク UI、全角空白／タブ可視化、コード折りたたみ、最近使ったファイルメニュー、ファイルドロップ、設定ダイアログ（基本タブ） | **3-4 週** |
+| **Phase 8** | 📅 | **Tier 2 GUI 機能群**: アウトライン（簡易版）、印刷／印刷プレビュー、矩形選択整備、設定ダイアログ（タイプ別シンタックス・キーワード・コメント・インデント）、メニュー項目の充実 | **3-4 週** |
+| ~~Phase 9~~ | ❌ **断念** | マクロエンジン、自動補完、ファイル比較、タグジャンプ — ユーザー判断で scope out。詳細と代替案は [feature_gap.md](feature_gap.md) | – |
 
-詳細は [progress.md](progress.md) 参照。
+**合計工数: 約 2 ヶ月（専従換算）**
+
+機能差分の詳細は [feature_gap.md](feature_gap.md) を参照。
+進捗は [progress.md](progress.md) 参照。
+
+### Phase 6 以降の戦略判断（確定済み）
+
+| 判断項目 | 決定 |
+|---|---|
+| マクロ機能 | **断念**（COM/IDispatch 依存の上流マクロエンジンは移植非現実的。エディタ自動化は外部スクリプトで） |
+| ファイル比較 | **断念**（meld / FileMerge / BeyondCompare 等の外部ツール連携を推奨） |
+| タグジャンプ | **断念**（現代的には LSP 連携の方が有用、本移植では scope out） |
+| 自動補完 | **断念**（LSP 別途起動の方針） |
+| ツールバーアイコン | **オリジナル `src/main/resources/images/my_icons.bmp` を流用**（zlib license で再配布可） |

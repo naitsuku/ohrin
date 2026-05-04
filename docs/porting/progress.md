@@ -1,5 +1,37 @@
 # 移植作業進捗ログ
 
+## 2026-05-04 — Phase 6 以降のロードマップ確定（同日）
+
+ユーザーとの戦略確認の結果、Phase 6 以降のロードマップを以下に確定。
+
+### 確定事項
+
+- **Tier 1 + Tier 2 機能を実装する**（計約 2 ヶ月）
+  - Phase 6: StdAfx.h 解体 + 既存残（IME 検証、Grep、DMG/AppImage） — 2-3 週
+  - Phase 7: Tier 1 機能群（ツールバー、タブ、設定基本タブ等） — 3-4 週
+  - Phase 8: Tier 2 機能群（アウトライン、印刷、タイプ別設定等） — 3-4 週
+
+- **Tier 3 は断念**（旧 Phase 9 案、scope out）
+  - マクロエンジン: COM/IDispatch 依存の上流マクロは移植非現実的
+  - 自動補完: 現代的には LSP 連携の方が有用、本移植では取り扱わない
+  - ファイル比較: 外部ツール（meld, FileMerge 等）連携で代替
+  - タグジャンプ: 同上、LSP 連携が代替
+
+- **ツールバーアイコンはオリジナルを流用**
+  - `src/main/resources/images/my_icons.bmp`（528×240, 8bpp）
+  - `src/main/resources/images/mytool.bmp`（528×240, 4bpp）
+  - zlib license のため再配布可。CMake で sakura_wx ビルド時に
+    `sakura_wx/resource/` へコピーする想定（Phase 7 で実装）
+
+### 文書化
+
+- `docs/porting/feature_gap.md` を新規作成（機能対応表、合計 59 項目）
+- `docs/porting/PORTING_GUIDE.md` のロードマップ表を Phase 8 まで拡張、
+  Tier 3 を ~~Phase 9~~ ❌ 断念として明示
+- 本 progress.md に方針メモ追記
+
+---
+
 ## 2026-05-04 — Phase 3.5 部分完了（同日）
 
 Phase 3.5 prompt は Phase 3 / 4 / 5 の 3 フェーズを含む大きな範囲。

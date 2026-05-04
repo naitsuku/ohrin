@@ -1,7 +1,13 @@
 #include "CEditWndWx.h"
 #include "CSakuraToolBar.h"
 #include "CSakuraRuler.h"
+#include "CSakuraOutline.h"
+#include "CSakuraPrintout.h"
 #include "view/CEditViewWx.h"
+
+#include <wx/splitter.h>
+#include <wx/printdlg.h>
+#include <wx/print.h>
 #include "dialog/CDlgSearchWx.h"
 #include "dialog/CDlgGrepWx.h"
 #include "dialog/CDlgSettingsWx.h"
@@ -37,6 +43,9 @@ wxBEGIN_EVENT_TABLE(CEditWndWx, wxFrame)
     EVT_MENU(wxID_SAVEAS,          CEditWndWx::OnSaveAs)
     EVT_MENU(wxID_CLOSE,           CEditWndWx::OnCloseFile)
     EVT_MENU(wxID_EXIT,            CEditWndWx::OnQuit)
+    EVT_MENU(wxID_PRINT,           CEditWndWx::OnPrint)
+    EVT_MENU(wxID_PREVIEW,         CEditWndWx::OnPrintPreview)
+    EVT_MENU(wxID_PAGE_SETUP,      CEditWndWx::OnPageSetup)
     EVT_MENU(wxID_UNDO,            CEditWndWx::OnUndo)
     EVT_MENU(wxID_REDO,            CEditWndWx::OnRedo)
     EVT_MENU(wxID_CUT,             CEditWndWx::OnCut)
@@ -57,6 +66,9 @@ wxBEGIN_EVENT_TABLE(CEditWndWx, wxFrame)
     EVT_MENU(ID_VIEW_RULER,                  CEditWndWx::OnToggleRuler)
     EVT_MENU(ID_VIEW_CURRENT_LINE_UNDERLINE, CEditWndWx::OnToggleCurrentLineUnderline)
     EVT_MENU(ID_VIEW_EOF_MARK,               CEditWndWx::OnToggleEofMark)
+    EVT_MENU(ID_VIEW_EOL_VISIBLE,            CEditWndWx::OnToggleEolVisible)
+    EVT_MENU(ID_VIEW_OUTLINE,                CEditWndWx::OnToggleOutline)
+    EVT_MENU(ID_VIEW_OUTLINE_REFRESH,        CEditWndWx::OnRefreshOutline)
     EVT_MENU(ID_BOOKMARK_TOGGLE,    CEditWndWx::OnBookmarkToggle)
     EVT_MENU(ID_BOOKMARK_NEXT,      CEditWndWx::OnBookmarkNext)
     EVT_MENU(ID_BOOKMARK_PREV,      CEditWndWx::OnBookmarkPrev)
@@ -93,16 +105,25 @@ CEditWndWx::CEditWndWx(const wxString& filePath)
     // ルーラー: ツールバー直下、タブの上に配置。アクティブビューに追従。
     m_ruler = new sakura_wx::ui::CSakuraRuler(this);
 
-    // wxAuiNotebook をフレーム全体に配置。各タブが個別の CEditViewWx を持つ。
-    m_notebook = new wxAuiNotebook(this, wxID_ANY,
+    // 左にアウトライン、右に wxAuiNotebook の splitter 構成。
+    m_splitter = new wxSplitterWindow(this, wxID_ANY,
+        wxDefaultPosition, wxDefaultSize,
+        wxSP_3D | wxSP_LIVE_UPDATE);
+    m_splitter->SetMinimumPaneSize(100);
+
+    m_outline = new sakura_wx::ui::CSakuraOutline(m_splitter, this);
+
+    m_notebook = new wxAuiNotebook(m_splitter, wxID_ANY,
         wxDefaultPosition, wxDefaultSize,
         wxAUI_NB_DEFAULT_STYLE | wxAUI_NB_TAB_MOVE | wxAUI_NB_CLOSE_ON_ACTIVE_TAB
             | wxAUI_NB_WINDOWLIST_BUTTON);
 
+    m_splitter->SplitVertically(m_outline, m_notebook, m_outlineSash);
+
     auto* sizer = new wxBoxSizer(wxVERTICAL);
     if (toolBar) sizer->Add(toolBar, 0, wxEXPAND);
     sizer->Add(m_ruler,    0, wxEXPAND);
-    sizer->Add(m_notebook, 1, wxEXPAND);
+    sizer->Add(m_splitter, 1, wxEXPAND);
     SetSizer(sizer);
 
     // 最初のタブを作成
@@ -156,6 +177,7 @@ void CEditWndWx::SyncMirrorFromActive() {
     }
     UpdateTitle();
     if (m_ruler) m_ruler->Attach(m_editView);
+    if (m_outline) m_outline->Rebuild(m_editView);
 }
 
 int CEditWndWx::AddNewTab(const wxString& title) {
@@ -234,6 +256,10 @@ void CEditWndWx::CreateMenuBarImpl() {
     menuFile->AppendSubMenu(m_recentMenu, wxT("最近使ったファイル(&R)"));
 
     menuFile->AppendSeparator();
+    menuFile->Append(wxID_PAGE_SETUP, wxT("ページ設定(&G)..."));
+    menuFile->Append(wxID_PREVIEW,    wxT("印刷プレビュー(&V)..."));
+    menuFile->Append(wxID_PRINT,      wxT("印刷(&P)...\tCtrl+P"));
+    menuFile->AppendSeparator();
     menuFile->Append(wxID_CLOSE,  wxT("閉じる(&W)\tCtrl+W"));
     menuFile->AppendSeparator();
     menuFile->Append(wxID_EXIT,   wxT("終了(&X)"));
@@ -277,6 +303,14 @@ void CEditWndWx::CreateMenuBarImpl() {
     menuView->AppendCheckItem(ID_VIEW_EOF_MARK,
                               wxT("[EOF] を表示(&Z)"));
     menuView->Check(ID_VIEW_EOF_MARK, true);
+    menuView->AppendCheckItem(ID_VIEW_EOL_VISIBLE,
+                              wxT("改行コードを表示(&O)"));
+    menuView->AppendSeparator();
+    menuView->AppendCheckItem(ID_VIEW_OUTLINE,
+                              wxT("アウトラインを表示(&T)"));
+    menuView->Check(ID_VIEW_OUTLINE, true);
+    menuView->Append(ID_VIEW_OUTLINE_REFRESH,
+                     wxT("アウトラインを更新\tF5"));
     menuView->AppendCheckItem(ID_VIEW_WORD_WRAP, wxT("折り返し(&W)"));
     menuView->AppendCheckItem(ID_VIEW_WHITESPACE,
                               wxT("空白・タブを可視化(&S)"));
@@ -473,6 +507,74 @@ void CEditWndWx::OnOpen(wxCommandEvent&) {
 void CEditWndWx::OnSave(wxCommandEvent&)   { SaveFile(); }
 void CEditWndWx::OnSaveAs(wxCommandEvent&) { SaveFileAs(); }
 
+// ============================================================
+// 印刷 (Phase 8)
+// ============================================================
+namespace {
+// アプリ全体で 1 つの wxPrintData / wxPageSetupDialogData を保持。
+wxPrintData& GlobalPrintData() {
+    static wxPrintData s_data;
+    return s_data;
+}
+wxPageSetupDialogData& GlobalPageSetupData() {
+    static wxPageSetupDialogData s_data;
+    return s_data;
+}
+
+wxString DisplayNameForPrint(const wxString& currentFile) {
+    return currentFile.IsEmpty() ? wxString(wxT("(無題)"))
+                                 : wxFileName(currentFile).GetFullName();
+}
+} // namespace
+
+void CEditWndWx::OnPageSetup(wxCommandEvent&) {
+    auto& psd = GlobalPageSetupData();
+    psd.SetPrintData(GlobalPrintData());
+    wxPageSetupDialog dlg(this, &psd);
+    if (dlg.ShowModal() == wxID_OK) {
+        GlobalPrintData() = dlg.GetPageSetupDialogData().GetPrintData();
+        GlobalPageSetupData() = dlg.GetPageSetupDialogData();
+    }
+}
+
+void CEditWndWx::OnPrintPreview(wxCommandEvent&) {
+    if (!m_editView) return;
+    wxString name = DisplayNameForPrint(m_currentFile);
+
+    auto* printPreview = new wxPrintPreview(
+        new sakura_wx::ui::CSakuraPrintout(m_editView, name),
+        new sakura_wx::ui::CSakuraPrintout(m_editView, name),
+        &GlobalPrintData());
+    if (!printPreview->IsOk()) {
+        delete printPreview;
+        wxMessageBox(wxT("印刷プレビューの初期化に失敗しました"),
+                     wxT("エラー"), wxOK | wxICON_ERROR, this);
+        return;
+    }
+    auto* frame = new wxPreviewFrame(printPreview, this,
+                                     wxT("印刷プレビュー"));
+    frame->Centre(wxBOTH);
+    frame->Initialize();
+    frame->Show();
+}
+
+void CEditWndWx::OnPrint(wxCommandEvent&) {
+    if (!m_editView) return;
+    wxString name = DisplayNameForPrint(m_currentFile);
+
+    wxPrintDialogData dlgData(GlobalPrintData());
+    wxPrinter printer(&dlgData);
+    sakura_wx::ui::CSakuraPrintout printout(m_editView, name);
+    if (!printer.Print(this, &printout, /*prompt=*/true)) {
+        if (wxPrinter::GetLastError() == wxPRINTER_ERROR) {
+            wxMessageBox(wxT("印刷に失敗しました"),
+                         wxT("エラー"), wxOK | wxICON_ERROR, this);
+        }
+    } else {
+        GlobalPrintData() = printer.GetPrintDialogData().GetPrintData();
+    }
+}
+
 void CEditWndWx::OnCloseFile(wxCommandEvent&) {
     if (!m_notebook) return;
     int sel = m_notebook->GetSelection();
@@ -644,6 +746,26 @@ void CEditWndWx::OnToggleCurrentLineUnderline(wxCommandEvent& event) {
 }
 void CEditWndWx::OnToggleEofMark(wxCommandEvent& event) {
     if (m_editView) m_editView->SetEofMarkVisible(event.IsChecked());
+}
+void CEditWndWx::OnToggleEolVisible(wxCommandEvent& event) {
+    if (m_editView) m_editView->SetEolVisible(event.IsChecked());
+}
+void CEditWndWx::OnToggleOutline(wxCommandEvent& event) {
+    if (!m_splitter) return;
+    if (event.IsChecked()) {
+        if (!m_splitter->IsSplit()) {
+            m_splitter->SplitVertically(m_outline, m_notebook, m_outlineSash);
+        }
+        if (m_outline) m_outline->Rebuild(m_editView);
+    } else {
+        if (m_splitter->IsSplit()) {
+            m_outlineSash = m_splitter->GetSashPosition();
+            m_splitter->Unsplit(m_outline);
+        }
+    }
+}
+void CEditWndWx::OnRefreshOutline(wxCommandEvent&) {
+    if (m_outline) m_outline->Rebuild(m_editView);
 }
 
 // ============================================================

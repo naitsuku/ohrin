@@ -68,6 +68,14 @@ public:
     void SetEofMarkVisible(bool visible);
     bool IsEofMarkVisible() const { return m_showEofMark; }
 
+    // --- 改行コード可視化 (Phase 8 追加) ---
+    void SetEolVisible(bool visible);
+    bool IsEolVisible() const { return m_showEol; }
+
+    // --- 矩形選択モード切替 (Phase 8 追加) ---
+    // wxSTC は Alt+ドラッグで矩形選択になるが、複数選択編集を有効化する。
+    void EnableRectangularEditing();
+
 private:
     void InitializeEditor();
     void SetupSyntaxHighlighting(const wxString& filePath);
@@ -93,6 +101,7 @@ private:
     bool      m_foldingEnabled      = false;
     bool      m_currentLineUnderline = false;
     bool      m_showEofMark         = false;
+    bool      m_showEol              = false;
     // [EOF] アノテーション更新中の再入防止フラグ
     // (EOLAnnotationSetText/ClearAll が SC_MOD_CHANGEEOLANNOTATION の
     //  modification event を発火し OnModified を再帰呼出することを防ぐ)

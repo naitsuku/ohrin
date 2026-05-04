@@ -1,4 +1,6 @@
 #include "CEditViewWx.h"
+#include "app/SakuraApp.h"
+#include "config/SakuraConfig.h"
 #include "window/CEditWndWx.h"
 
 #include <wx/filename.h>
@@ -6,6 +8,18 @@
 #include <fstream>
 
 namespace charset = sakura_wx::charset;
+
+namespace {
+// 設定ストアにオーバーライドが定義されていればそれを返し、
+// そうでなければデフォルト色を返す簡易ヘルパ。
+wxColour PickSyntaxColor(const wxString& type, const wxString& kind,
+                         const wxColour& fallback) {
+    auto* app = wxDynamicCast(wxTheApp, SakuraApp);
+    if (!app || !app->Config()) return fallback;
+    wxColour c = app->Config()->GetSyntaxColor(type, kind);
+    return c.IsOk() ? c : fallback;
+}
+} // namespace
 
 wxBEGIN_EVENT_TABLE(CEditViewWx, wxStyledTextCtrl)
     EVT_STC_MODIFIED(wxID_ANY,    CEditViewWx::OnModified)
@@ -76,6 +90,9 @@ void CEditViewWx::InitializeEditor() {
 
     // 現在行ハイライト
     SetCaretLineVisible(true);
+
+    // 矩形選択 / 複数キャレット編集を有効化（Alt+ドラッグで矩形選択）
+    EnableRectangularEditing();
 
     // Scintilla を UTF-8 で動かす（外部入出力時に変換する）
     SetCodePage(wxSTC_CP_UTF8);
@@ -302,6 +319,23 @@ void CEditViewWx::SetCurrentLineUnderline(bool visible) {
     }
 }
 
+void CEditViewWx::SetEolVisible(bool visible) {
+    m_showEol = visible;
+    SetViewEOL(visible);
+    // EOL マーク色: STR_COLOR_CR 相当 RGB(0, 128, 255) 水色
+    // wxSTC は EOL 表示を独立スタイルとしては持たないので、近い水色背景が
+    // 選ばれるよう EolForeground / Background は変更せず標準にする。
+}
+
+void CEditViewWx::EnableRectangularEditing() {
+    // 矩形選択は wxSTC のネイティブ機能。Alt+ドラッグまたは Alt+矢印で開始。
+    SetMultipleSelection(true);
+    SetAdditionalSelectionTyping(true);
+    SetMultiPaste(wxSTC_MULTIPASTE_EACH);
+    SetVirtualSpaceOptions(wxSTC_VS_RECTANGULARSELECTION
+                         | wxSTC_VS_USERACCESSIBLE);
+}
+
 void CEditViewWx::SetEofMarkVisible(bool visible) {
     m_showEofMark = visible;
     m_updatingEofMark = true;  // 再帰防止
@@ -382,13 +416,18 @@ void CEditViewWx::SetupSyntaxHighlighting(const wxString& filePath) {
         // STR_COLOR_KEYWORD1      RGB(  0,   0, 255)  青 (Bold)
         // STR_COLOR_KEYWORD2      RGB(255, 128,   0)  オレンジ (Bold) ← プリプロ等
         // STR_COLOR_NUMBER        RGB(235,   0,   0)  赤
-        StyleSetForeground(wxSTC_C_COMMENT,      wxColour(  0, 128,   0));
-        StyleSetForeground(wxSTC_C_COMMENTLINE,  wxColour(  0, 128,   0));
-        StyleSetForeground(wxSTC_C_COMMENTDOC,   wxColour(  0, 128,   0));
-        StyleSetForeground(wxSTC_C_STRING,       wxColour(128,   0,  64));
+        wxColour cComment = PickSyntaxColor(wxT("cpp"), wxT("comment"), wxColour(  0, 128,   0));
+        wxColour cString  = PickSyntaxColor(wxT("cpp"), wxT("string"),  wxColour(128,   0,  64));
+        wxColour cKeyword = PickSyntaxColor(wxT("cpp"), wxT("keyword"), wxColour(  0,   0, 255));
+        wxColour cNumber  = PickSyntaxColor(wxT("cpp"), wxT("number"),  wxColour(235,   0,   0));
+
+        StyleSetForeground(wxSTC_C_COMMENT,      cComment);
+        StyleSetForeground(wxSTC_C_COMMENTLINE,  cComment);
+        StyleSetForeground(wxSTC_C_COMMENTDOC,   cComment);
+        StyleSetForeground(wxSTC_C_STRING,       cString);
         StyleSetForeground(wxSTC_C_CHARACTER,    wxColour( 64, 128, 128));
-        StyleSetForeground(wxSTC_C_WORD,         wxColour(  0,   0, 255));
-        StyleSetForeground(wxSTC_C_NUMBER,       wxColour(235,   0,   0));
+        StyleSetForeground(wxSTC_C_WORD,         cKeyword);
+        StyleSetForeground(wxSTC_C_NUMBER,       cNumber);
         StyleSetForeground(wxSTC_C_PREPROCESSOR, wxColour(255, 128,   0));
         StyleSetBold(wxSTC_C_WORD, true);
         StyleSetBold(wxSTC_C_PREPROCESSOR, true);
@@ -399,15 +438,19 @@ void CEditViewWx::SetupSyntaxHighlighting(const wxString& filePath) {
             "False None True and as assert async await break class continue "
             "def del elif else except finally for from global if import in "
             "is lambda nonlocal not or pass raise return try while with yield"));
-        // Python もサクラ初期色に統一
-        StyleSetForeground(wxSTC_P_COMMENTLINE,  wxColour(  0, 128,   0));
-        StyleSetForeground(wxSTC_P_COMMENTBLOCK, wxColour(  0, 128,   0));
-        StyleSetForeground(wxSTC_P_STRING,       wxColour(128,   0,  64));
+        wxColour pyComment = PickSyntaxColor(wxT("py"), wxT("comment"), wxColour(  0, 128,   0));
+        wxColour pyString  = PickSyntaxColor(wxT("py"), wxT("string"),  wxColour(128,   0,  64));
+        wxColour pyKeyword = PickSyntaxColor(wxT("py"), wxT("keyword"), wxColour(  0,   0, 255));
+        wxColour pyNumber  = PickSyntaxColor(wxT("py"), wxT("number"),  wxColour(235,   0,   0));
+
+        StyleSetForeground(wxSTC_P_COMMENTLINE,  pyComment);
+        StyleSetForeground(wxSTC_P_COMMENTBLOCK, pyComment);
+        StyleSetForeground(wxSTC_P_STRING,       pyString);
         StyleSetForeground(wxSTC_P_CHARACTER,    wxColour( 64, 128, 128));
-        StyleSetForeground(wxSTC_P_TRIPLE,       wxColour(128,   0,  64));
-        StyleSetForeground(wxSTC_P_TRIPLEDOUBLE, wxColour(128,   0,  64));
-        StyleSetForeground(wxSTC_P_WORD,         wxColour(  0,   0, 255));
-        StyleSetForeground(wxSTC_P_NUMBER,       wxColour(235,   0,   0));
+        StyleSetForeground(wxSTC_P_TRIPLE,       pyString);
+        StyleSetForeground(wxSTC_P_TRIPLEDOUBLE, pyString);
+        StyleSetForeground(wxSTC_P_WORD,         pyKeyword);
+        StyleSetForeground(wxSTC_P_NUMBER,       pyNumber);
         StyleSetBold(wxSTC_P_WORD, true);
 
     } else if (ext == wxT("md") || ext == wxT("markdown")) {

@@ -5,7 +5,11 @@
 #include <unordered_map>
 
 class CEditViewWx;
-namespace sakura_wx::ui { class CSakuraRuler; }
+namespace sakura_wx::ui {
+    class CSakuraRuler;
+    class CSakuraOutline;
+}
+class wxSplitterWindow;
 
 /**
  * CEditWndWx - サクラエディタ メインウィンドウ（wxWidgets版）
@@ -60,6 +64,11 @@ private:
     void OnCloseFile(wxCommandEvent& event);
     void OnQuit(wxCommandEvent& event);
 
+    // 印刷
+    void OnPrint(wxCommandEvent& event);
+    void OnPrintPreview(wxCommandEvent& event);
+    void OnPageSetup(wxCommandEvent& event);
+
     // 編集メニュー
     void OnUndo(wxCommandEvent& event);
     void OnRedo(wxCommandEvent& event);
@@ -96,6 +105,9 @@ private:
     void OnToggleRuler(wxCommandEvent& event);
     void OnToggleCurrentLineUnderline(wxCommandEvent& event);
     void OnToggleEofMark(wxCommandEvent& event);
+    void OnToggleEolVisible(wxCommandEvent& event);
+    void OnToggleOutline(wxCommandEvent& event);
+    void OnRefreshOutline(wxCommandEvent& event);
     void OnFont(wxCommandEvent& event);
 
     // ブックマークメニュー
@@ -146,6 +158,11 @@ private:
     // 単一ルーラー (アクティブビューに追従)
     sakura_wx::ui::CSakuraRuler* m_ruler = nullptr;
 
+    // アウトラインサイドパネル (Phase 8 追加)
+    wxSplitterWindow*              m_splitter  = nullptr;
+    sakura_wx::ui::CSakuraOutline* m_outline   = nullptr;
+    int                            m_outlineSash = 220;  // 表示時のサッシ位置
+
     wxMenu*   m_recentMenu = nullptr;
 
     wxDECLARE_EVENT_TABLE();
@@ -160,6 +177,9 @@ enum {
     ID_VIEW_RULER,
     ID_VIEW_CURRENT_LINE_UNDERLINE,
     ID_VIEW_EOF_MARK,
+    ID_VIEW_EOL_VISIBLE,
+    ID_VIEW_OUTLINE,
+    ID_VIEW_OUTLINE_REFRESH,
     ID_SEARCH_GREP,
     ID_SEARCH_FIND_NEXT,
     ID_SEARCH_FIND_PREV,

@@ -1,5 +1,85 @@
 # 移植作業進捗ログ
 
+## 2026-05-04 — Phase 1 完了（同日）
+
+### 実施内容
+
+- [x] **Task 1-1: ルート CMakeLists.txt 拡張**
+  - 既存（upstream）の Win32 向け CMakeLists.txt を**変更せず**、冒頭に
+    `if(NOT WIN32)` ブロックを追加して macOS / Linux 向け wxWidgets ビルドを
+    構成し、`return()` で Win32 向けロジックを完全にスキップする方式を採用
+  - 非 Windows では `find_package(wxWidgets)` + `FetchContent(googletest v1.14.0)` +
+    `add_subdirectory(sakura_core)` + `add_subdirectory(tests/wx_tests)`
+  - `sakura_core/CMakeLists.txt` を新規作成。現時点の収録対象は PAL 実装のみ
+    （`platform/platform_impl_wx.cpp`）
+
+- [x] **Task 1-3a: Win32 型 stub ヘッダ作成**
+  - `sakura_core/platform/win32_types_stub.h` を作成
+    - 整数型（DWORD, BOOL, WPARAM 等）、ハンドル型（HWND, HDC 等）、
+      文字列型（TCHAR, LPCTSTR 等）、構造体（POINT, RECT, SIZE 等）の最小宣言
+    - `_wcsicmp` `_tcscmp` 等の Win32 名 → POSIX 名のマッピング
+    - 呼び出し規約マクロ（WINAPI, CALLBACK 等）の no-op 化
+  - `sakura_core/platform/shim_win32/Windows.h` を作成（`<Windows.h>` を
+    include path で乗っ取り、上記 stub に転送）
+
+- [x] **Task 1-2: sakura_core ビルド**
+  - PAL のみの最小収録で `libsakura_core.a` の生成に成功
+  - StdAfx.h が `<comdef.h>` `<CommCtrl.h>` `<imm.h>` `<wrl.h>` 等の Win32 SDK
+    ヘッダを多数 include している事実を発見。`<Windows.h>` 単体のシムでは
+    sakura_core の他ファイルをコンパイルするには不十分
+  - 除外実態を `docs/porting/excluded_files.md` に記録
+    （Phase 1 時点では PAL 以外の 374 ファイルすべてを除外）
+
+- [x] **Task 1-4: GitHub Actions CI**
+  - `.github/workflows/cmake-cross-platform.yml` を新規作成
+    （upstream の既存 workflow には触れていない）
+  - Ubuntu 22.04 / macOS 14 (Apple Silicon) で configure → build → ctest を実行
+
+- [x] **Task 1-5: PAL テストスイート**
+  - `tests/wx_tests/CMakeLists.txt` + `test_platform_pal.cpp` を新規作成
+  - 9 テスト: System (2), File I/O (2), ConfigStore (4), SharedMemory (1)
+  - **macOS Apple Silicon でローカル実行: 9/9 全パス**
+
+### Phase 1 で得られた知見
+
+1. **StdAfx.h の壁**: sakura_core のほぼ全 .cpp が冒頭で `#include "StdAfx.h"`
+   しているが、このヘッダが Win32 SDK の多数のヘッダを直接 include している。
+   これにすべて shim を用意するのは現実的でないため、Phase 2 では
+   - (a) 個別ファイルに `#ifndef _WIN32` ガードを段階的に挿入する、または
+   - (b) StdAfx.h を分割して非 Windows 向けに条件付きインクルードを追加する、
+   のいずれかの方針が必要。
+
+2. **`extra_modules` 系（COM/WRL）**: `<comdef.h>` `<wrl.h>` 等は意味のある shim を
+   書くのが大規模作業なので、依存ファイルは Phase 3 以降の対象。
+
+3. **wxWidgets 3.3.2 の動作**: 想定の 3.2.x より新しいが、Hello World と
+   PAL 実装の両方で問題なくビルド・実行できた。
+
+### Phase 2 への申し送り
+
+- Phase 2 開始時は `sakura_core/CMakeLists.txt` の `SAKURA_CORE_SOURCES` を
+  少しずつ拡張する。`basis/` 系から始めるのが安全。
+- StdAfx.h の `<Windows.h>` 以外の include を `#ifdef _WIN32` でガードする
+  パッチを sakura_core/StdAfx.h に当てる必要がある。これは CLAUDE.md の
+  「既存ロジックを変更しない」ルールに**抵触する可能性がある**ため、
+  Phase 2 開始時にユーザーに確認する。
+- `compile_commands.json` をプロジェクトルートにシンボリックリンクして
+  clangd の警告を解消する（`ln -sf build/compile_commands.json .`）。
+
+## Phase 1 完了チェックリスト
+
+- [x] `CMakeLists.txt` がルートで非 Windows 分岐を持つ
+- [x] `sakura_core/CMakeLists.txt` が存在する
+- [x] `cmake --build build` が macOS でエラーなく完了する
+- [x] `docs/porting/excluded_files.md` に除外ファイルと理由が記録されている
+- [x] `tests/wx_tests/` が存在し、9/9 全テストがパスする
+- [x] `.github/workflows/cmake-cross-platform.yml` が存在する
+- [x] `docs/porting/progress.md` が更新されている
+
+**Phase 2 に進める状態。**
+
+---
+
 ## 2026-05-04 — Phase 0 完了
 
 ### 実施内容

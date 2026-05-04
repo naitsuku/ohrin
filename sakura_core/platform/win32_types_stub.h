@@ -17,8 +17,10 @@
 #pragma once
 #ifndef _WIN32
 
+#include <cstdarg>     // va_list / va_start / va_end (vsnprintf 系)
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>      // vsnprintf
 #include <cstdlib>
 #include <cstring>
 #include <cwchar>
@@ -71,6 +73,7 @@ using HIMAGELIST = void*;
 // ============================================================
 // 文字列型
 // ============================================================
+using CHAR    = char;
 using WCHAR   = wchar_t;
 using LPWSTR  = wchar_t*;
 using LPCWSTR = const wchar_t*;
@@ -92,6 +95,14 @@ using LPBYTE  = uint8_t*;
 // ============================================================
 #ifndef MAX_PATH
 #define MAX_PATH 260
+#endif
+#ifndef _MAX_PATH
+#define _MAX_PATH MAX_PATH
+#endif
+
+// MSVC safe-string が文字列切り詰め時に返す値 (errno_t)
+#ifndef STRUNCATE
+#define STRUNCATE 80
 #endif
 #ifndef TRUE
 #define TRUE 1
@@ -212,6 +223,51 @@ inline int strcpy_s(char* dest, size_t destSize, const char* src) {
 }
 inline int wcscpy_s(wchar_t* dest, size_t destSize, const wchar_t* src) {
     return wcsncpy_s(dest, destSize, src, _TRUNCATE);
+}
+
+// errno_t: MSVC 拡張 (Annex K)。POSIX では int で十分。
+using errno_t = int;
+
+// _vswprintf: MSVC の古い API。POSIX の vswprintf にマップ。
+// 注: MSVC _vswprintf はバッファサイズを取らないが、安全側に倒すため
+// vswprintf の N 引数版を呼ぶ stub にしている (誤動作の可能性あり、
+// 呼出側でバッファ十分性を確認している前提)。
+inline int _vswprintf(wchar_t* buf, const wchar_t* fmt, va_list args) {
+    return ::vswprintf(buf, 4096, fmt, args);
+}
+
+// MSVC safe-printf 系。POSIX の vsnprintf / vswprintf にマップ。
+// 切り詰めが起きると Annex K では STRUNCATE を返す約束だが、ここでは
+// 簡易に長さを返す実装にする（呼出側で書き込まれた長さしか見ていない想定）。
+inline int _vsnprintf_s(char* buf, size_t bufSize, size_t /*maxCount*/,
+                        const char* fmt, va_list args) {
+    int n = ::vsnprintf(buf, bufSize, fmt, args);
+    return n;
+}
+inline int _vsnwprintf_s(wchar_t* buf, size_t bufSize, size_t /*maxCount*/,
+                         const wchar_t* fmt, va_list args) {
+    int n = ::vswprintf(buf, bufSize, fmt, args);
+    return n;
+}
+inline int _snprintf_s(char* buf, size_t bufSize, size_t maxCount,
+                       const char* fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    int n = _vsnprintf_s(buf, bufSize, maxCount, fmt, args);
+    va_end(args);
+    return n;
+}
+inline int _snwprintf_s(wchar_t* buf, size_t bufSize, size_t maxCount,
+                        const wchar_t* fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    int n = _vsnwprintf_s(buf, bufSize, maxCount, fmt, args);
+    va_end(args);
+    return n;
+}
+inline int vswprintf_s(wchar_t* buf, size_t bufSize,
+                       const wchar_t* fmt, va_list args) {
+    return ::vswprintf(buf, bufSize, fmt, args);
 }
 
 // _T() / TEXT() マクロ — Win32 でワイド/マルチバイトを切り替えるが、

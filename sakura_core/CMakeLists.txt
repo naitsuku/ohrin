@@ -50,6 +50,18 @@ list(APPEND SAKURA_CORE_SOURCES
 )
 
 # ------------------------------------------------------------
+# Phase 9: win32_types_stub.h を CHAR/_MAX_PATH/STRUNCATE/_vsnprintf_s 等で
+# 拡充したが、basis/CMyString.cpp と util/string_ex.cpp は charset/ 経由で
+# GDI (LOGFONT, FontHolder, SelectObject 等) に深く依存しており、Phase 9 では
+# 取り込み未完。基盤強化は Phase 10 以降の足がかりとして残す。
+#
+# 試行ログ (cmake --build) で確認した残課題:
+#   - charset/charcode.h: LOGFONT / FontHolder / MemDcHolder
+#   - charset/charset.h: IsValidCodePage (Win32 API)
+#   - basis/CMyString.h: filesystem::path → wstring 変換問題
+# ------------------------------------------------------------
+
+# ------------------------------------------------------------
 # 取り込み保留 (Phase 6 後半／Phase 7 で再挑戦):
 #   basis/CMyString.cpp  — util/string_ex.h が ACHAR / _vswprintf / span 等を要求
 #   basis/CEol.cpp       — charset/charset.h・charcode.h 経由の依存大、
@@ -69,6 +81,9 @@ target_include_directories(sakura_core BEFORE PUBLIC
 target_include_directories(sakura_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/..
+    # Phase 9: src/main/cpp の cxx/ResourceHolder.hpp 等を参照可能にする
+    # (これらは portable な C++20 ヘッダであり、src/ 自体を変更せず利用)
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/main/cpp
 )
 
 target_compile_definitions(sakura_core PUBLIC

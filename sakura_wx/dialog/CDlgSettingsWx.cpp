@@ -84,27 +84,26 @@ void CDlgSettingsWx::BuildUI() {
                    wxT("ツールバー項目の選択。Phase 10 以降で対応予定。\n"
                        "現在は upstream DEFAULT_TOOL_BUTTONS 準拠の固定配列。"));            // 4
     addMetaPanel(wxT("タブバー"), wxT("tabbar"));                                 // 5 (Phase 13a メタ化)
-    addPlaceholder(wxT("ステータスバー"),
-                   wxT("ステータスバーの表示項目。Phase 10 以降で対応予定。"));             // 6
+    addMetaPanel(wxT("ステータスバー"), wxT("statusbar"));                        // 6 (Phase 14a メタ化)
     addMetaPanel(wxT("編集"), wxT("edit"));                                       // 7 (Phase 12 メタ化)
     addMetaPanel(wxT("ファイル"), wxT("file"));                                   // 8 (Phase 13b メタ化)
     addMetaPanel(wxT("ファイル名表示"), wxT("filename"));                         // 9 (Phase 13a メタ化)
-    addMetaPanel(wxT("バックアップ"),   wxT("backup"));                            // 10 (Phase 13a メタ化)
-    addMetaPanel(wxT("書式"),           wxT("format"));                            // 11 (Phase 13a メタ化)
-    addPlaceholder(wxT("検索"),
-                   wxT("検索／Grep のデフォルト設定。Phase 10 以降で対応予定。"));          // 12
-    addPanel(wxT("キー割り当て"),    &CDlgSettingsWx::BuildTabKeybind);        // 13
+    addMetaPanel(wxT("バックアップ"),   wxT("backup"));                           // 10 (Phase 13a メタ化)
+    addMetaPanel(wxT("書式"),           wxT("format"));                           // 11 (Phase 13a メタ化)
+    addMetaPanel(wxT("検索"),           wxT("search"));                           // 12 (Phase 14a メタ化)
+    addPanel(wxT("キー割り当て"),    &CDlgSettingsWx::BuildTabKeybind);            // 13
     addPlaceholder(wxT("カスタムメニュー"),
-                   wxT("カスタムメニュー。Phase 10 以降で対応予定。"));                     // 14
-    addPanel(wxT("強調キーワード"),  &CDlgSettingsWx::BuildTabKeyword);        // 15
-    addPlaceholder(wxT("支援"),
-                   wxT("支援機能 (タグジャンプ等)。Tier 3 として断念済み。\n"
-                       "外部 LSP の利用を推奨。"));                                        // 16
+                   wxT("カスタムメニュー。Phase 19+ で対応予定。"));               // 14
+    addPanel(wxT("強調キーワード"),  &CDlgSettingsWx::BuildTabKeyword);            // 15
+    addMetaPanel(wxT("支援"),           wxT("helper"));                           // 16 (Phase 14a メタ化)
     addPlaceholder(wxT("マクロ"),
                    wxT("マクロエンジン。Tier 3 として断念済み。\n"
-                       "代替: 外部スクリプト (zsh/python) または将来 LSP コードアクション。"));// 17
+                       "代替: 外部スクリプト (zsh/python) または将来 LSP コードアクション。")); // 17
     addPlaceholder(wxT("プラグイン"),
-                   wxT("プラグイン管理。Tier 3 として断念済み。"));                         // 18
+                   wxT("プラグイン管理。Tier 3 として断念済み。"));                // 18
+    // upstream 18 タブ外: メタ化追加分 (Phase 14a)
+    addMetaPanel(wxT("アウトライン"),   wxT("outline"));                          // 19 (Phase 14a 追加)
+    addMetaPanel(wxT("その他"),         wxT("others"));                           // 20 (Phase 14a 追加)
 
     outer->Add(m_notebook, 1, wxEXPAND | wxALL, 8);
 

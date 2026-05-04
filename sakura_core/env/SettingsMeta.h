@@ -611,12 +611,317 @@ inline constexpr FieldDef kFileNameFields[] = {
 };
 
 // ============================================================
+// 「ステータスバー」タブ — Phase 14a メタ化対象
+//   CommonSetting_Statusbar に対応。すべて表示項目の Bool 集合。
+// ============================================================
+inline constexpr FieldDef kStatusbarFields[] = {
+    {"m_bDispUniInSjis",
+        "SJIS でも Unicode 値を表示",
+        "SJIS テキストでも文字コード値を Unicode で表示",
+        FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+    {"m_bDispUniInJis",
+        "JIS でも Unicode 値を表示",
+        "JIS テキストでも文字コード値を Unicode で表示",
+        FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+    {"m_bDispUniInEuc",
+        "EUC でも Unicode 値を表示",
+        "EUC テキストでも文字コード値を Unicode で表示",
+        FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+    {"m_bDispUtf8Codepoint",
+        "UTF-8 をコードポイント表示",
+        "UTF-8 をコードポイントで表示する",
+        FieldKind::Bool, 1, 0, 1, nullptr, 0, true},
+    {"m_bDispSPCodepoint",
+        "サロゲートペアをコードポイント表示",
+        "サロゲートペアをコードポイントで表示する",
+        FieldKind::Bool, 1, 0, 1, nullptr, 0, true},
+    {"m_bDispSelCountByByte",
+        "選択文字数をバイト単位で表示",
+        "選択文字数を文字単位ではなくバイト単位で表示",
+        FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+    {"m_bDispColByChar",
+        "現在桁を文字単位で表示",
+        "現在桁をルーラー単位ではなく文字単位で表示",
+        FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+};
+
+// ============================================================
+// 「検索」タブ — Phase 14a メタ化対象
+//   CommonSetting_Search に対応。
+//   SSearchOption 構造体 (検索条件のビット詰め) と m_szRegexpLib (DLL 名) は除外。
+// ============================================================
+inline constexpr ChoiceItem kGrepOutputLineTypeChoices[] = {
+    {0, "該当行を出力"},
+    {1, "該当部分のみ出力"},
+    {2, "否マッチ行を出力"},
+};
+
+inline constexpr ChoiceItem kGrepOutputStyleChoices[] = {
+    {0, "標準形式"},
+    {1, "結果ファイル形式"},
+    {2, "WZ 互換形式"},
+};
+
+inline constexpr ChoiceItem kTagJumpModeChoices[] = {
+    {0, "標準"},
+    {1, "GNU 形式"},
+    {2, "詳細"},
+    {3, "高度"},
+};
+
+inline constexpr FieldDef kSearchFields[] = {
+    // 検索ダイアログ
+    {"m_bConsecutiveAll",
+        "「すべて置換」は繰返し",
+        "「すべて置換」を置換の繰返しで実行",
+        FieldKind::Bool, 1, 0, 1, nullptr, 0, true},
+    {"m_bNOTIFYNOTFOUND",
+        "見つからないときメッセージ",
+        "検索／置換で見つからないときメッセージを表示",
+        FieldKind::Bool, 1, 0, 1, nullptr, 0, true},
+    {"m_bSelectedArea",
+        "選択範囲内置換",
+        "選択範囲内のみ置換する",
+        FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+    {"m_bCaretTextForSearch",
+        "カーソル位置の単語を初期検索文字列に",
+        "検索ダイアログを開いたとき、カーソル位置の単語を初期値にする",
+        FieldKind::Bool, 1, 0, 1, nullptr, 0, true},
+    {"m_bInheritKeyOtherView",
+        "他ビューの検索条件を継承",
+        "次・前検索で他のビューの検索条件を引き継ぐ",
+        FieldKind::Bool, 1, 0, 1, nullptr, 0, true},
+    {"m_bAutoCloseDlgFind",
+        "検索ダイアログを自動で閉じる",
+        "検索後、検索ダイアログを自動的に閉じる",
+        FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+    {"m_bAutoCloseDlgReplace",
+        "置換ダイアログを自動で閉じる",
+        "置換後、置換ダイアログを自動的に閉じる",
+        FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+    {"m_bSearchAll",
+        "先頭(末尾)から再検索",
+        "末端まで検索後、先頭(末尾)から再検索する",
+        FieldKind::Bool, 1, 0, 1, nullptr, 0, true},
+
+    // Grep
+    {"m_bGrepSubFolder",
+        "Grep: サブフォルダ検索",
+        "Grep でサブフォルダも検索する",
+        FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+    {"m_nGrepOutputLineType",
+        "Grep 出力種別",
+        "Grep 結果の出力形式",
+        FieldKind::Choice, 0, 0, 2,
+        kGrepOutputLineTypeChoices, std::size(kGrepOutputLineTypeChoices), true},
+    {"m_nGrepOutputStyle",
+        "Grep 出力スタイル",
+        "Grep 結果の出力スタイル",
+        FieldKind::Choice, 0, 0, 2,
+        kGrepOutputStyleChoices, std::size(kGrepOutputStyleChoices), true},
+    {"m_bGrepDefaultFolder",
+        "Grep: 初期フォルダはカレント",
+        "Grep ダイアログのフォルダ初期値をカレントフォルダにする",
+        FieldKind::Bool, 1, 0, 1, nullptr, 0, true},
+    {"m_bGrepOutputFileOnly",
+        "Grep: ファイル毎最初のみ",
+        "Grep でファイル毎に最初のヒットだけ出力",
+        FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+    {"m_bGrepOutputBaseFolder",
+        "Grep: ベースフォルダ表示",
+        "Grep 結果でベースフォルダを表示",
+        FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+    {"m_bGrepSeparateFolder",
+        "Grep: フォルダ毎に表示",
+        "Grep 結果をフォルダ毎にグループ化",
+        FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+    {"m_bGrepBackup",
+        "Grep: バックアップ作成",
+        "置換 Grep でバックアップを作成する",
+        FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+    {"m_bGrepExitConfirm",
+        "Grep モードで保存確認",
+        "Grep モードで終了時に保存確認する",
+        FieldKind::Bool, 1, 0, 1, nullptr, 0, true},
+    {"m_bGrepRealTimeView",
+        "Grep 結果リアルタイム表示",
+        "Grep 結果をリアルタイムで表示する",
+        FieldKind::Bool, 1, 0, 1, nullptr, 0, true},
+
+    // タグジャンプ
+    {"m_bGTJW_RETURN",
+        "Enter でタグジャンプ",
+        "Grep 結果で Enter キーでタグジャンプ",
+        FieldKind::Bool, 1, 0, 1, nullptr, 0, true},
+    {"m_bGTJW_LDBLCLK",
+        "ダブルクリックでタグジャンプ",
+        "Grep 結果でダブルクリックでタグジャンプ",
+        FieldKind::Bool, 1, 0, 1, nullptr, 0, true},
+    {"m_nTagJumpMode",
+        "タグジャンプモード",
+        "タグジャンプの動作モード",
+        FieldKind::Choice, 0, 0, 3,
+        kTagJumpModeChoices, std::size(kTagJumpModeChoices), true},
+
+    // 正規表現 DLL (Phase 13b: String 対応)
+    {"m_szRegexpLib",
+        "正規表現 DLL 名",
+        "使用する正規表現ライブラリの DLL 名",
+        FieldKind::String, 0, 0, 0, nullptr, 0, true},
+    // INI 内設定
+    {"m_bUseCaretKeyWord",
+        "キャレット位置の単語を辞書検索",
+        "キャレット位置の単語を辞書検索する",
+        FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+};
+
+// ============================================================
+// 「アウトライン」タブ — Phase 14a メタ化対象
+//   CommonSetting_OutLine に対応。
+//   SFileTree (ツリー設定) と SFilePath は除外 (専用 GUI 必要)。
+// ============================================================
+inline constexpr ChoiceItem kDockSideChoices[] = {
+    {-1, "ドッキング禁止"},
+    {0,  "フローティング"},
+    {1,  "左ドッキング"},
+    {2,  "上ドッキング"},
+    {3,  "右ドッキング"},
+    {4,  "下ドッキング"},
+};
+
+inline constexpr ChoiceItem kOutlineDockSetChoices[] = {
+    {0, "共通設定"},
+    {1, "タイプ別設定"},
+};
+
+inline constexpr FieldDef kOutlineFields[] = {
+    {"m_bRememberOutlineWindowPos",
+        "アウトライン位置とサイズを記憶",
+        "アウトライン/トピックリストの位置・サイズを次回起動時に復元",
+        FieldKind::Bool, 1, 0, 1, nullptr, 0, true},
+    {"m_widthOutlineWindow",
+        "アウトライン幅 (px)",
+        "アウトラインウィンドウの幅",
+        FieldKind::Int, 220, 100, 2000, nullptr, 0, true},
+    {"m_heightOutlineWindow",
+        "アウトライン高さ (px)",
+        "アウトラインウィンドウの高さ",
+        FieldKind::Int, 400, 100, 2000, nullptr, 0, true},
+    {"m_nOutlineDockSet",
+        "ドッキング位置の継承方法",
+        "アウトライン解析のドッキング位置を共通／タイプ別から取得",
+        FieldKind::Choice, 0, 0, 1,
+        kOutlineDockSetChoices, std::size(kOutlineDockSetChoices), true},
+    {"m_bOutlineDockSync",
+        "ドッキング位置を同期",
+        "アウトライン解析のドッキング位置を同期する",
+        FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+    {"m_bOutlineDockDisp",
+        "アウトライン解析を表示",
+        "アウトライン解析の有無",
+        FieldKind::Bool, 1, 0, 1, nullptr, 0, true},
+    {"m_eOutlineDockSide",
+        "アウトラインのドッキング配置",
+        "アウトラインの初期配置位置",
+        FieldKind::Choice, 1, -1, 4,
+        kDockSideChoices, std::size(kDockSideChoices), true},
+    {"m_cxOutlineDockLeft",
+        "左ドッキング幅 (px)",
+        "左にドッキング時のアウトライン幅",
+        FieldKind::Int, 220, 100, 1000, nullptr, 0, true},
+    {"m_cxOutlineDockRight",
+        "右ドッキング幅 (px)",
+        "右にドッキング時のアウトライン幅",
+        FieldKind::Int, 220, 100, 1000, nullptr, 0, true},
+    {"m_cyOutlineDockTop",
+        "上ドッキング高さ (px)",
+        "上にドッキング時のアウトライン高さ",
+        FieldKind::Int, 200, 50, 1000, nullptr, 0, true},
+    {"m_cyOutlineDockBottom",
+        "下ドッキング高さ (px)",
+        "下にドッキング時のアウトライン高さ",
+        FieldKind::Int, 200, 50, 1000, nullptr, 0, true},
+    {"m_bAutoCloseDlgFuncList",
+        "アウトラインダイアログを自動で閉じる",
+        "ジャンプ後にアウトラインダイアログを自動的に閉じる",
+        FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+    {"m_bFunclistSetFocusOnJump",
+        "ジャンプ後フォーカスを移す",
+        "アウトラインからジャンプした後、エディタにフォーカスを移す",
+        FieldKind::Bool, 1, 0, 1, nullptr, 0, true},
+    {"m_bMarkUpBlankLineEnable",
+        "空行を無視",
+        "アウトライン解析で空行を無視する",
+        FieldKind::Bool, 1, 0, 1, nullptr, 0, true},
+};
+
+// ============================================================
+// 「その他」タブ — Phase 14a メタ化対象
+//   CommonSetting_Others に対応。
+//   ダイアログ位置の RECT は GUI 専用ロジックのため除外。
+// ============================================================
+inline constexpr FieldDef kOthersFields[] = {
+    {"m_bIniReadOnly",
+        "sakura.ini を読み取り専用",
+        "INI ファイルを読み取り専用にする (上書き禁止)",
+        FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+};
+
+// ============================================================
+// 「支援」タブ — Phase 14a メタ化対象
+//   CommonSetting_Helper に対応。
+//   LOGFONT (キーワードヘルプフォント) は除外。
+// ============================================================
+inline constexpr FieldDef kHelperFields[] = {
+    // 入力補完キー
+    {"m_bHokanKey_RETURN",
+        "Enter で補完決定",
+        "VK_RETURN で入力補完を決定",
+        FieldKind::Bool, 1, 0, 1, nullptr, 0, true},
+    {"m_bHokanKey_TAB",
+        "Tab で補完決定",
+        "VK_TAB で入力補完を決定",
+        FieldKind::Bool, 1, 0, 1, nullptr, 0, true},
+    {"m_bHokanKey_RIGHT",
+        "→ で補完決定",
+        "VK_RIGHT で入力補完を決定",
+        FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+
+    // 外部ヘルプ (Phase 13b: String 対応)
+    {"m_szExtHelp",
+        "外部ヘルプ",
+        "外部ヘルプ実行ファイルのパス",
+        FieldKind::String, 0, 0, 0, nullptr, 0, true},
+    {"m_szExtHtmlHelp",
+        "外部 HTML ヘルプ",
+        "外部 HTML ヘルプ実行ファイルのパス",
+        FieldKind::String, 0, 0, 0, nullptr, 0, true},
+    {"m_bHtmlHelpIsSingle",
+        "HTML ヘルプは単一ビューア",
+        "HTML ヘルプビューアを複数起動しない",
+        FieldKind::Bool, 1, 0, 1, nullptr, 0, true},
+
+    // migemo (Phase 13b: String 対応)
+    {"m_szMigemoDll",
+        "migemo DLL",
+        "migemo DLL のパス",
+        FieldKind::String, 0, 0, 0, nullptr, 0, true},
+    {"m_szMigemoDict",
+        "migemo 辞書",
+        "migemo 辞書ファイルのパス",
+        FieldKind::String, 0, 0, 0, nullptr, 0, true},
+};
+
+// ============================================================
 // タブテーブル
 //   Phase 11: 「全般」 (1 タブ)
 //   Phase 12: 「ウィンドウ」「編集」 (3 タブ)
 //   Phase 13a: 「タブバー」「バックアップ」「書式」「ファイル名表示」 (7 タブ)
-//   残り 11 タブは Phase 13b+ で順次追加。
+//   Phase 13b: 「ファイル」 (8 タブ) + 既存タブに String フィールド追加
+//   Phase 14a: 「ステータスバー」「検索」「アウトライン」「その他」「支援」 (13 タブ)
 //   タブ並び順は upstream CPropCommon.cpp の AddPage 順 (18 タブ) と一致させる。
+//   残り 5 タブ (キー割り当て / カスタマイズ / ツールバー / F キー / メイン・ポップアップ)
+//   は専用 GUI が必要なため Phase 16+ で対応。
 // ============================================================
 inline constexpr TabDef kSettingsTabs[] = {
     {"general",   "全般",         kGeneralFields,  std::size(kGeneralFields),  true},
@@ -627,6 +932,12 @@ inline constexpr TabDef kSettingsTabs[] = {
     {"backup",    "バックアップ", kBackupFields,   std::size(kBackupFields),   true},
     {"format",    "書式",         kFormatFields,   std::size(kFormatFields),   true},
     {"filename",  "ファイル名表示", kFileNameFields, std::size(kFileNameFields), true},
+    {"statusbar", "ステータスバー", kStatusbarFields, std::size(kStatusbarFields), true},
+    {"search",    "検索",           kSearchFields,    std::size(kSearchFields),    true},
+    {"outline",   "アウトライン",   kOutlineFields,   std::size(kOutlineFields),   true},
+    {"others",    "その他",         kOthersFields,    std::size(kOthersFields),    true},
+    {"helper",    "支援",           kHelperFields,    std::size(kHelperFields),    true},
+    // 専用 GUI 必要 (Phase 16+ で対応):
     {"keyword",   "強調キーワード", nullptr, 0, false},
     {"customize", "カスタマイズ",   nullptr, 0, false},
     {"keybind",   "キー割り当て",   nullptr, 0, false},
@@ -635,8 +946,6 @@ inline constexpr TabDef kSettingsTabs[] = {
     {"mainmenu",  "メインメニュー",  nullptr, 0, false},
     {"popupmenu", "ポップアップメニュー", nullptr, 0, false},
     {"plugin",    "プラグイン",      nullptr, 0, false},
-    {"helper",    "支援",            nullptr, 0, false},
-    {"others",    "その他",          nullptr, 0, false},
 };
 
 inline constexpr std::size_t kSettingsTabCount = std::size(kSettingsTabs);

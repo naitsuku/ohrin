@@ -5,11 +5,14 @@
 
 add_executable(sakura_wx_tests
     test_platform_pal.cpp
+    test_encoding.cpp
+    test_sakura_config.cpp
+    test_shared_data.cpp
 )
 
 target_link_libraries(sakura_wx_tests
     PRIVATE
-        sakura_core
+        sakura_wx_core
         gtest_main
 )
 

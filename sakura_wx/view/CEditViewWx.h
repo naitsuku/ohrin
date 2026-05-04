@@ -1,4 +1,6 @@
 #pragma once
+#include "charset/Encoding.h"
+
 #include <wx/wx.h>
 #include <wx/stc/stc.h>
 
@@ -30,19 +32,13 @@ public:
     wxFont GetCurrentEditorFont() const { return m_currentFont; }
 
     // --- 文字コード ---
-    enum class Encoding { UTF8, UTF8_BOM, SJIS, EUCJP, UTF16LE, UTF16BE, Unknown };
+    using Encoding = sakura_wx::charset::Encoding;
     Encoding GetCurrentEncoding() const { return m_encoding; }
-    static const char* EncodingName(Encoding e);
 
 private:
     void InitializeEditor();
     void SetupSyntaxHighlighting(const wxString& filePath);
     void ApplyColorScheme();
-
-    // 文字コード判定／変換
-    Encoding DetectEncoding(const std::vector<char>& bytes) const;
-    wxString ConvertToWxString(const std::vector<char>& bytes, Encoding enc) const;
-    std::vector<char> ConvertFromWxString(const wxString& text, Encoding enc) const;
 
     // イベントハンドラ
     void OnModified(wxStyledTextEvent& event);

@@ -1,5 +1,69 @@
 cmake_minimum_required(VERSION 3.16)
 
+# ============================================================
+# wxWidgets 移植プロジェクト分岐（Phase 1 以降で追加）
+#
+# 非 Windows プラットフォーム (macOS / Linux) では本ブロック内で
+# wxWidgets ベースのビルドを構成し、return() で以下の Win32 向け
+# ロジックは一切実行しない。Win32 ビルドの挙動は完全に温存される。
+# ============================================================
+if(NOT WIN32)
+    cmake_minimum_required(VERSION 3.20)
+    project(SakuraEditor VERSION 2.5.0 LANGUAGES CXX)
+
+    set(CMAKE_CXX_STANDARD 17)
+    set(CMAKE_CXX_STANDARD_REQUIRED ON)
+    set(CMAKE_CXX_EXTENSIONS OFF)
+
+    if(NOT CMAKE_BUILD_TYPE)
+        set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+    endif()
+
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+    set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+    set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+    if(APPLE)
+        add_compile_definitions(SAKURA_PLATFORM_MACOS SAKURA_PLATFORM_WX)
+        message(STATUS "Platform: macOS (wxWidgets port)")
+    else()
+        add_compile_definitions(SAKURA_PLATFORM_LINUX SAKURA_PLATFORM_WX)
+        message(STATUS "Platform: Linux (wxWidgets port)")
+    endif()
+
+    find_package(wxWidgets REQUIRED COMPONENTS core base xml net)
+    include(${wxWidgets_USE_FILE})
+    message(STATUS "wxWidgets found: ${wxWidgets_VERSION}")
+
+    # GoogleTest はテスト用。FetchContent で取得して in-tree でビルド。
+    include(FetchContent)
+    set(FETCHCONTENT_QUIET FALSE)
+    FetchContent_Declare(
+        googletest
+        GIT_REPOSITORY https://github.com/google/googletest.git
+        GIT_TAG        v1.14.0
+        GIT_SHALLOW    TRUE
+    )
+    FetchContent_MakeAvailable(googletest)
+
+    add_subdirectory(sakura_core)
+
+    if(EXISTS ${CMAKE_SOURCE_DIR}/sakura_wx/CMakeLists.txt)
+        add_subdirectory(sakura_wx)
+    endif()
+
+    enable_testing()
+    if(EXISTS ${CMAKE_SOURCE_DIR}/tests/wx_tests/CMakeLists.txt)
+        add_subdirectory(tests/wx_tests)
+    endif()
+
+    return()
+endif()
+# ============================================================
+# 以下は upstream の Win32 向けビルド定義（変更禁止）
+# ============================================================
+
 # Define primary project
 project(sakura LANGUAGES CXX)
 

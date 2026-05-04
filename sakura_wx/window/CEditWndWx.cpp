@@ -2,6 +2,7 @@
 #include "CSakuraToolBar.h"
 #include "CSakuraRuler.h"
 #include "CSakuraOutline.h"
+#include "CSakuraMiniMap.h"
 #include "CSakuraPrintout.h"
 #include "view/CEditViewWx.h"
 
@@ -113,12 +114,26 @@ CEditWndWx::CEditWndWx(const wxString& filePath)
 
     m_outline = new sakura_wx::ui::CSakuraOutline(m_splitter, this);
 
-    m_notebook = new wxAuiNotebook(m_splitter, wxID_ANY,
+    // 右側はさらに splitter にして notebook | minimap を配置
+    m_rightSplit = new wxSplitterWindow(m_splitter, wxID_ANY,
+        wxDefaultPosition, wxDefaultSize,
+        wxSP_3D | wxSP_LIVE_UPDATE);
+    m_rightSplit->SetMinimumPaneSize(60);
+
+    m_notebook = new wxAuiNotebook(m_rightSplit, wxID_ANY,
         wxDefaultPosition, wxDefaultSize,
         wxAUI_NB_DEFAULT_STYLE | wxAUI_NB_TAB_MOVE | wxAUI_NB_CLOSE_ON_ACTIVE_TAB
             | wxAUI_NB_WINDOWLIST_BUTTON);
 
-    m_splitter->SplitVertically(m_outline, m_notebook, m_outlineSash);
+    m_miniMap = new sakura_wx::ui::CSakuraMiniMap(m_rightSplit);
+
+    // 右 splitter: notebook が左 (大), minimap が右 (狭)。
+    // SetSashGravity(1.0) で右側 (minimap) は固定幅、ウィンドウ伸縮は notebook 側。
+    m_rightSplit->SplitVertically(m_notebook, m_miniMap);
+    m_rightSplit->SetSashGravity(1.0);
+    m_rightSplit->SetSashPosition(-m_miniMapWidth);
+
+    m_splitter->SplitVertically(m_outline, m_rightSplit, m_outlineSash);
 
     auto* sizer = new wxBoxSizer(wxVERTICAL);
     if (m_toolBar) sizer->Add(m_toolBar, 0, wxEXPAND);
@@ -181,6 +196,7 @@ void CEditWndWx::SyncMirrorFromActive() {
     UpdateTitle();
     if (m_ruler) m_ruler->Attach(m_editView);
     if (m_outline) m_outline->Rebuild(m_editView);
+    if (m_miniMap) m_miniMap->Attach(m_editView);
 }
 
 int CEditWndWx::AddNewTab(const wxString& title) {
@@ -798,6 +814,8 @@ void CEditWndWx::ApplyMetaSettingsToAllViews() {
     bool dispToolbar   = cfg->GetMetaBool(wxT("window"), wxT("m_bDispTOOLBAR"),   true);
     bool dispStatusbar = cfg->GetMetaBool(wxT("window"), wxT("m_bDispSTATUSBAR"), true);
     bool darkMode      = cfg->GetMetaBool(wxT("window"), wxT("m_bDarkMode"),      false);
+    bool dispMiniMap   = cfg->GetMetaBool(wxT("window"), wxT("m_bDispMiniMap"),   false);
+    int  miniMapWidth  = cfg->GetMetaInt (wxT("window"), wxT("m_nMiniMapWidth"), 110);
 
     // wxSTC への適用 (m_nCaretType: 0=Win 風 (細線), 1=DOS 風 (ブロック))
     const int caretStyle = (caretType == 1) ? wxSTC_CARETSTYLE_BLOCK
@@ -827,6 +845,22 @@ void CEditWndWx::ApplyMetaSettingsToAllViews() {
     // ツールバー / ステータスバー表示切替
     if (m_toolBar)            m_toolBar->Show(dispToolbar);
     if (auto* sb = GetStatusBar()) sb->Show(dispStatusbar);
+
+    // ミニマップ表示／幅切替
+    if (m_rightSplit && m_miniMap) {
+        if (dispMiniMap) {
+            if (!m_rightSplit->IsSplit()) {
+                m_rightSplit->SplitVertically(m_notebook, m_miniMap);
+                m_rightSplit->SetSashGravity(1.0);
+            }
+            if (miniMapWidth < 40)   miniMapWidth = 40;
+            if (miniMapWidth > 400)  miniMapWidth = 400;
+            m_miniMapWidth = miniMapWidth;
+            m_rightSplit->SetSashPosition(-m_miniMapWidth);
+        } else if (m_rightSplit->IsSplit()) {
+            m_rightSplit->Unsplit(m_miniMap);
+        }
+    }
     if (auto* s = GetSizer()) { s->Layout(); }
 
     // タイトルバー更新 (UpdateTitle 内でメタテンプレート参照)

@@ -39,6 +39,7 @@ set(SAKURA_WX_GUI_SOURCES
     window/CSakuraToolBar.cpp
     window/CSakuraRuler.cpp
     window/CSakuraOutline.cpp
+    window/CSakuraMiniMap.cpp
     window/CSakuraPrintout.cpp
     view/CEditViewWx.cpp
     dialog/CDlgSearchWx.cpp

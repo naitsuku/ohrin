@@ -7,6 +7,7 @@
 class CEditViewWx;
 namespace sakura_wx::ui {
     class CSakuraRuler;
+    class CSakuraMiniMap;
     class CSakuraOutline;
 }
 class wxSplitterWindow;
@@ -176,6 +177,11 @@ private:
 
     // 単一ルーラー (アクティブビューに追従)
     sakura_wx::ui::CSakuraRuler* m_ruler = nullptr;
+
+    // ミニマップ (Phase 15b: アクティブビューに追従)
+    sakura_wx::ui::CSakuraMiniMap* m_miniMap     = nullptr;
+    wxSplitterWindow*              m_rightSplit  = nullptr; // notebook | minimap
+    int                            m_miniMapWidth = 110;
 
     // アウトラインサイドパネル (Phase 8 追加)
     wxSplitterWindow*              m_splitter  = nullptr;

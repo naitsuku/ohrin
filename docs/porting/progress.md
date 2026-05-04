@@ -1,5 +1,128 @@
 # 移植作業進捗ログ
 
+## 2026-05-05 — Phase 14a/b + 15a/b 完了（メタ 5 タブ追加 + 反映 6 点 + DarkMode + ミニマップ）
+
+### Phase 14a: 易タブ 5 個メタ化
+
+- **ステータスバー** (kStatusbarFields, 7 フィールド): 文字コード値表示 / 選択数 /
+  桁単位の Bool 集合
+- **検索** (kSearchFields, 22 フィールド): 検索／置換／Grep / タグジャンプ。
+  Choice 3 種 (GrepOutputLineType / GrepOutputStyle / TagJumpMode) と
+  String 1 個 (m_szRegexpLib)
+- **アウトライン** (kOutlineFields, 14 フィールド): ドッキング配置
+  (EDockSide Choice)、サイズ Int 群、解析オプション Bool。
+  SFileTree / SFilePath は除外
+- **その他** (kOthersFields, 1 フィールド): m_bIniReadOnly のみ
+  (RECT 配置は GUI 専用ロジックのため除外)
+- **支援** (kHelperFields, 8 フィールド): 入力補完キー Bool ×3、
+  外部ヘルプ / migemo の String パス 4 個
+
+CDlgSettingsWx で 4 つの placeholder をメタ駆動に切替え、
+upstream 18 タブ外の「アウトライン」「その他」をタブ末尾に追加。
+ダイアログのタブ数: 18 → 20。
+supported=true なメタタブ数: 8 → 13。
+
+### Phase 14b: エディタ反映 6 点追加
+
+ApplyMetaSettingsToAllViews を拡張し、メタ値 6 件を実エディタ動作に反映:
+
+| メタ ID | 反映先 |
+|---|---|
+| `general/m_bIsFreeCursorMode` | `SetCaretSticky(OFF/ON)` |
+| `general/m_nRepeatedScrollLineNum` | `SCI_SETMOUSEWHEELLINES` |
+| `window/m_bDispTOOLBAR` | `m_toolBar->Show` + 再 Layout |
+| `window/m_bDispSTATUSBAR` | `GetStatusBar()->Show` + 再 Layout |
+| `window/m_szWindowCaptionActive` | `UpdateTitle` で `$f/$F/$m` を展開 |
+| `file/m_bAlertIfLargeFile` + `m_nAlertFileSize` | OpenFile 内で MB 比較し確認 |
+
+実装の主な変更:
+- `m_toolBar` をメンバ化 (元はコンストラクタのローカル)
+- UpdateTitle がテンプレート文字列 (`$f`=ファイル名, `$F`=フルパス,
+  `$m`=変更マーク) を展開。空ならデフォルトタイトル
+- OpenFile 冒頭で SakuraConfig::GetMetaBool/Int を読みファイルサイズ確認
+
+スキップ: tabbar/m_bDispTabWnd / m_eTabPosition (wxAuiNotebook の制約)、
+edit/m_bSelectClickedURL (Scintilla SCN_HOTSPOT 系のハンドリング必要)。
+
+### Phase 15a: DarkMode 色スキーム
+
+CEditViewWx に SetDarkMode/IsDarkMode を追加し、ApplyColorScheme と
+SetupSyntaxHighlighting の双方を 2 種プリセット切替に対応:
+
+| カテゴリ | ライト | ダーク (VS Code Dark+ 風) |
+|---|---|---|
+| テキスト bg | RGB(255,251,240) サクラ伝統色 | RGB(30,30,30) |
+| テキスト fg | RGB(0,0,0) | RGB(212,212,212) |
+| 行番号 | RGB(0,0,255) | RGB(133,133,133) |
+| 選択範囲 | RGB(49,106,197) | RGB(38,79,120) |
+| comment | RGB(0,128,0) 緑 | RGB(106,153,85) |
+| string | RGB(128,0,64) 暗紫 | RGB(206,145,120) |
+| keyword | RGB(0,0,255) 青 | RGB(86,156,214) |
+| number | RGB(235,0,0) 赤 | RGB(181,206,168) |
+
+CEditWndWx::ApplyMetaSettingsToAllViews が `window/m_bDarkMode` を読み、
+全タブに `view->SetDarkMode(dark)`。差分があるときだけ
+ApplyColorScheme + SetupSyntaxHighlighting + Refresh が走る。
+
+タイプ別シンタックス色 (Phase 8) との関係:
+PickSyntaxColor がライト/ダーク双方のデフォルトを fallback として用意し、
+ユーザがタイプ別に色を上書きしている場合はそちらが優先される。
+
+### Phase 15b: ミニマップ実装 (新規機能)
+
+`sakura_wx/window/CSakuraMiniMap.{h,cpp}` を新規追加:
+- 別の wxStyledTextCtrl インスタンス (フォントサイズ 2pt) でメインビューを縮小表示
+- SetReadOnly + マージン無し + スクロールバー無し で表示専用
+- メインビューの SCN_MODIFIED で全文同期 (再帰防止フラグあり)
+- メインビューの SCN_UPDATEUI で FirstVisibleLine を追従
+- ミニマップ上のクリックで対応行へジャンプ (Goto + フォーカス委譲)
+
+CEditWndWx の splitter 構成を拡張:
+- 旧: `outline | notebook`
+- 新: `outline | rightSplit(notebook | minimap)`
+- `m_rightSplit->SetSashGravity(1.0)` で minimap 側を固定幅、ウィンドウ伸縮は
+  notebook 側で吸収
+
+メタ連携:
+- `window/m_bDispMiniMap` (Bool, default false): 表示／非表示を Unsplit で切替
+- `window/m_nMiniMapWidth` (Int, 40-400, default 110): SetSashPosition で幅調整
+
+`SyncMirrorFromActive` で `m_miniMap->Attach(m_editView)` を呼び、
+タブ切替に追従。`AddNewTab` 後の `ApplyMetaSettingsToAllViews` で初期反映。
+
+### 全 34 テスト pass。
+
+### Phase 14-15 完了チェックリスト
+
+- [x] 14a: ステータスバー / 検索 / アウトライン / その他 / 支援 (5 タブ)
+- [x] 14b: 反映 6 点 (FreeCursor / scroll lines / toolbar / statusbar /
+       caption template / large-file alert)
+- [x] 15a: DarkMode 色スキーム (8 色相違、CEditViewWx 単位で切替)
+- [x] 15b: ミニマップ機能 (新規クラス + splitter 拡張)
+- [x] 全 34 テスト pass
+
+### Phase 16 への申し送り
+
+Phase 15 が完了したので、計画通り Phase 16 (キー割り当てエディタ) を
+細分化する段階。次の細分化候補:
+
+1. **Phase 16a — Funccode カタログ層**:
+   `sakura_core/func/CKeyBind.h` の取り込み試行 (`#ifdef _WIN32` ガード)。
+   困難なら sakura_wx 側で 50-80 個の主要 Funccode に表示名マッピング
+2. **Phase 16b — キー割り当てエディタ GUI**:
+   左に機能リスト (検索フィルタ付き)、右にキーバインド一覧、
+   下部にキー入力ピッカー (wxKeyEvent キャプチャ)
+3. **Phase 16c — 永続化と即時反映**:
+   SakuraConfig に `keybind_<funccode>` で保存、wxAcceleratorTable 再構築
+
+メタ化済タブ supported 数: 13 / 18 (専用 GUI 必要 5 タブが残)。
+
+その他の Phase 13c で識別された追加候補:
+- ミニマップは Phase 15b で実現済み
+- DarkMode は Phase 15a で実現済み
+- リピートスクロール行数は Phase 14b で実現済み
+
+
 ## 2026-05-05 — Phase 13a/b/c 完了（メタ化拡大 + Color/String + エディタ反映）
 
 ### Phase 13a: 易タブ 4 個メタ化

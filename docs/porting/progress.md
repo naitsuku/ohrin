@@ -1,5 +1,115 @@
 # 移植作業進捗ログ
 
+## 2026-05-04 — Phase 10 完了（同日、ツールバー正規化 + 設定 18 タブ + シム拡張）
+
+### 実施内容
+
+- [x] **ツールバー正規化** (Phase 7 carryover)
+  - upstream `sakura_core/uiparts/CMenuDrawer.cpp` の `tbd[]` 配列に基づく
+    正規 index → BMP セル位置マッピングを採用
+  - 数式: `index N (1-based)` → `row = (N-1)/32, col = (N-1)%32`
+  - upstream 主要ボタンの正確な index で抽出:
+    - ファイル: 1=新規 / 2=開く / 3=保存 / 4=SaveAs
+    - 編集: 33=Undo / 34=Redo (2 段目先頭)
+    - 検索系: 225=検索 / 226=次 / 227=前 / 228=置換 / 229=クリア / 230=Grep
+    - ブックマーク: 237=切替 / 238=次 / 239=前
+    - 設定: 266=共通設定
+  - 並び順は upstream `DEFAULT_TOOL_BUTTONS` を踏襲
+  - Cut/Copy/Paste は upstream 初期ツールバーには無いが UX 用に末尾追加
+  - `pickByIndex(idx, fallbackArt)` ヘルパ関数で簡潔化
+
+- [x] **設定ダイアログを upstream 18 タブ構成に再編**
+  - upstream `sakura_core/prop/CPropCommon.cpp:193-211` の
+    タブ名・順序を完全踏襲
+  - 18 タブ: 全般 / ウィンドウ / メインメニュー / ツールバー / タブバー /
+    ステータスバー / 編集 / ファイル / ファイル名表示 / バックアップ /
+    書式 / 検索 / キー割り当て / カスタムメニュー / 強調キーワード /
+    支援 / マクロ / プラグイン
+  - 実装済み (3 タブ): 全般 / キー割り当て / 強調キーワード
+  - 未実装 (15 タブ): プレースホルダで「Phase 11+ 対応予定」または
+    「Tier 3 として断念済み」を明示
+  - 旧「タイプ別」タブの内容を「強調キーワード」(15 番目) に移動
+    (upstream の対応位置)
+  - `BuildTabPlaceholder(title, note)` で統一的な未実装表示
+
+- [x] **win32_types_stub.h さらに拡張**
+  - `LOGFONTW` / `LOGFONTA` / `LOGFONT` (= LOGFONTW)
+  - `LF_FACESIZE` (= 32)
+  - GDI 解放関数 no-op stub: `DeleteObject` / `DeleteDC` / `SelectObject`
+  - `IsValidCodePage` no-op stub
+  - 計画では charset/ 取り込みを進める予定だったが、追加の壁:
+    - `codeutil.h`: `WideCharToMultiByte` / `MultiByteToWideChar`
+      (PAL で iconv/ICU 実装が必要)
+    - `CEuc.h`: `<mbstring.h>` (MSVC 専用ヘッダ)
+    - `CKeyBind.h`: `Funccode_enum.h` (HeaderMake 自動生成、Win32 限定)
+    - `codechecker.h:322` シンタックスエラー (WCODE 名前空間問題)
+  - これらは大規模 PAL 実装が必要なため Phase 11+ に持ち越し
+
+### upstream タブ構成の調査結果
+
+`sakura_core/prop/CPropCommon.cpp:193-211` で発見した 18 タブ:
+```cpp
+{ STR_PROPCOMMON_GENERAL,   IDD_PROP_GENERAL,   ... }, // 全般
+{ STR_PROPCOMMON_WINDOW,    IDD_PROP_WIN,       ... }, // ウィンドウ
+{ STR_PROPCOMMON_MAINMENU,  IDD_PROP_MAINMENU,  ... }, // メインメニュー
+{ STR_PROPCOMMON_TOOLBAR,   IDD_PROP_TOOLBAR,   ... }, // ツールバー
+{ STR_PROPCOMMON_TABS,      IDD_PROP_TAB,       ... }, // タブバー
+{ STR_PROPCOMMON_STATBAR,   IDD_PROP_STATUSBAR, ... }, // ステータスバー
+{ STR_PROPCOMMON_EDITING,   IDD_PROP_EDIT,      ... }, // 編集
+{ STR_PROPCOMMON_FILE,      IDD_PROP_FILE,      ... }, // ファイル
+{ STR_PROPCOMMON_FILENAME,  IDD_PROP_FNAME,     ... }, // ファイル名表示
+{ STR_PROPCOMMON_BACKUP,    IDD_PROP_BACKUP,    ... }, // バックアップ
+{ STR_PROPCOMMON_FORMAT,    IDD_PROP_FORMAT,    ... }, // 書式
+{ STR_PROPCOMMON_SEARCH,    IDD_PROP_GREP,      ... }, // 検索
+{ STR_PROPCOMMON_KEYS,      IDD_PROP_KEYBIND,   ... }, // キー割り当て
+{ STR_PROPCOMMON_CUSTMENU,  IDD_PROP_CUSTMENU,  ... }, // カスタムメニュー
+{ STR_PROPCOMMON_KEYWORD,   IDD_PROP_KEYWORD,   ... }, // 強調キーワード
+{ STR_PROPCOMMON_SUPPORT,   IDD_PROP_HELPER,    ... }, // 支援
+{ STR_PROPCOMMON_MACRO,     IDD_PROP_MACRO,     ... }, // マクロ
+{ STR_PROPCOMMON_PLUGIN,    IDD_PROP_PLUGIN,    ... }, // プラグイン
+```
+
+コード自体は GDI 依存 (PropertySheet, CreateWindow 等) で流用不可、タブ
+構成 (タブ名・順序・項目分類) のみ流用。実装は wxNotebook + wxPanel 自前。
+
+### 検証結果
+
+- 30/30 全テストパス
+- GUI smoke test 全パス
+- ツールバー: 19 アイコン (upstream 正規 index ベース)、設定アイコンが
+  正しいセル (266 → row 8, col 9) になった
+- 設定ダイアログ: 18 タブ構成で開く、3 タブが機能、15 タブがプレースホルダ
+
+### Phase 10 完了チェックリスト
+
+- [x] ツールバー アイコン index の MainMenu.ini ベース正規化
+- [x] 設定ダイアログ upstream 18 タブ構成に再編
+- [x] win32_types_stub.h の GDI シム拡張 (Phase 11+ への足がかり)
+- [-] charset/ 取り込み — 追加の壁判明、Phase 11+ に持ち越し
+
+### Phase 11 への申し送り
+
+**sakura_core 取り込みの本格対応** (大規模):
+- `WideCharToMultiByte` / `MultiByteToWideChar` の PAL 実装
+  - 候補1: iconv (POSIX 標準だが POSIX-iconv と GNU-iconv で API 微差)
+  - 候補2: ICU (重いが多言語対応充実)
+  - 候補3: wxWidgets の wxCSConv をラップ (依存はそのまま)
+- `<mbstring.h>` の代替インライン関数群
+- `Funccode_enum.h` の手動移植または HeaderMake の Python 実装
+- `codechecker.h:322` のシンタックス問題調査
+
+**残 GUI 仕上げ**:
+- タブのミラーフィールド廃止
+- 印刷ヘッダフッタ カスタマイズ UI (BuildTabPlaceholder の置換)
+- 未実装タブの段階的実装 (ウィンドウ → 編集 → ファイル の順)
+
+**リリース準備**:
+- 実 IME 検証 (要ユーザー操作)
+- .dmg / AppImage CI のリリースタグでの動作確認
+- README 整備、スクリーンショット
+
+---
+
 ## 2026-05-04 — Phase 9 完了（同日、UX 改善 + 基盤強化）
 
 Phase 7-8 の申し送り項目から、影響度・安全性順に着手した結果。

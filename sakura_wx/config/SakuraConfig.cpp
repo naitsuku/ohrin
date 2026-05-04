@@ -213,3 +213,45 @@ void SakuraConfig::SetMetaInt(const wxString& tab, const wxString& field,
     if (!m_store) return;
     m_store->SetInt(MetaKey(tab, field), value);
 }
+
+wxString SakuraConfig::GetMetaString(const wxString& tab, const wxString& field,
+                                     const wxString& def) const {
+    if (!m_store) return def;
+    SakuraPlatform::NativeString s;
+    if (!m_store->GetString(MetaKey(tab, field), s)) return def;
+    return wxString(s);
+}
+
+void SakuraConfig::SetMetaString(const wxString& tab, const wxString& field,
+                                 const wxString& value) {
+    if (!m_store) return;
+    m_store->SetString(MetaKey(tab, field), value.ToStdWstring());
+}
+
+wxColour SakuraConfig::GetMetaColor(const wxString& tab, const wxString& field,
+                                    const wxColour& def) const {
+    if (!m_store) return def;
+    SakuraPlatform::NativeString s;
+    if (!m_store->GetString(MetaKey(tab, field), s) || s.empty()) return def;
+    wxArrayString parts = wxSplit(wxString(s), ',');
+    if (parts.GetCount() != 3) return def;
+    long r = 0, g = 0, b = 0;
+    parts[0].ToLong(&r);
+    parts[1].ToLong(&g);
+    parts[2].ToLong(&b);
+    return wxColour(static_cast<unsigned char>(r),
+                    static_cast<unsigned char>(g),
+                    static_cast<unsigned char>(b));
+}
+
+void SakuraConfig::SetMetaColor(const wxString& tab, const wxString& field,
+                                const wxColour& value) {
+    if (!m_store) return;
+    if (!value.IsOk()) {
+        m_store->DeleteKey(MetaKey(tab, field));
+        return;
+    }
+    wxString s = wxString::Format(wxT("%d,%d,%d"),
+                                  value.Red(), value.Green(), value.Blue());
+    m_store->SetString(MetaKey(tab, field), s.ToStdWstring());
+}

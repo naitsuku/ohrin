@@ -11,6 +11,7 @@
 #include <wx/spinctrl.h>
 #include <wx/stattext.h>
 #include <wx/statline.h>
+#include <wx/textctrl.h>
 
 namespace sakura_wx::dialog {
 
@@ -86,8 +87,7 @@ void CDlgSettingsWx::BuildUI() {
     addPlaceholder(wxT("ステータスバー"),
                    wxT("ステータスバーの表示項目。Phase 10 以降で対応予定。"));             // 6
     addMetaPanel(wxT("編集"), wxT("edit"));                                       // 7 (Phase 12 メタ化)
-    addPlaceholder(wxT("ファイル"),
-                   wxT("既定の文字コード／改行コード／BOM 設定。Phase 10 以降で対応予定。"));// 8
+    addMetaPanel(wxT("ファイル"), wxT("file"));                                   // 8 (Phase 13b メタ化)
     addMetaPanel(wxT("ファイル名表示"), wxT("filename"));                         // 9 (Phase 13a メタ化)
     addMetaPanel(wxT("バックアップ"),   wxT("backup"));                            // 10 (Phase 13a メタ化)
     addMetaPanel(wxT("書式"),           wxT("format"));                            // 11 (Phase 13a メタ化)
@@ -288,6 +288,31 @@ void CDlgSettingsWx::BuildTabFromMeta(wxPanel* page, const wxString& tabId) {
             mw.widget = ch;
             break;
         }
+        case meta::FieldKind::String: {
+            wxString initial = m_config
+                ? m_config->GetMetaString(tabId, fieldId)
+                : wxString();
+            grid->Add(new wxStaticText(page, wxID_ANY, label),
+                      0, wxALIGN_CENTER_VERTICAL);
+            auto* tc = new wxTextCtrl(page, wxID_ANY, initial);
+            tc->SetToolTip(tip);
+            grid->Add(tc, 0, wxEXPAND);
+            mw.widget = tc;
+            break;
+        }
+        case meta::FieldKind::Color: {
+            wxColour initial = m_config
+                ? m_config->GetMetaColor(tabId, fieldId)
+                : wxNullColour;
+            if (!initial.IsOk()) initial = *wxBLACK;
+            grid->Add(new wxStaticText(page, wxID_ANY, label),
+                      0, wxALIGN_CENTER_VERTICAL);
+            auto* cp = new wxColourPickerCtrl(page, wxID_ANY, initial);
+            cp->SetToolTip(tip);
+            grid->Add(cp, 0, wxEXPAND);
+            mw.widget = cp;
+            break;
+        }
         default:
             grid->Add(new wxStaticText(page, wxID_ANY, label),
                       0, wxALIGN_CENTER_VERTICAL);
@@ -478,6 +503,18 @@ void CDlgSettingsWx::OnOk(wxCommandEvent& event) {
                         m_config->SetMetaInt(mw.tabId, mw.fieldId,
                                              mw.choiceValues[sel]);
                     }
+                }
+                break;
+            }
+            case meta::FieldKind::String: {
+                if (auto* tc = dynamic_cast<wxTextCtrl*>(mw.widget)) {
+                    m_config->SetMetaString(mw.tabId, mw.fieldId, tc->GetValue());
+                }
+                break;
+            }
+            case meta::FieldKind::Color: {
+                if (auto* cp = dynamic_cast<wxColourPickerCtrl*>(mw.widget)) {
+                    m_config->SetMetaColor(mw.tabId, mw.fieldId, cp->GetColour());
                 }
                 break;
             }

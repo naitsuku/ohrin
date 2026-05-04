@@ -161,6 +161,91 @@ inline constexpr FieldDef kGeneralFields[] = {
 };
 
 // ============================================================
+// 「ファイル」タブ — Phase 13b メタ化対象
+//   CommonSetting_File に対応。EShareMode は Choice 化、
+//   それ以外の bool/int フィールドをメタ化。
+//   String widget 対応後 (Phase 13b) に追加: なし (パス系は無し)。
+// ============================================================
+inline constexpr ChoiceItem kShareModeChoices[] = {
+    {0, "排他制御しない"},
+    {1, "他プロセスからの上書きを禁止"},
+    {2, "他プロセスからの読み書きを禁止"},
+};
+
+inline constexpr FieldDef kFileFields[] = {
+    // 排他制御
+    {"m_nFileShareMode",
+        "ファイルの排他制御",
+        "ファイルを開いている間の排他モード",
+        FieldKind::Choice, 0, 0, 2,
+        kShareModeChoices, std::size(kShareModeChoices), true},
+    {"m_bCheckFileTimeStamp",
+        "更新の監視",
+        "他プロセスでの更新を検出する",
+        FieldKind::Bool, 1, 0, 1, nullptr, 0, true},
+    {"m_nAutoloadDelay",
+        "自動読込の遅延 (ms)",
+        "更新検出後、自動再読込までの遅延ミリ秒",
+        FieldKind::Int, 1000, 0, 60000, nullptr, 0, true},
+    {"m_bUneditableIfUnwritable",
+        "上書き禁止時は編集禁止",
+        "ファイルが書込不可なら編集をロックする",
+        FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+
+    // 保存
+    {"m_bEnableUnmodifiedOverwrite",
+        "無変更でも上書き保存",
+        "編集していないファイルでも上書き保存する",
+        FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+    {"m_bNoFilterSaveNew",
+        "新規保存はフィルタ無視",
+        "[名前を付けて保存] (新規) は全ファイル表示",
+        FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+    {"m_bNoFilterSaveFile",
+        "既存保存はフィルタ無視",
+        "[名前を付けて保存] (既存) は全ファイル表示",
+        FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+
+    // オープン
+    {"m_bDropFileAndClose",
+        "ドロップで閉じて開く",
+        "ファイルをドロップしたとき現タブを閉じて開く",
+        FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+    {"m_nDropFileNumMax",
+        "同時ドロップ上限",
+        "一度にドロップ可能なファイル数",
+        FieldKind::Int, 8, 1, 100, nullptr, 0, true},
+    {"m_bRestoreCurPosition",
+        "カーソル位置を復元",
+        "ファイルを開いたとき前回のカーソル位置を復元",
+        FieldKind::Bool, 1, 0, 1, nullptr, 0, true},
+    {"m_bRestoreBookmarks",
+        "ブックマークを復元",
+        "ファイルを開いたとき前回のブックマークを復元",
+        FieldKind::Bool, 1, 0, 1, nullptr, 0, true},
+    {"m_bAutoMIMEdecode",
+        "MIME 自動デコード",
+        "ファイル読込時に MIME のデコードを行う",
+        FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+    {"m_bQueryIfCodeChange",
+        "文字コード変化時に確認",
+        "前回と文字コードが異なるとき問い合わせる",
+        FieldKind::Bool, 1, 0, 1, nullptr, 0, true},
+    {"m_bAlertIfFileNotExist",
+        "ファイル不在時に警告",
+        "開こうとしたファイルが存在しないとき警告",
+        FieldKind::Bool, 1, 0, 1, nullptr, 0, true},
+    {"m_bAlertIfLargeFile",
+        "大ファイル時に警告",
+        "サイズが大きいファイルを開く前に警告",
+        FieldKind::Bool, 1, 0, 1, nullptr, 0, true},
+    {"m_nAlertFileSize",
+        "警告ファイルサイズ (MB)",
+        "警告を始めるファイルサイズ (MB)",
+        FieldKind::Int, 10, 1, 10000, nullptr, 0, true},
+};
+
+// ============================================================
 // 「ウィンドウ」タブ — Phase 12 メタ化対象
 //   CommonSetting_Window に対応。
 // ============================================================
@@ -231,6 +316,16 @@ inline constexpr FieldDef kWindowFields[] = {
         "分割ウィンドウの縦スクロール同期",
         "分割ビュー間で垂直スクロールを同期",
         FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+
+    // タイトルバーキャプション (Phase 13b: String widget 対応)
+    {"m_szWindowCaptionActive",
+        "アクティブ時タイトル",
+        "ウィンドウがアクティブな時のタイトルバー (空: デフォルト)",
+        FieldKind::String, 0, 0, 0, nullptr, 0, true},
+    {"m_szWindowCaptionInactive",
+        "非アクティブ時タイトル",
+        "ウィンドウが非アクティブな時のタイトルバー (空: デフォルト)",
+        FieldKind::String, 0, 0, 0, nullptr, 0, true},
 };
 
 // ============================================================
@@ -445,6 +540,14 @@ inline constexpr FieldDef kBackupFields[] = {
         "バックアップパスの詳細設定",
         "バックアップ先フォルダを詳細設定する",
         FieldKind::Bool, 0, 0, 1, nullptr, 0, true},
+    {"m_szBackUpFolder",
+        "バックアップフォルダ",
+        "バックアップを作成するフォルダのパス",
+        FieldKind::String, 0, 0, 0, nullptr, 0, true},
+    {"m_szBackUpPathAdvanced",
+        "バックアップパス詳細",
+        "バックアップ詳細設定のフォルダパス",
+        FieldKind::String, 0, 0, 0, nullptr, 0, true},
 };
 
 // ============================================================
@@ -464,15 +567,31 @@ inline constexpr ChoiceItem kTimeFormatTypeChoices[] = {
 
 inline constexpr FieldDef kFormatFields[] = {
     {"m_nDateFormatType",
-        "日付書式",
+        "日付書式タイプ",
         "日付の挿入時に使う書式",
         FieldKind::Choice, 0, 0, 1,
         kDateFormatTypeChoices, std::size(kDateFormatTypeChoices), true},
+    {"m_szDateFormat",
+        "日付書式 (ユーザ指定)",
+        "日付書式タイプが「ユーザ指定」のときの書式 (例: yyyy-MM-dd)",
+        FieldKind::String, 0, 0, 0, nullptr, 0, true},
     {"m_nTimeFormatType",
-        "時刻書式",
+        "時刻書式タイプ",
         "時刻の挿入時に使う書式",
         FieldKind::Choice, 0, 0, 1,
         kTimeFormatTypeChoices, std::size(kTimeFormatTypeChoices), true},
+    {"m_szTimeFormat",
+        "時刻書式 (ユーザ指定)",
+        "時刻書式タイプが「ユーザ指定」のときの書式 (例: HH:mm:ss)",
+        FieldKind::String, 0, 0, 0, nullptr, 0, true},
+    {"m_szMidashiKigou",
+        "見出し記号",
+        "見出しとして扱う記号 (アウトライン解析用)",
+        FieldKind::String, 0, 0, 0, nullptr, 0, true},
+    {"m_szInyouKigou",
+        "引用符",
+        "引用符として扱う記号 (例: > | ）",
+        FieldKind::String, 0, 0, 0, nullptr, 0, true},
 };
 
 // ============================================================
@@ -504,7 +623,7 @@ inline constexpr TabDef kSettingsTabs[] = {
     {"window",    "ウィンドウ",   kWindowFields,   std::size(kWindowFields),   true},
     {"tabbar",    "タブバー",     kTabBarFields,   std::size(kTabBarFields),   true},
     {"edit",      "編集",         kEditFields,     std::size(kEditFields),     true},
-    {"file",      "ファイル",     nullptr, 0, false},
+    {"file",      "ファイル",     kFileFields,     std::size(kFileFields),     true},
     {"backup",    "バックアップ", kBackupFields,   std::size(kBackupFields),   true},
     {"format",    "書式",         kFormatFields,   std::size(kFormatFields),   true},
     {"filename",  "ファイル名表示", kFileNameFields, std::size(kFileNameFields), true},

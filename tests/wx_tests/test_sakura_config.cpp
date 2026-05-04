@@ -105,6 +105,39 @@ TEST(SakuraConfig, RecentFilesAddDeduplicateAndCap) {
     c.Save();
 }
 
+// === メタテーブル: String / Color round-trip (Phase 13b) ===
+TEST(SakuraConfig, MetaStringAndColorRoundTrip) {
+    {
+        SakuraConfig c;
+        c.SetMetaString(wxT("window"), wxT("m_szWindowCaptionActive"),
+                        wxT("Sakura - $f"));
+        c.SetMetaString(wxT("format"), wxT("m_szDateFormat"),
+                        wxT("yyyy-MM-dd"));
+        c.SetMetaColor (wxT("custom"), wxT("highlightColor"),
+                        wxColour(128, 200, 64));
+        c.Save();
+    }
+    {
+        SakuraConfig c;
+        c.Load();
+        EXPECT_EQ(c.GetMetaString(wxT("window"), wxT("m_szWindowCaptionActive")),
+                  wxT("Sakura - $f"));
+        EXPECT_EQ(c.GetMetaString(wxT("format"), wxT("m_szDateFormat")),
+                  wxT("yyyy-MM-dd"));
+        wxColour col = c.GetMetaColor(wxT("custom"), wxT("highlightColor"));
+        ASSERT_TRUE(col.IsOk());
+        EXPECT_EQ(col.Red(),   128);
+        EXPECT_EQ(col.Green(), 200);
+        EXPECT_EQ(col.Blue(),   64);
+
+        // 未設定キーは default
+        EXPECT_EQ(c.GetMetaString(wxT("window"), wxT("nonexistent"),
+                                  wxT("fallback")),
+                  wxT("fallback"));
+        EXPECT_FALSE(c.GetMetaColor(wxT("custom"), wxT("nonexistent")).IsOk());
+    }
+}
+
 // === メタテーブル汎用ストア (Phase 12) ===
 TEST(SakuraConfig, MetaStoreRoundTrip) {
     // 書き込み

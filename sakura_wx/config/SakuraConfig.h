@@ -79,6 +79,17 @@ public:
     int  GetMetaInt (const wxString& tab, const wxString& field, int def) const;
     void SetMetaInt (const wxString& tab, const wxString& field, int value);
 
+    // Phase 13b: String / Color サポート
+    wxString GetMetaString(const wxString& tab, const wxString& field,
+                           const wxString& def = wxEmptyString) const;
+    void     SetMetaString(const wxString& tab, const wxString& field,
+                           const wxString& value);
+    // Color は "R,G,B" 形式で String ストアに格納 (SyntaxColor と同じ規約)
+    wxColour GetMetaColor (const wxString& tab, const wxString& field,
+                           const wxColour& def = wxNullColour) const;
+    void     SetMetaColor (const wxString& tab, const wxString& field,
+                           const wxColour& value);
+
 private:
     std::unique_ptr<SakuraPlatform::IConfigStore> m_store;
 

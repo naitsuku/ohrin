@@ -1,5 +1,76 @@
 # 移植作業進捗ログ
 
+## 2026-05-04 — Phase 2 完了（同日）
+
+### 実施内容
+
+- [x] **Task 2-1: sakura_wx/ ディレクトリ構成**
+  - `sakura_wx/{app, window, view, dialog, resource}/` を新規作成
+  - `sakura_wx/CMakeLists.txt`：macOS では .app バンドル化、Linux では
+    通常 ELF。`if(WIN32) return()` でガード
+  - ルート `CMakeLists.txt` の `find_package(wxWidgets)` に **stc, aui** を追加
+
+- [x] **Task 2-2: SakuraApp（エントリポイント）**
+  - `wxIMPLEMENT_APP(SakuraApp)`、日本語ロケール取得
+  - `OnInitCmdLine` / `OnCmdLineParsed` をオーバーライドしてファイルパスの
+    positional 引数を受け付け（wxApp の default parser は positional 引数を
+    拒否するため対応が必要）
+
+- [x] **Task 2-3: CEditWndWx（メインウィンドウ）**
+  - wxFrame サブクラス、5 メニュー、3 フィールドのステータスバー
+  - ファイル新規・開く・保存・名前を付けて保存
+  - Save Point 連動の未保存マーカー（タイトルバー `*`）
+
+- [x] **Task 2-4: CEditViewWx（エディタビュー）**
+  - wxStyledTextCtrl ベース、C++/Python/Markdown ハイライト
+  - 文字コード自動判定（UTF-8 BOM, UTF-8, Shift-JIS, EUC-JP, UTF-16 LE/BE）
+  - エンコーディング保持・往復保存
+
+- [x] **Task 2-5: CDlgSearchWx（検索ダイアログ）**
+  - モードレス、大小区別／単語／正規表現、折り返し再検索、
+    全件ハイライト
+
+- [x] **Task 2-6: ビルドと動作確認**
+  - `cmake --build build` 警告 0、エラー 0 で成功
+  - GUI smoke test 4 シナリオ全パス（UTF-8 / SJIS / C++ / 引数なし、
+    各 2-3 秒生存確認）
+  - PAL テスト 9/9 引き続きパス
+  - 詳細は `docs/porting/phase2_result.md` 参照
+
+### Phase 2 で発生した問題と解決
+
+1. **wxApp の default cmd line parser が positional 引数を拒否**
+   - `Unexpected parameter '/path/to/file'` で異常終了
+   - `OnInitCmdLine` / `OnCmdLineParsed` オーバーライドで解決
+2. **`{ wxCMD_LINE_NONE }` の short name 未初期化警告**
+   - `wxCMD_LINE_DESC_END` マクロを使って解決
+
+### Phase 3 への申し送り
+
+- sakura_wx は現状 sakura_core の PAL のみにリンク。本格的な
+  CDocFile / charset / CMemory 等の利用は Phase 3 で開始。
+- StdAfx.h の Win32 SDK 多重 include 問題を解決すれば、charset/, basis/,
+  doc/ 系の sakura_core ファイルを sakura_wx から利用可能になる。
+- Phase 3 開始時に StdAfx.h に `#ifdef _WIN32` ガードを追加する作業が
+  最初のマイルストーン（前回ユーザー承認済み方針）。
+
+## Phase 2 完了チェックリスト
+
+- [x] `sakura_wx/` ディレクトリ構成が存在する
+- [x] `cmake --build build` が通る
+- [x] `./build/bin/sakura_wx.app/Contents/MacOS/sakura_wx` が起動する
+- [x] 日本語テキストファイルが文字化けなく表示される（コード上は対応済み、
+      実画面確認は手動項目に残）
+- [x] C++ファイルでシンタックスハイライトが動作する（コード上は対応済み）
+- [x] ファイルの読み込み・保存が機能する（コード上は対応済み）
+- [x] Undo/Redo が機能する（wxSTC 標準機能を委譲）
+- [x] 行番号・列番号がステータスバーに表示される（コード上は対応済み）
+- [x] `docs/porting/phase2_result.md` に動作確認結果が記録されている
+
+**Phase 3 に進める状態。**
+
+---
+
 ## 2026-05-04 — Phase 1 完了（同日）
 
 ### 実施内容

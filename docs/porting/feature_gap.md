@@ -1,6 +1,6 @@
 # 機能差分一覧 — Win32 サクラエディタ vs wxWidgets 移植版
 
-最終更新: 2026-05-04 (Phase 3.5 完了時点)
+最終更新: 2026-05-04 (Phase 7 完了時点)
 
 本ドキュメントは Win32 オリジナル版 (`src/`) と wxWidgets 移植版 (`sakura_wx/`)
 の機能差分を一覧化し、各機能の実装フェーズ計画と取捨選択方針を明示する。
@@ -27,9 +27,9 @@
 | 折り返し | ✅ | ✅ | Phase 2 | 単純 ON/OFF。複数モード（指定桁、ウィンドウ幅）は Phase 8 |
 | 自動インデント | ✅ | ✅ | Phase 2 | 前行のインデントを継承 |
 | 矩形選択 | ✅ | 🔄 | **Phase 8** | wxSTC は Alt+ドラッグ対応。コピー/貼り付け挙動の整備が必要 |
-| 折りたたみ | ✅ | 📅 | **Phase 7** | wxSTC SetFoldFlags、言語別レキサー対応 |
-| ブックマーク | ✅ | 📅 | **Phase 7** | wxSTC マージン2 + 次へ/前へ + 一覧 |
-| 全角空白・タブ可視化 | ✅ | 📅 | **Phase 7** | SetViewWhiteSpace + 全角空白用カスタム描画 |
+| 折りたたみ | ✅ | ✅ | Phase 7 | wxSTC SetFoldFlags、C++/Python レキサー対応 |
+| ブックマーク | ✅ | ✅ | Phase 7 | マージン1 sensitive + F2/F3/Shift+F3 |
+| 全角空白・タブ可視化 | ✅ | ✅ | Phase 7 | SetViewWhiteSpace + U+3000 専用インジケータ |
 
 ### 検索系
 
@@ -39,8 +39,8 @@
 | 置換ダイアログ | ✅ | ✅ | Phase 5-1 | Ctrl+H |
 | 大小区別／単語単位／正規表現 | ✅ | ✅ | Phase 2/5 | wxSTC_FIND_* フラグ |
 | すべてハイライト | ✅ | ✅ | Phase 2 | Scintilla インジケータ |
-| Grep（フォルダ検索） | ✅ | 📅 | **Phase 6** | wxThread + std::filesystem + wxListCtrl |
-| Grep 結果ジャンプ | ✅ | 📅 | **Phase 6** | ダブルクリックで該当行へ |
+| Grep（フォルダ検索） | ✅ | ✅ | Phase 6 | wxThread + std::filesystem + wxListCtrl |
+| Grep 結果ジャンプ | ✅ | ✅ | Phase 7 | ダブルクリックで該当行へ |
 
 ### ファイル操作
 
@@ -48,11 +48,11 @@
 |---|:---:|:---:|---|---|
 | 新規・開く・保存・名前を付けて保存 | ✅ | ✅ | Phase 2 | |
 | 文字コード自動判定 | ✅ | ✅ | Phase 2/4 | UTF-8/BOM, SJIS, EUC-JP, UTF-16 LE/BE |
-| 文字コード手動指定（ステータスバー UI） | ✅ | 📅 | **Phase 7** | 再読み込み／変換の選択肢付き |
-| 改行コード手動指定 | ✅ | 📅 | **Phase 7** | wxSTC SetEOLMode + 一括変換 |
-| 改行コード可視化 | ✅ | 📅 | **Phase 7** | SetViewEOL + 表示モード調整 |
-| 最近使ったファイル | ✅ | 🔄 | **Phase 7** | SakuraConfig は実装済み、メニュー UI 未 |
-| ファイルドロップ | ✅ | 📅 | **Phase 7** | wxDropTarget |
+| 文字コード手動指定（メニュー） | ✅ | ✅ | Phase 7 | 6 エンコーディングで保存／再読み込み |
+| 改行コード手動指定 | ✅ | ✅ | Phase 7 | CRLF/LF/CR、ConvertEOLs で一括変換 |
+| 改行コード可視化 | ✅ | ⚠️ | **Phase 8** | wxSTC SetViewEOL の有効化メニューが未 |
+| 最近使ったファイル | ✅ | ✅ | Phase 7 | ファイルメニューのサブメニューに動的構築 |
+| ファイルドロップ | ✅ | ✅ | Phase 7 | wxFileDropTarget でフレーム＋ビューに登録 |
 | ファイル比較 | ✅ | ❌ | – | 後回し（外部ツール `meld` / `FileMerge` 連携で代替を推奨） |
 
 ### ウィンドウ／タブ
@@ -60,10 +60,10 @@
 | 機能 | Win32 | wx | フェーズ | メモ |
 |---|:---:|:---:|---|---|
 | メインウィンドウ | ✅ | ✅ | Phase 2 | wxFrame |
-| メニューバー | ✅ | 🔄 | **Phase 7** | 5 メニュー実装済み、項目数の充実が必要 |
+| メニューバー | ✅ | ✅ | Phase 2/7 | 5 メニュー、Phase 7 で項目大幅拡充 |
 | ステータスバー | ✅ | ✅ | Phase 2 | 3 フィールド |
-| ツールバー | ✅ | 📅 | **Phase 7** | wxToolBar、`src/main/resources/images/my_icons.bmp` を流用 |
-| タブ表示（複数ファイル） | ✅ | 📅 | **Phase 7** | wxAuiNotebook |
+| ツールバー | ✅ | ✅ | Phase 7 | `my_icons.bmp` を流用、初期 12 アイコン |
+| タブ表示（複数ファイル） | ✅ | ✅ | Phase 7 | wxAuiNotebook、各タブが独立 CEditViewWx |
 | 分割ウィンドウ | ✅ | ➖ | – | wxSplitterWindow で実装可だが優先度低 |
 
 ### ダイアログ・設定
@@ -71,7 +71,7 @@
 | 機能 | Win32 | wx | フェーズ | メモ |
 |---|:---:|:---:|---|---|
 | 設定の永続化 | ✅ | ✅ | Phase 3 | INI ファイル経由（PAL IConfigStore） |
-| 設定ダイアログ（基本タブ） | ✅ | 📅 | **Phase 7** | フォント／表示／キーバインド一覧 |
+| 設定ダイアログ（基本タブ） | ✅ | ✅ | Phase 7 | wxNotebook 3 タブ（全般／フォント／キーバインド一覧） |
 | 設定ダイアログ（タイプ別） | ✅ | 📅 | **Phase 8** | シンタックス色、キーワード、コメント記号、インデント |
 | 設定ダイアログ（マクロ／外部ツール） | ✅ | ❌ | – | マクロ機能を断念したため不要 |
 | フォント選択ダイアログ | ✅ | ✅ | Phase 2 | wxFontDialog 直接呼び出し |

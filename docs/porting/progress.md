@@ -1,5 +1,123 @@
 # 移植作業進捗ログ
 
+## 2026-05-04 — Phase 7 完了（同日、Tier 1 GUI 機能群）
+
+### 実施内容
+
+- [x] **Grep 行ジャンプ完成**（Phase 6 carryover）
+  - `CEditWndWx::OpenFileAtLine()` 追加。`CEditViewWx::GotoLine` 経由で 1-based
+    行番号にジャンプ。`CDlgGrepWx::OnResultActivated` から呼ぶ。
+
+- [x] **文字コード手動指定 UI**（表示メニュー → 文字コード サブメニュー）
+  - 6 エンコーディング（UTF-8 / UTF-8 BOM / Shift-JIS / EUC-JP / UTF-16 LE/BE）
+    に対し「として保存」と「として再読み込み」をペア提供
+  - `EVT_MENU_RANGE` で一括処理
+
+- [x] **改行コード手動指定 UI**（表示メニュー → 改行コード サブメニュー）
+  - CRLF / LF / CR の選択。`wxStyledTextCtrl::ConvertEOLs` で全行を一括変換
+
+- [x] **全角空白・タブ可視化**
+  - `wxSTC_WS_VISIBLEALWAYS` 適用 + 全角空白 (U+3000) 検出して
+    インジケータ #1（黄色 STRAIGHTBOX）でハイライト
+
+- [x] **コード折りたたみ**
+  - マージン2 を `wxSTC_MASK_FOLDERS` で活性化
+  - C++/Python レキサーで `fold` プロパティ ON
+  - マージンクリックで `ToggleFold`
+
+- [x] **最近使ったファイルメニュー**
+  - SakuraConfig の `m_recentFiles` を読み込んでファイルメニューに動的構築
+  - `OpenFile` 時に AddRecentFile + Save + RefreshRecentFilesMenu
+  - 「履歴をクリア」項目付き
+
+- [x] **ファイルドロップ**
+  - `wxFileDropTarget` を継承した `SakuraFileDropTarget`
+  - フレーム本体 + 各 CEditViewWx に SetDropTarget で受付
+
+- [x] **ブックマーク UI**
+  - マージン1 を sensitive にしてクリック toggle
+  - F2: toggle、F3: 次へ、Shift+F3: 前へ、メニューにクリア項目
+  - `MarkerNext` / `MarkerPrevious` で巡回
+
+- [x] **ツールバー（オリジナル `my_icons.bmp` 流用）**
+  - `sakura_wx/window/CSakuraToolBar.{h,cpp}` を新規追加
+  - CMake の POST_BUILD で `src/main/resources/images/my_icons.bmp` を
+    .app/Contents/Resources/ または `<bin>/resources/` へコピー
+  - 実行時パス探索: bundle → bin/resources/ → 開発フォールバック
+    （`SAKURA_RESOURCE_SRCDIR` を CMake で焼き込み）
+  - 初期 12 アイコン（New / Open / Save / SaveAs / Undo / Redo /
+    Cut / Copy / Paste / Find / Replace）を strip 1 行目から推定で抽出
+
+- [x] **タブ表示（wxAuiNotebook）**
+  - メインビュー領域を `wxAuiNotebook` に置換
+  - 各タブが独立した `CEditViewWx` + `TabState{currentFile, modified}`
+  - `m_editView` / `m_currentFile` / `m_modified` をアクティブタブの
+    ミラーとして維持し、既存ロジックの大部分を再利用
+  - `OpenFile` は既存タブ再利用 / 新規タブ作成を判断（無題かつ未編集なら再利用）
+  - Ctrl+W で現在タブを閉じる、最後のタブを閉じたら自動で空タブを作成
+  - `EVT_AUINOTEBOOK_PAGE_CHANGED` で SyncMirrorFromActive 自動実行
+
+- [x] **CStrictInteger C++20 spaceship ガード**（Phase 6 carryover）
+  - `STRICTINT_LEFT_INT_CMP(LONG)` を `#ifdef _WIN32` で囲い、
+    非 Windows での `LONG = int = int32_t` による重複定義を回避
+  - 結果として `sakura_core/CMakeLists.txt` に `basis/CStrictInteger.cpp` を
+    収録できた（取り込み 8 → 9 ファイル）
+
+- [x] **設定ダイアログ基本タブ**
+  - `sakura_wx/dialog/CDlgSettingsWx.{h,cpp}` を新規追加
+  - wxNotebook 3 タブ: 全般 / フォント / キーバインド一覧
+  - 全般: 行番号、折り返し、タブ幅 (wxSpinCtrl 1-16)
+  - フォント: wxFontPickerCtrl で SakuraConfig に保存
+  - キーバインド一覧: 主要 11 ショートカットを wxListBox 表示（参照のみ）
+  - OK 時に SakuraConfig.Save → メインウィンドウのアクティブビューに即時反映
+  - 表示メニューから「設定...」で開く（旧「フォント設定」を置き換え）
+
+### 検証結果
+
+- 30/30 全テストパス
+- GUI smoke test 4 シナリオ全パス（タブ + ツールバー + 設定ダイアログ追加後）
+- ツールバーアイコンが .app バンドルに正しくコピーされている
+
+### Phase 7 で発生した課題
+
+1. **タブのミラーフィールド設計**: `m_editView` / `m_currentFile` /
+   `m_modified` をアクティブタブのミラーとして維持する設計を選択。
+   `SyncMirrorFromActive()` を介して整合性を保つ。リファクタを最小化できた反面、
+   2 重持ちのため将来的には完全廃止が望ましい。Phase 8 で見直す候補。
+2. **ツールバーアイコンの index 推測**: `my_icons.bmp` の各セルが
+   どのコマンドに対応するかは upstream の `MainMenu.ini` をパースする必要があるが、
+   Phase 7 では strip 1 行目を順番通り使う簡易実装に留めた。Phase 8 で
+   `MainMenu.ini` をパースして正規化する候補。
+3. **設定の即時反映**: 設定ダイアログ OK 時にアクティブビューだけ反映、
+   他のタブには次のフォーカス時に反映する。Phase 8 で全タブ即時反映に拡張。
+
+### Phase 7 完了チェックリスト（Tier 1）
+
+- [x] ツールバー（オリジナル icon 流用）
+- [x] タブ表示（wxAuiNotebook）
+- [x] 文字コード手動指定 UI
+- [x] 改行コード手動指定 UI
+- [x] ブックマーク UI
+- [x] 全角空白・タブ可視化
+- [x] コード折りたたみ
+- [x] 最近使ったファイルメニュー
+- [x] ファイルドロップ
+- [x] 設定ダイアログ基本タブ
+- [x] Grep 結果からの行ジャンプ完成
+- [x] CStrictInteger C++20 互換ガード
+
+### Phase 8 への申し送り
+
+- アウトライン解析（簡易版: 関数定義 regex + wxTreeCtrl サイドパネル）
+- 印刷／印刷プレビュー（wxPrintout / wxPreviewFrame）
+- 矩形選択ハンドリングの整備
+- 設定ダイアログ タイプ別タブ（シンタックス色、キーワード、コメント、インデント）
+- ツールバー アイコン index の MainMenu.ini ベースの正規化
+- タブのミラーフィールド廃止（ActiveState() 直接参照に統一）
+- `util/string_ex.h` の portable 化（charset/, doc/ 系の取り込みを解放）
+
+---
+
 ## 2026-05-04 — Phase 6 部分完了（同日）
 
 ### 実施内容

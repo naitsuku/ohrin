@@ -50,15 +50,18 @@ list(APPEND SAKURA_CORE_SOURCES
 )
 
 # ------------------------------------------------------------
-# Phase 9: win32_types_stub.h を CHAR/_MAX_PATH/STRUNCATE/_vsnprintf_s 等で
-# 拡充したが、basis/CMyString.cpp と util/string_ex.cpp は charset/ 経由で
-# GDI (LOGFONT, FontHolder, SelectObject 等) に深く依存しており、Phase 9 では
-# 取り込み未完。基盤強化は Phase 10 以降の足がかりとして残す。
+# Phase 10 試行ログ:
+# win32_types_stub.h に LOGFONT / DeleteObject / SelectObject /
+# IsValidCodePage / LF_FACESIZE 等 GDI no-op シムを追加して charset/ 取り込みを
+# 試行したが、以下の追加の壁が判明：
+#   - charset/codeutil.h: WideCharToMultiByte / MultiByteToWideChar
+#     (Win32 API、PAL では iconv / ICU の実装が必要)
+#   - charset/CEuc.h: <mbstring.h> (MSVC 専用ヘッダ)
+#   - func/CKeyBind.h: Funccode_enum.h (HeaderMake で自動生成、Win32 ビルド限定)
+#   - charset/codechecker.h:322 シンタックスエラー (WCODE 名前空間問題)
 #
-# 試行ログ (cmake --build) で確認した残課題:
-#   - charset/charcode.h: LOGFONT / FontHolder / MemDcHolder
-#   - charset/charset.h: IsValidCodePage (Win32 API)
-#   - basis/CMyString.h: filesystem::path → wstring 変換問題
+# これらの解決は大規模な PAL 実装が必要なため Phase 11+ に持ち越す。
+# 本セッションのシム拡充は将来の取り込み土台として残す。
 # ------------------------------------------------------------
 
 # ------------------------------------------------------------

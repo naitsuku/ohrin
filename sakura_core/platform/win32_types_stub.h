@@ -143,6 +143,55 @@ struct SYSTEMTIME {
     WORD wHour, wMinute, wSecond, wMilliseconds;
 };
 
+// LOGFONT (GDI フォント記述子の最小 stub)
+// charset/charcode.h 等が値型として参照しているため stub を提供。
+// 非 Windows ビルドでは実際に使われないので中身は単なるデータ容器。
+#ifndef LF_FACESIZE
+#define LF_FACESIZE 32
+#endif
+struct LOGFONTW {
+    LONG  lfHeight;
+    LONG  lfWidth;
+    LONG  lfEscapement;
+    LONG  lfOrientation;
+    LONG  lfWeight;
+    BYTE  lfItalic;
+    BYTE  lfUnderline;
+    BYTE  lfStrikeOut;
+    BYTE  lfCharSet;
+    BYTE  lfOutPrecision;
+    BYTE  lfClipPrecision;
+    BYTE  lfQuality;
+    BYTE  lfPitchAndFamily;
+    WCHAR lfFaceName[LF_FACESIZE];
+};
+struct LOGFONTA {
+    LONG  lfHeight;
+    LONG  lfWidth;
+    LONG  lfEscapement;
+    LONG  lfOrientation;
+    LONG  lfWeight;
+    BYTE  lfItalic;
+    BYTE  lfUnderline;
+    BYTE  lfStrikeOut;
+    BYTE  lfCharSet;
+    BYTE  lfOutPrecision;
+    BYTE  lfClipPrecision;
+    BYTE  lfQuality;
+    BYTE  lfPitchAndFamily;
+    CHAR  lfFaceName[LF_FACESIZE];
+};
+using LOGFONT = LOGFONTW;  // sakura_core は wide build 前提
+
+// GDI 解放関数 stub (no-op)。CCharWidthCache の ResourceHolder で使う。
+// 非 Windows では GDI ハンドルが nullptr のままなので no-op で問題ない。
+inline BOOL DeleteObject(HGDIOBJ /*obj*/) { return TRUE; }
+inline BOOL DeleteDC(HDC /*dc*/)          { return TRUE; }
+inline HGDIOBJ SelectObject(HDC /*dc*/, HGDIOBJ obj) { return obj; }
+
+// IsValidCodePage stub (常に true)
+inline BOOL IsValidCodePage(UINT /*cp*/) { return TRUE; }
+
 // ============================================================
 // 色 (GDI 由来だが値型として広く使われるため stub に残す)
 // ============================================================

@@ -1,5 +1,6 @@
 #pragma once
 #include <wx/panel.h>
+#include <wx/timer.h>
 #include <wx/treectrl.h>
 
 #include <vector>
@@ -32,14 +33,21 @@ public:
     /// 現在のアクティブビューの内容で再構築。view が nullptr ならクリア。
     void Rebuild(CEditViewWx* view);
 
+    /// 編集中の自動更新を有効化。view の OnModified からこのインスタンスへ
+    /// 通知を流し、debounce タイマで Rebuild する。
+    void NotifyModified();
+
 private:
     void OnItemActivated(wxTreeEvent& event);
+    void OnDebounceTimer(wxTimerEvent& event);
 
     CEditWndWx*  m_mainWnd = nullptr;
     wxTreeCtrl*  m_tree    = nullptr;
     CEditViewWx* m_currentView = nullptr;
+    wxTimer      m_debounceTimer;
 
-    struct Hit { int line; wxString label; };
+    /// シンボル 1 件: 行番号、表示ラベル、深さ (0=トップ、1=ネスト1段、…)
+    struct Hit { int line; wxString label; int depth; };
     std::vector<Hit> ExtractCpp(const wxString& text) const;
     std::vector<Hit> ExtractPython(const wxString& text) const;
     std::vector<Hit> ExtractMarkdown(const wxString& text) const;

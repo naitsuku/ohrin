@@ -13,6 +13,7 @@ namespace sakura_wx::ui {
 CSakuraOutline::CSakuraOutline(wxWindow* parent, CEditWndWx* mainWnd)
     : wxPanel(parent)
     , m_mainWnd(mainWnd)
+    , m_debounceTimer(this)
 {
     auto* sizer = new wxBoxSizer(wxVERTICAL);
     auto* label = new wxStaticText(this, wxID_ANY, wxT("アウトライン"));
@@ -29,6 +30,17 @@ CSakuraOutline::CSakuraOutline(wxWindow* parent, CEditWndWx* mainWnd)
 
     m_tree->Bind(wxEVT_TREE_ITEM_ACTIVATED,
                  &CSakuraOutline::OnItemActivated, this);
+    Bind(wxEVT_TIMER, &CSakuraOutline::OnDebounceTimer, this);
+}
+
+void CSakuraOutline::NotifyModified() {
+    // 連続編集中は最後のキー入力から 800ms 後に 1 回だけ Rebuild する。
+    m_debounceTimer.Stop();
+    m_debounceTimer.StartOnce(800);
+}
+
+void CSakuraOutline::OnDebounceTimer(wxTimerEvent& /*event*/) {
+    if (m_currentView) Rebuild(m_currentView);
 }
 
 void CSakuraOutline::Rebuild(CEditViewWx* view) {
@@ -39,17 +51,9 @@ void CSakuraOutline::Rebuild(CEditViewWx* view) {
 
     wxString text = view->GetText();
 
-    // ファイル拡張子を wxAuiNotebook のタブタイトルから推定する簡易実装。
-    // (CEditWndWx::TabState は private のため公開アクセサが無い)
-    wxString ext;
-    if (auto* nb = dynamic_cast<wxAuiNotebook*>(view->GetParent())) {
-        int sel = nb->GetSelection();
-        if (sel != wxNOT_FOUND) {
-            wxString tabName = nb->GetPageText(sel);
-            if (tabName.StartsWith(wxT("* "))) tabName = tabName.Mid(2);
-            ext = wxFileName(tabName).GetExt().Lower();
-        }
-    }
+    // CEditViewWx::GetCurrentPath() で現在のファイルパスを取得（Phase 9 で正規化）。
+    wxString path = view->GetCurrentPath();
+    wxString ext = wxFileName(path).GetExt().Lower();
 
     std::vector<Hit> hits;
     if (ext == wxT("cpp") || ext == wxT("cxx") || ext == wxT("cc") ||
@@ -65,15 +69,33 @@ void CSakuraOutline::Rebuild(CEditViewWx* view) {
         hits = ExtractCpp(text);
     }
 
+    // depth に従って階層化挿入。直近の同 depth or 浅い深度の親を保持。
+    std::vector<wxTreeItemId> stack; // index = depth
+    stack.push_back(root);
+
     for (auto& h : hits) {
+        int d = h.depth;
+        if (d < 0) d = 0;
+        if (d >= static_cast<int>(stack.size())) {
+            // 親が無ければルート直下にフォールバック
+            d = static_cast<int>(stack.size()) - 1;
+            if (d < 0) d = 0;
+        }
+        wxTreeItemId parent = stack[d];
         wxString display = wxString::Format(wxT("%4d  %s"), h.line + 1, h.label);
-        auto item = m_tree->AppendItem(root, display);
-        // 行番号を ClientData に格納
-        m_tree->SetItemData(item, new wxTreeItemData());
-        // wxTreeItemData は基底クラスなので派生で行番号を持つ
-        // 簡易に AppendItem の戻り値と並列の vector で管理する手もあるが、
-        // ここでは tree item のラベル先頭の数字をパースする方式にする。
+        auto item = m_tree->AppendItem(parent, display);
+
+        // この節を親候補として next-depth スロットに記録
+        if (d + 1 < static_cast<int>(stack.size())) {
+            stack[d + 1] = item;
+            // それ以降は無効化（再代入で順次上書きされる）
+            stack.resize(d + 2);
+        } else {
+            stack.push_back(item);
+        }
     }
+
+    m_tree->ExpandAll();
 }
 
 namespace {
@@ -120,13 +142,22 @@ CSakuraOutline::ExtractCpp(const wxString& text) const {
             std::wstring lineStr = s.substr(start, i - start);
             std::wsmatch m;
             if (std::regex_search(lineStr, m, reClass)) {
+                // class/struct/namespace は depth 0 (ルート)
                 out.push_back({line,
                     wxString::Format(wxT("[%s] %s"),
-                        wxString(m[1].str()), wxString(m[2].str()))});
+                        wxString(m[1].str()), wxString(m[2].str())),
+                    /*depth=*/0});
             } else if (std::regex_search(lineStr, m, reFunc)) {
-                // ; で終わる宣言はスキップ
                 if (lineStr.find(L';') == std::wstring::npos) {
-                    out.push_back({line, wxString(m[1].str())});
+                    // 関数定義: 行頭のスペース 4 = depth 1 と仮定
+                    int indentSpaces = 0;
+                    for (auto c : lineStr) {
+                        if (c == L' ') ++indentSpaces;
+                        else if (c == L'\t') indentSpaces += 4;
+                        else break;
+                    }
+                    int depth = (indentSpaces >= 2) ? 1 : 0;
+                    out.push_back({line, wxString(m[1].str()), depth});
                 }
             }
             ++line;
@@ -154,7 +185,15 @@ CSakuraOutline::ExtractPython(const wxString& text) const {
                 wxString kind(m[1].str());
                 wxString name(m[2].str());
                 wxString prefix = (kind == wxT("class")) ? wxT("[class] ") : wxT("");
-                out.push_back({line, prefix + name});
+                // Python のインデント = 階層
+                int indentSpaces = 0;
+                for (auto c : lineStr) {
+                    if (c == L' ') ++indentSpaces;
+                    else if (c == L'\t') indentSpaces += 4;
+                    else break;
+                }
+                int depth = indentSpaces / 4;
+                out.push_back({line, prefix + name, depth});
             }
             ++line;
             start = i + 1;
@@ -177,10 +216,10 @@ CSakuraOutline::ExtractMarkdown(const wxString& text) const {
             if (!lineStr.empty() && lineStr.back() == L'\r') lineStr.pop_back();
             std::wsmatch m;
             if (std::regex_match(lineStr, m, reHead)) {
-                size_t depth = m[1].length();
-                wxString indent;
-                for (size_t k = 1; k < depth; ++k) indent += wxT("  ");
-                out.push_back({line, indent + wxString(m[2].str())});
+                size_t hashCount = m[1].length();  // # の数 = 見出しレベル
+                int depth = static_cast<int>(hashCount) - 1;  // 0-based
+                if (depth < 0) depth = 0;
+                out.push_back({line, wxString(m[2].str()), depth});
             }
             ++line;
             start = i + 1;

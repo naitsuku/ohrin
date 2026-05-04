@@ -481,11 +481,10 @@ void CEditViewWx::UpdateStatusBarPos() {
 }
 
 void CEditViewWx::OnModified(wxStyledTextEvent& event) {
-    // 実テキストの挿入／削除でだけ [EOF] 再配置する。
-    // EOLAnnotationSetText/ClearAll は SC_MOD_CHANGEEOLANNOTATION を発火するので、
-    // それを拾って再帰すると無限ループでクラッシュ (実機で stack overflow を確認)。
     const int mt = event.GetModificationType();
     const bool textChanged = (mt & (wxSTC_MOD_INSERTTEXT | wxSTC_MOD_DELETETEXT)) != 0;
+
+    // [EOF] 再配置 (再帰回避ガード付き)
     if (m_showEofMark && textChanged && !m_updatingEofMark) {
         m_updatingEofMark = true;
         int last = GetLineCount() - 1;
@@ -494,6 +493,14 @@ void CEditViewWx::OnModified(wxStyledTextEvent& event) {
         EOLAnnotationSetText(last, "[EOF]");
         m_updatingEofMark = false;
     }
+
+    // アウトラインへの自動更新通知 (debounce タイマで実 Rebuild)
+    if (textChanged) {
+        if (auto* frame = GetParentFrame()) {
+            frame->NotifyOutlineDirty();
+        }
+    }
+
     event.Skip();
 }
 

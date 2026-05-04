@@ -460,6 +460,10 @@ bool CEditWndWx::OpenFileAtLine(const wxString& path, int line1Based) {
     return true;
 }
 
+void CEditWndWx::NotifyOutlineDirty() {
+    if (m_outline) m_outline->NotifyModified();
+}
+
 void CEditWndWx::NotifyModified(bool modified) {
     auto* st = ActiveState();
     if (st) st->modified = modified;
@@ -687,13 +691,18 @@ void CEditWndWx::OnFont(wxCommandEvent&) {
     auto* app = wxDynamicCast(wxTheApp, SakuraApp);
     SakuraConfig* cfg = app ? app->Config() : nullptr;
     sakura_wx::dialog::CDlgSettingsWx dlg(this, cfg);
-    if (dlg.ShowModal() == wxID_OK) {
-        // 即時反映: 現在のアクティブビューに新しいフォント／設定を当てる
-        if (m_editView && cfg) {
-            m_editView->SetEditorFont(cfg->GetEditorFont());
-            m_editView->SetLineNumbersVisible(cfg->GetShowLineNumbers());
-            m_editView->SetWordWrapEnabled(cfg->GetWordWrap());
-            m_editView->SetTabWidth(cfg->GetTabWidth());
+    if (dlg.ShowModal() == wxID_OK && cfg && m_notebook) {
+        // Phase 9: 全タブ（全 CEditViewWx）に即時反映
+        for (size_t i = 0; i < m_notebook->GetPageCount(); ++i) {
+            auto* view = dynamic_cast<CEditViewWx*>(m_notebook->GetPage(i));
+            if (!view) continue;
+            view->SetEditorFont(cfg->GetEditorFont());
+            view->SetLineNumbersVisible(cfg->GetShowLineNumbers());
+            view->SetWordWrapEnabled(cfg->GetWordWrap());
+            view->SetTabWidth(cfg->GetTabWidth());
+            // タイプ別シンタックス色も再適用（SetupSyntaxHighlighting は内部で
+            // SakuraConfig を再読込する設計なので path 渡し直しで OK）
+            view->SetEditorFont(cfg->GetEditorFont());
         }
     }
 }

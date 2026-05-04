@@ -25,6 +25,10 @@ public:
     bool LoadFile(const wxString& path);
     bool SaveFile(const wxString& path);
 
+    /// 現在開いているファイルパス (空 = 無題)。
+    /// LoadFile / SaveFile 成功時に更新される。
+    const wxString& GetCurrentPath() const { return m_currentPath; }
+
     // --- 表示設定 ---
     void SetLineNumbersVisible(bool visible);
     void SetWordWrapEnabled(bool enabled);

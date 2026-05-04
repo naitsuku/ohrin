@@ -40,6 +40,9 @@ public:
     // --- ファイルを開いて指定行へジャンプ（Grep 結果ダブルクリック等） ---
     bool OpenFileAtLine(const wxString& path, int line1Based);
 
+    // --- アウトライン dirty 通知 (CEditViewWx::OnModified から呼ばれる) ---
+    void NotifyOutlineDirty();
+
     // --- タブ管理 ---
     int  AddNewTab(const wxString& title = wxT("無題"));  // 新規タブ作成、index を返す
     bool ActivateTabForFile(const wxString& path);         // 既に開いているタブをアクティブ化

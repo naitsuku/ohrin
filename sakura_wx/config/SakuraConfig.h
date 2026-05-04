@@ -56,6 +56,20 @@ public:
 
     static constexpr int kMaxRecentFiles = 10;
 
+    // === タイプ別シンタックス色設定 (Phase 8 追加) ===
+    // type: "cpp" / "py" / "md" / "default"
+    // kind: "comment" / "string" / "keyword" / "number"
+    // 未設定なら wxNullColour を返す → 呼出側でデフォルト色にフォールバック。
+    wxColour GetSyntaxColor(const wxString& type, const wxString& kind) const;
+    void     SetSyntaxColor(const wxString& type, const wxString& kind,
+                            const wxColour& c);
+    void     ClearSyntaxColors();
+
+    static constexpr const wchar_t* kSynKindComment = L"comment";
+    static constexpr const wchar_t* kSynKindString  = L"string";
+    static constexpr const wchar_t* kSynKindKeyword = L"keyword";
+    static constexpr const wchar_t* kSynKindNumber  = L"number";
+
 private:
     std::unique_ptr<SakuraPlatform::IConfigStore> m_store;
 

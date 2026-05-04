@@ -2,6 +2,8 @@
 #include "config/SakuraConfig.h"
 
 #include <wx/checkbox.h>
+#include <wx/choice.h>
+#include <wx/clrpicker.h>
 #include <wx/fontpicker.h>
 #include <wx/listbox.h>
 #include <wx/sizer.h>
@@ -12,7 +14,28 @@ namespace sakura_wx::dialog {
 
 wxBEGIN_EVENT_TABLE(CDlgSettingsWx, wxDialog)
     EVT_BUTTON(wxID_OK, CDlgSettingsWx::OnOk)
+    EVT_BUTTON(wxID_RESET, CDlgSettingsWx::OnColorReset)
 wxEND_EVENT_TABLE()
+
+namespace {
+// タブのタイプ名 (UI 表示) と config キー名のペア
+struct TypeEntry { const wxChar* label; const wxChar* key; };
+const TypeEntry kTypes[] = {
+    { wxT("C / C++"),  wxT("cpp")     },
+    { wxT("Python"),   wxT("py")      },
+    { wxT("Markdown"), wxT("md")      },
+    { wxT("既定"),     wxT("default") },
+};
+
+// 各タイプ kind のサクラ初期色 (CEditViewWx と同じ値)
+wxColour DefaultColor(const wxString& /*type*/, const wxString& kind) {
+    if (kind == wxT("comment")) return wxColour(  0, 128,   0);
+    if (kind == wxT("string"))  return wxColour(128,   0,  64);
+    if (kind == wxT("keyword")) return wxColour(  0,   0, 255);
+    if (kind == wxT("number"))  return wxColour(235,   0,   0);
+    return *wxBLACK;
+}
+} // namespace
 
 CDlgSettingsWx::CDlgSettingsWx(wxWindow* parent, SakuraConfig* config)
     : wxDialog(parent, wxID_ANY, wxT("設定"),
@@ -43,6 +66,11 @@ void CDlgSettingsWx::BuildUI() {
     auto* pageKey = new wxPanel(m_notebook);
     BuildTabKeybind(pageKey);
     m_notebook->AddPage(pageKey, wxT("キーバインド"));
+
+    // タブ 4: タイプ別シンタックス色 (Phase 8 追加)
+    auto* pageTypes = new wxPanel(m_notebook);
+    BuildTabTypes(pageTypes);
+    m_notebook->AddPage(pageTypes, wxT("タイプ別"));
 
     outer->Add(m_notebook, 1, wxEXPAND | wxALL, 8);
 
@@ -135,15 +163,123 @@ void CDlgSettingsWx::BuildTabKeybind(wxPanel* page) {
     page->SetSizer(sizer);
 }
 
+void CDlgSettingsWx::BuildTabTypes(wxPanel* page) {
+    auto* sizer = new wxBoxSizer(wxVERTICAL);
+
+    // タイプ選択
+    auto* typeRow = new wxBoxSizer(wxHORIZONTAL);
+    typeRow->Add(new wxStaticText(page, wxID_ANY, wxT("タイプ:")), 0,
+                 wxALIGN_CENTER_VERTICAL | wxRIGHT, 6);
+    wxArrayString choices;
+    for (auto& t : kTypes) choices.Add(t.label);
+    m_typeChoice = new wxChoice(page, wxID_ANY,
+                                wxDefaultPosition, wxDefaultSize, choices);
+    m_typeChoice->SetSelection(0);
+    m_typeChoice->Bind(wxEVT_CHOICE,
+        [this](wxCommandEvent&) { RefreshColorPickers(); });
+    typeRow->Add(m_typeChoice, 1, wxEXPAND);
+    sizer->Add(typeRow, 0, wxEXPAND | wxALL, 8);
+
+    // 4 色のピッカー
+    auto addRow = [&](const wxString& label, wxColourPickerCtrl*& outPicker) {
+        auto* row = new wxBoxSizer(wxHORIZONTAL);
+        row->Add(new wxStaticText(page, wxID_ANY, label,
+                                  wxDefaultPosition, wxSize(120, -1)),
+                 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 6);
+        outPicker = new wxColourPickerCtrl(page, wxID_ANY);
+        row->Add(outPicker);
+        sizer->Add(row, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 8);
+    };
+    addRow(wxT("コメント:"), m_pkComment);
+    addRow(wxT("文字列:"),   m_pkString);
+    addRow(wxT("キーワード:"),m_pkKeyword);
+    addRow(wxT("数値:"),     m_pkNumber);
+
+    sizer->AddStretchSpacer(1);
+
+    auto* btnRow = new wxBoxSizer(wxHORIZONTAL);
+    btnRow->AddStretchSpacer(1);
+    btnRow->Add(new wxButton(page, wxID_RESET, wxT("初期値に戻す")));
+    sizer->Add(btnRow, 0, wxEXPAND | wxALL, 8);
+
+    auto* note = new wxStaticText(page, wxID_ANY,
+        wxT("色の変更は OK 押下後、新規タブまたはファイルを開き直すと反映されます。"));
+    note->Wrap(500);
+    sizer->Add(note, 0, wxALL, 8);
+
+    page->SetSizer(sizer);
+    RefreshColorPickers();
+}
+
+void CDlgSettingsWx::RefreshColorPickers() {
+    if (!m_typeChoice || !m_pkComment) return;
+    int sel = m_typeChoice->GetSelection();
+    if (sel < 0 || sel >= static_cast<int>(std::size(kTypes))) sel = 0;
+    wxString typeKey = kTypes[sel].key;
+
+    auto getOrDefault = [&](const wxString& kind) -> wxColour {
+        if (m_config) {
+            wxColour c = m_config->GetSyntaxColor(typeKey, kind);
+            if (c.IsOk()) return c;
+        }
+        return DefaultColor(typeKey, kind);
+    };
+
+    m_pkComment->SetColour(getOrDefault(wxT("comment")));
+    m_pkString ->SetColour(getOrDefault(wxT("string")));
+    m_pkKeyword->SetColour(getOrDefault(wxT("keyword")));
+    m_pkNumber ->SetColour(getOrDefault(wxT("number")));
+}
+
+void CDlgSettingsWx::OnTypeChange(wxCommandEvent&) {
+    RefreshColorPickers();
+}
+
+void CDlgSettingsWx::OnColorReset(wxCommandEvent&) {
+    if (!m_typeChoice || !m_pkComment) return;
+    int sel = m_typeChoice->GetSelection();
+    if (sel < 0 || sel >= static_cast<int>(std::size(kTypes))) sel = 0;
+    wxString typeKey = kTypes[sel].key;
+
+    m_pkComment->SetColour(DefaultColor(typeKey, wxT("comment")));
+    m_pkString ->SetColour(DefaultColor(typeKey, wxT("string")));
+    m_pkKeyword->SetColour(DefaultColor(typeKey, wxT("keyword")));
+    m_pkNumber ->SetColour(DefaultColor(typeKey, wxT("number")));
+
+    // 設定ストアからもクリア (デフォルトに戻す)
+    if (m_config) {
+        m_config->SetSyntaxColor(typeKey, wxT("comment"), wxNullColour);
+        m_config->SetSyntaxColor(typeKey, wxT("string"),  wxNullColour);
+        m_config->SetSyntaxColor(typeKey, wxT("keyword"), wxNullColour);
+        m_config->SetSyntaxColor(typeKey, wxT("number"),  wxNullColour);
+    }
+}
+
 void CDlgSettingsWx::OnOk(wxCommandEvent& event) {
     if (m_config) {
         if (m_cbLineNumbers) m_config->SetShowLineNumbers(m_cbLineNumbers->GetValue());
         if (m_cbWordWrap)    m_config->SetWordWrap(m_cbWordWrap->GetValue());
         if (m_spTabWidth)    m_config->SetTabWidth(m_spTabWidth->GetValue());
         if (m_fontPicker)    m_config->SetEditorFont(m_fontPicker->GetSelectedFont());
+
+        // タイプ別シンタックス色: 現在選択中のタイプの 4 色を保存
+        if (m_typeChoice && m_pkComment) {
+            int sel = m_typeChoice->GetSelection();
+            if (sel >= 0 && sel < static_cast<int>(std::size(kTypes))) {
+                wxString typeKey = kTypes[sel].key;
+                m_config->SetSyntaxColor(typeKey, wxT("comment"),
+                                         m_pkComment->GetColour());
+                m_config->SetSyntaxColor(typeKey, wxT("string"),
+                                         m_pkString->GetColour());
+                m_config->SetSyntaxColor(typeKey, wxT("keyword"),
+                                         m_pkKeyword->GetColour());
+                m_config->SetSyntaxColor(typeKey, wxT("number"),
+                                         m_pkNumber->GetColour());
+            }
+        }
         m_config->Save();
     }
-    event.Skip();  // Default OK handling will close dialog with wxID_OK
+    event.Skip();
 }
 
 } // namespace sakura_wx::dialog

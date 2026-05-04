@@ -6,6 +6,9 @@ class SakuraConfig;
 class wxFontPickerCtrl;
 class wxSpinCtrl;
 class wxCheckBox;
+class wxChoice;
+class wxColourPickerCtrl;
+class wxColourPickerEvent;
 class wxListBox;
 
 namespace sakura_wx::dialog {
@@ -28,8 +31,12 @@ private:
     void BuildTabGeneral(wxPanel* page);
     void BuildTabFont(wxPanel* page);
     void BuildTabKeybind(wxPanel* page);
+    void BuildTabTypes(wxPanel* page);
 
     void OnOk(wxCommandEvent& event);
+    void OnTypeChange(wxCommandEvent& event);
+    void OnColorReset(wxCommandEvent& event);
+    void RefreshColorPickers();
 
     SakuraConfig*    m_config = nullptr;
     wxNotebook*      m_notebook = nullptr;
@@ -41,6 +48,13 @@ private:
 
     // フォントタブ
     wxFontPickerCtrl* m_fontPicker = nullptr;
+
+    // タイプ別タブ
+    wxChoice*           m_typeChoice = nullptr;
+    wxColourPickerCtrl* m_pkComment  = nullptr;
+    wxColourPickerCtrl* m_pkString   = nullptr;
+    wxColourPickerCtrl* m_pkKeyword  = nullptr;
+    wxColourPickerCtrl* m_pkNumber   = nullptr;
 
     wxDECLARE_EVENT_TABLE();
 };

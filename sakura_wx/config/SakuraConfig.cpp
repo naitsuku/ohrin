@@ -127,3 +127,55 @@ void SakuraConfig::AddRecentFile(const wxString& path) {
 void SakuraConfig::ClearRecentFiles() {
     m_recentFiles.Clear();
 }
+
+// === タイプ別シンタックス色設定 ===
+namespace {
+std::wstring SynKey(const wxString& type, const wxString& kind) {
+    return L"syn_" + type.ToStdWstring() + L"_" + kind.ToStdWstring();
+}
+} // namespace
+
+wxColour SakuraConfig::GetSyntaxColor(const wxString& type,
+                                      const wxString& kind) const {
+    if (!m_store) return wxNullColour;
+    SakuraPlatform::NativeString s;
+    if (!m_store->GetString(SynKey(type, kind), s) || s.empty()) {
+        return wxNullColour;
+    }
+    // フォーマット: "R,G,B"
+    wxString v(s);
+    wxArrayString parts = wxSplit(v, ',');
+    if (parts.GetCount() != 3) return wxNullColour;
+    long r = 0, g = 0, b = 0;
+    parts[0].ToLong(&r);
+    parts[1].ToLong(&g);
+    parts[2].ToLong(&b);
+    return wxColour(static_cast<unsigned char>(r),
+                    static_cast<unsigned char>(g),
+                    static_cast<unsigned char>(b));
+}
+
+void SakuraConfig::SetSyntaxColor(const wxString& type, const wxString& kind,
+                                  const wxColour& c) {
+    if (!m_store) return;
+    if (!c.IsOk()) {
+        m_store->DeleteKey(SynKey(type, kind));
+        return;
+    }
+    wxString s = wxString::Format(wxT("%d,%d,%d"),
+                                  c.Red(), c.Green(), c.Blue());
+    m_store->SetString(SynKey(type, kind), s.ToStdWstring());
+}
+
+void SakuraConfig::ClearSyntaxColors() {
+    if (!m_store) return;
+    static const wxString types[]  = {wxT("cpp"), wxT("py"),
+                                      wxT("md"), wxT("default")};
+    static const wxString kinds[]  = {kSynKindComment, kSynKindString,
+                                      kSynKindKeyword, kSynKindNumber};
+    for (auto& t : types) {
+        for (auto& k : kinds) {
+            m_store->DeleteKey(SynKey(t, k));
+        }
+    }
+}

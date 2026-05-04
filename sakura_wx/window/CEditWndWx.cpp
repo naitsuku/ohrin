@@ -140,6 +140,9 @@ CEditWndWx::CEditWndWx(const wxString& filePath)
     } else {
         UpdateTitle();
     }
+
+    // Phase 13c: 起動時にメタテーブル値を全タブに適用
+    ApplyMetaSettingsToAllViews();
 }
 
 // ============================================================
@@ -189,6 +192,8 @@ int CEditWndWx::AddNewTab(const wxString& title) {
     m_tabs[view] = TabState{};
     m_notebook->AddPage(view, title, /*select=*/true);
     SyncMirrorFromActive();
+    // Phase 13c: 新規タブにもメタテーブル値を適用
+    ApplyMetaSettingsToAllViews();
     return m_notebook->GetPageCount() - 1;
 }
 
@@ -704,6 +709,41 @@ void CEditWndWx::OnFont(wxCommandEvent&) {
             // SakuraConfig を再読込する設計なので path 渡し直しで OK）
             view->SetEditorFont(cfg->GetEditorFont());
         }
+        // Phase 13c: メタテーブル駆動の値も即時反映
+        ApplyMetaSettingsToAllViews();
+    }
+}
+
+// ============================================================
+// Phase 13c: SettingsMeta.h のメタ値を全タブに適用
+//   メタテーブル経由で永続化された値 (SakuraConfig::GetMetaXxx) を読み、
+//   wxStyledTextCtrl 等に反映する。設定ダイアログ OK 時と起動時に呼び出す。
+// ============================================================
+void CEditWndWx::ApplyMetaSettingsToAllViews() {
+    auto* app = wxDynamicCast(wxTheApp, SakuraApp);
+    SakuraConfig* cfg = app ? app->Config() : nullptr;
+    if (!cfg) return;
+
+    // 全般タブ
+    bool insMode    = cfg->GetMetaBool(wxT("general"), wxT("m_bIsINSMode"),    true);
+    int  caretType  = cfg->GetMetaInt (wxT("general"), wxT("m_nCaretType"),    0);
+    m_exitConfirmEnabled =
+                      cfg->GetMetaBool(wxT("general"), wxT("m_bExitConfirm"),  true);
+
+    // ウィンドウタブ
+    bool scrollHorz = cfg->GetMetaBool(wxT("window"),  wxT("m_bScrollBarHorz"), true);
+
+    // wxSTC への適用 (m_nCaretType: 0=Win 風 (細線), 1=DOS 風 (ブロック))
+    const int caretStyle = (caretType == 1) ? wxSTC_CARETSTYLE_BLOCK
+                                            : wxSTC_CARETSTYLE_LINE;
+
+    if (!m_notebook) return;
+    for (size_t i = 0; i < m_notebook->GetPageCount(); ++i) {
+        auto* view = dynamic_cast<CEditViewWx*>(m_notebook->GetPage(i));
+        if (!view) continue;
+        view->SetOvertype(!insMode);            // INS=ON (insert) なら overtype=false
+        view->SetCaretStyle(caretStyle);
+        view->SetUseHorizontalScrollBar(scrollHorz);
     }
 }
 
@@ -722,6 +762,18 @@ void CEditWndWx::OnCloseWindow(wxCloseEvent& event) {
     if (!MaybeSaveBeforeAction()) {
         event.Veto();
         return;
+    }
+    // Phase 13c: general/m_bExitConfirm が true なら終了確認を出す
+    //   (未保存ファイルの確認は MaybeSaveBeforeAction が処理済み。
+    //    こちらは編集状態に関わらない単純な「本当に終了しますか?」)
+    if (m_exitConfirmEnabled) {
+        int r = wxMessageBox(wxT("サクラエディタを終了しますか?"),
+                             wxT("終了確認"),
+                             wxYES_NO | wxICON_QUESTION, this);
+        if (r != wxYES) {
+            event.Veto();
+            return;
+        }
     }
     event.Skip();
 }

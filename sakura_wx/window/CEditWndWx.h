@@ -137,6 +137,15 @@ private:
 
     bool MaybeSaveBeforeAction();
 
+    // Phase 13c: SettingsMeta.h のメタ値を全タブに適用する。
+    //   設定ダイアログ OK 時 / 起動時に呼び出す。
+    //   現在反映しているメタ ID:
+    //     general/m_bIsINSMode   → SetOvertype
+    //     general/m_nCaretType   → SetCaretStyle
+    //     general/m_bExitConfirm → m_exitConfirmEnabled (OnCloseWindow で参照)
+    //     window/m_bScrollBarHorz → SetUseHorizontalScrollBar
+    void ApplyMetaSettingsToAllViews();
+
     // タブ毎のメタデータ
     struct TabState {
         wxString currentFile;
@@ -157,6 +166,10 @@ private:
     CEditViewWx* m_editView    = nullptr;
     wxString     m_currentFile;
     bool         m_modified    = false;
+
+    // Phase 13c: 終了時確認ダイアログを出すか (general/m_bExitConfirm)。
+    //   ApplyMetaSettingsToAllViews で更新される。
+    bool         m_exitConfirmEnabled = true;
 
     // 単一ルーラー (アクティブビューに追従)
     sakura_wx::ui::CSakuraRuler* m_ruler = nullptr;

@@ -1,5 +1,85 @@
 # 移植作業進捗ログ
 
+## 2026-05-05 — Phase 13a/b/c 完了（メタ化拡大 + Color/String + エディタ反映）
+
+### Phase 13a: 易タブ 4 個メタ化
+
+- **タブバー** (kTabBarFields, 17 フィールド): 表示／位置／フォントサイズ／タブ幅
+- **バックアップ** (kBackupFields, 7 フィールド): 作成可否、形式 Choice、ごみ箱投棄等
+- **書式** (kFormatFields, 2 フィールド): 日付／時刻書式タイプ
+- **ファイル名表示** (kFileNameFields, 2 フィールド): 省略表記の有無と最大長
+- supported=true なタブ数: 3 → **7**
+
+### Phase 13b: Color/String widget + ファイルタブ
+
+- **SakuraConfig 拡張**:
+  - `GetMetaString` / `SetMetaString` (任意の文字列を保存／取得)
+  - `GetMetaColor` / `SetMetaColor` ("R,G,B" 形式で String ストアに格納)
+- **CDlgSettingsWx::BuildTabFromMeta** 拡張:
+  - `FieldKind::String` → `wxTextCtrl`
+  - `FieldKind::Color` → `wxColourPickerCtrl`
+  - OnOk で SakuraConfig へ保存
+- **ファイルタブ** (kFileFields, 16 フィールド) 新規メタ化:
+  - EShareMode を Choice (排他制御モード)
+  - カーソル位置／ブックマーク／文字コード変化問合せ等の復元系
+  - 警告ファイルサイズ等の Bool/Int
+- **既存タブに String フィールド追加**:
+  - ウィンドウ: m_szWindowCaptionActive / m_szWindowCaptionInactive
+  - 書式: m_szDateFormat / m_szTimeFormat / m_szMidashiKigou / m_szInyouKigou
+  - バックアップ: m_szBackUpFolder / m_szBackUpPathAdvanced
+- supported=true なタブ数: 7 → **8** (ファイル追加)
+- 新規テスト: SakuraConfig.MetaStringAndColorRoundTrip
+
+### Phase 13c: エディタ反映 (CEditWndWx 接続)
+
+- **`CEditWndWx::ApplyMetaSettingsToAllViews()` を新設**: SakuraConfig::GetMetaXxx
+  経由でメタ値を読み、全タブの wxStyledTextCtrl に反映
+- 反映ポイント 4 つを選定 (現実的に効果が出るもの):
+
+| メタ ID | 反映先 | wx API |
+|---|---|---|
+| `general/m_bIsINSMode` | 起動時の挿入モード | `SetOvertype(!ins)` |
+| `general/m_nCaretType` | カーソル形状 (Win 風 / DOS 風) | `SetCaretStyle` |
+| `general/m_bExitConfirm` | 終了確認ダイアログ | `OnCloseWindow` で確認 |
+| `window/m_bScrollBarHorz` | 水平スクロールバー | `SetUseHorizontalScrollBar` |
+
+- **呼び出しタイミング**:
+  - コンストラクタ末尾 (起動時に永続化値を反映)
+  - `OnFont` の設定ダイアログ OK 後 (即時反映)
+  - `AddNewTab` 後 (新規タブにも適用)
+
+- **ミニマップ／DarkMode 反映は後送り**:
+  - ミニマップは sakura_wx に未実装 (将来追加対象)
+  - DarkMode は色スキーム再構成が大きいため Phase 13d 候補
+
+### 全 34 テスト pass。
+
+### Phase 13 完了チェックリスト
+
+- [x] 13a: タブバー / バックアップ / 書式 / ファイル名表示
+- [x] 13b: Color / String widget サポート + SakuraConfig API
+- [x] 13b: ファイルタブメタ化、既存タブに String 追加
+- [x] 13c: エディタ反映ポイント 4 つ実装
+- [x] 13c: ApplyMetaSettingsToAllViews と各タイミングでの呼出
+- [x] 全 34 テスト pass
+
+### Phase 14 への申し送り
+
+1. **残メタ化タブ**: ステータスバー / 検索 / 強調キーワード / アウトライン / その他
+   (Bool/Int/Choice/String で表現可能)
+2. **専用エディタが必要なタブ** (Phase 14+):
+   - キー割り当て (Funccode と KEYDATA テーブル GUI)
+   - ツールバー / ファンクションキーバー (ボタン選択 GUI)
+   - メインメニュー / ポップアップメニュー (ツリー編集)
+   - カスタマイズ (メニュー編集)
+3. **エディタ反映の追加候補**:
+   - ミニマップ (sakura_wx 未実装、新規追加)
+   - DarkMode (色スキーム全面再構成)
+   - リピートスクロール行数
+   - タブバー表示／位置
+4. **upstream Win32 側からの SettingsMeta.h 参照** (PR 化候補)
+
+
 ## 2026-05-05 — Phase 12 完了（メタテーブル拡充 + 永続化 + Funccode テスト）
 
 ### 実施内容

@@ -30,10 +30,11 @@ void CEditViewWx::InitializeEditor() {
     SetMarginType(kBookmarkMargin, wxSTC_MARGIN_SYMBOL);
     SetMarginWidth(kBookmarkMargin, 16);
     SetMarginSensitive(kBookmarkMargin, true);
-    // ブックマークマーカーを定義（青い●）
+    // ブックマークマーカー: サクラ初期色 STR_COLOR_BOOKMARK
+    // 文字色 RGB(255, 251, 240) (テキスト背景と同色)、背景 RGB(0, 128, 192)
     MarkerDefine(kBookmarkMarker, wxSTC_MARK_CIRCLE);
-    MarkerSetForeground(kBookmarkMarker, wxColour(0, 0, 200));
-    MarkerSetBackground(kBookmarkMarker, wxColour(80, 130, 255));
+    MarkerSetForeground(kBookmarkMarker, wxColour(255, 251, 240));
+    MarkerSetBackground(kBookmarkMarker, wxColour(  0, 128, 192));
     // マージンクリックハンドラを Bind
     Bind(wxEVT_STC_MARGINCLICK,
          [this](wxStyledTextEvent& e) {
@@ -101,15 +102,42 @@ void CEditViewWx::InitializeEditor() {
 }
 
 void CEditViewWx::ApplyColorScheme() {
-    StyleSetBackground(wxSTC_STYLE_DEFAULT, *wxWHITE);
-    StyleSetForeground(wxSTC_STYLE_DEFAULT, *wxBLACK);
-    StyleClearAll();
+    // === サクラエディタ デフォルト初期色 ===
+    // sakura_core/doc/CDocTypeSetting.cpp の ColorInfoIni 定義より引用。
+    // 2000.10.08 に「眩しさを押さえる」目的で 真っ白 → 薄ピンクに変更された
+    // 伝統色 RGB(255, 251, 240) を採用する。
+    static const wxColour kBgText      (255, 251, 240);  // テキスト背景
+    static const wxColour kFgText      (  0,   0,   0);  // テキスト前景
+    static const wxColour kBgRuler     (239, 239, 239);  // ルーラー／行番号 背景
+    static const wxColour kFgLineNo    (  0,   0, 255);  // 行番号 (青)
+    static const wxColour kCaretFg     (  0,   0,   0);  // キャレット
+    static const wxColour kSelBg       ( 49, 106, 197);  // 選択範囲背景
+    static const wxColour kSelFg       (255, 255, 255);  // 選択範囲文字色（白）
+    static const wxColour kCaretLineBg (255, 255, 232);  // 現在行ハイライト
+                                                          // (オリジナル CVL=透過なので
+                                                          //  視認性のため淡い黄を使用)
 
-    StyleSetBackground(wxSTC_STYLE_LINENUMBER, wxColour(240, 240, 240));
-    StyleSetForeground(wxSTC_STYLE_LINENUMBER, wxColour(100, 100, 100));
+    StyleSetBackground(wxSTC_STYLE_DEFAULT, kBgText);
+    StyleSetForeground(wxSTC_STYLE_DEFAULT, kFgText);
+    StyleClearAll();  // すべてのスタイルにデフォルト色を適用
 
-    SetCaretLineBackground(wxColour(232, 242, 254));
-    SetCaretForeground(*wxBLACK);
+    StyleSetBackground(wxSTC_STYLE_LINENUMBER, kBgRuler);
+    StyleSetForeground(wxSTC_STYLE_LINENUMBER, kFgLineNo);
+
+    // 折りたたみマージンの背景もテキスト背景に揃える
+    SetFoldMarginColour(true, kBgText);
+    SetFoldMarginHiColour(true, kBgRuler);
+
+    SetCaretForeground(kCaretFg);
+    SetCaretLineVisible(true);
+    SetCaretLineBackground(kCaretLineBg);
+
+    // 選択範囲色
+    SetSelBackground(true, kSelBg);
+    SetSelForeground(true, kSelFg);
+
+    // 空白可視化色（オリジナル: 半角空白 RGB(192,192,192)）
+    SetWhitespaceForeground(true, wxColour(192, 192, 192));
 }
 
 bool CEditViewWx::LoadFile(const wxString& path) {
@@ -176,9 +204,10 @@ void CEditViewWx::SetWhitespaceVisible(bool visible) {
 void CEditViewWx::SetIdeographicSpaceHighlight(bool visible) {
     m_highlightIdeographic = visible;
     constexpr int kIdeoIndicator = 1;  // インジケータ #1 を全角空白用に確保
+    // オリジナル STR_COLOR_FULL_SPACE = RGB(192, 192, 192) (薄灰)
     IndicatorSetStyle(kIdeoIndicator, wxSTC_INDIC_STRAIGHTBOX);
-    IndicatorSetForeground(kIdeoIndicator, wxColour(255, 230, 0));
-    IndicatorSetAlpha(kIdeoIndicator, 80);
+    IndicatorSetForeground(kIdeoIndicator, wxColour(192, 192, 192));
+    IndicatorSetAlpha(kIdeoIndicator, 100);
     SetIndicatorCurrent(kIdeoIndicator);
     IndicatorClearRange(0, GetLength());
     if (!visible) return;
@@ -312,15 +341,23 @@ void CEditViewWx::SetupSyntaxHighlighting(const wxString& filePath) {
             "try typedef typeid typename union unsigned using virtual void "
             "volatile wchar_t while xor xor_eq"));
 
+        // === サクラエディタ初期色 (CDocTypeSetting.cpp ColorInfoIni より) ===
+        // STR_COLOR_COMMENT       RGB(  0, 128,   0)  緑
+        // STR_COLOR_DOUBLE_QUOTE  RGB(128,   0,  64)  暗紫
+        // STR_COLOR_SINGLE_QUOTE  RGB( 64, 128, 128)  暗青緑
+        // STR_COLOR_KEYWORD1      RGB(  0,   0, 255)  青 (Bold)
+        // STR_COLOR_KEYWORD2      RGB(255, 128,   0)  オレンジ (Bold) ← プリプロ等
+        // STR_COLOR_NUMBER        RGB(235,   0,   0)  赤
         StyleSetForeground(wxSTC_C_COMMENT,      wxColour(  0, 128,   0));
         StyleSetForeground(wxSTC_C_COMMENTLINE,  wxColour(  0, 128,   0));
         StyleSetForeground(wxSTC_C_COMMENTDOC,   wxColour(  0, 128,   0));
-        StyleSetForeground(wxSTC_C_STRING,       wxColour(  0,   0, 255));
-        StyleSetForeground(wxSTC_C_CHARACTER,    wxColour(  0,   0, 255));
-        StyleSetForeground(wxSTC_C_WORD,         wxColour(  0,   0, 128));
-        StyleSetForeground(wxSTC_C_NUMBER,       wxColour(128,   0,   0));
-        StyleSetForeground(wxSTC_C_PREPROCESSOR, wxColour(128,   0, 128));
+        StyleSetForeground(wxSTC_C_STRING,       wxColour(128,   0,  64));
+        StyleSetForeground(wxSTC_C_CHARACTER,    wxColour( 64, 128, 128));
+        StyleSetForeground(wxSTC_C_WORD,         wxColour(  0,   0, 255));
+        StyleSetForeground(wxSTC_C_NUMBER,       wxColour(235,   0,   0));
+        StyleSetForeground(wxSTC_C_PREPROCESSOR, wxColour(255, 128,   0));
         StyleSetBold(wxSTC_C_WORD, true);
+        StyleSetBold(wxSTC_C_PREPROCESSOR, true);
 
     } else if (ext == wxT("py")) {
         SetLexer(wxSTC_LEX_PYTHON);
@@ -328,10 +365,15 @@ void CEditViewWx::SetupSyntaxHighlighting(const wxString& filePath) {
             "False None True and as assert async await break class continue "
             "def del elif else except finally for from global if import in "
             "is lambda nonlocal not or pass raise return try while with yield"));
-        StyleSetForeground(wxSTC_P_COMMENTLINE, wxColour(  0, 128,   0));
-        StyleSetForeground(wxSTC_P_STRING,      wxColour(  0,   0, 255));
-        StyleSetForeground(wxSTC_P_WORD,        wxColour(  0,   0, 128));
-        StyleSetForeground(wxSTC_P_NUMBER,      wxColour(128,   0,   0));
+        // Python もサクラ初期色に統一
+        StyleSetForeground(wxSTC_P_COMMENTLINE,  wxColour(  0, 128,   0));
+        StyleSetForeground(wxSTC_P_COMMENTBLOCK, wxColour(  0, 128,   0));
+        StyleSetForeground(wxSTC_P_STRING,       wxColour(128,   0,  64));
+        StyleSetForeground(wxSTC_P_CHARACTER,    wxColour( 64, 128, 128));
+        StyleSetForeground(wxSTC_P_TRIPLE,       wxColour(128,   0,  64));
+        StyleSetForeground(wxSTC_P_TRIPLEDOUBLE, wxColour(128,   0,  64));
+        StyleSetForeground(wxSTC_P_WORD,         wxColour(  0,   0, 255));
+        StyleSetForeground(wxSTC_P_NUMBER,       wxColour(235,   0,   0));
         StyleSetBold(wxSTC_P_WORD, true);
 
     } else if (ext == wxT("md") || ext == wxT("markdown")) {

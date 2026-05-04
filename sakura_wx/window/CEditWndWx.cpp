@@ -22,6 +22,7 @@ wxBEGIN_EVENT_TABLE(CEditWndWx, wxFrame)
     EVT_MENU(wxID_PASTE,           CEditWndWx::OnPaste)
     EVT_MENU(wxID_SELECTALL,       CEditWndWx::OnSelectAll)
     EVT_MENU(wxID_FIND,            CEditWndWx::OnFind)
+    EVT_MENU(wxID_REPLACE,         CEditWndWx::OnReplace)
     EVT_MENU(ID_VIEW_LINE_NUMBERS, CEditWndWx::OnToggleLineNumbers)
     EVT_MENU(ID_VIEW_WORD_WRAP,    CEditWndWx::OnToggleWordWrap)
     EVT_MENU(wxID_PREFERENCES,     CEditWndWx::OnFont)
@@ -84,7 +85,8 @@ void CEditWndWx::CreateMenuBarImpl() {
     menuBar->Append(menuEdit, wxT("編集(&E)"));
 
     auto* menuSearch = new wxMenu();
-    menuSearch->Append(wxID_FIND, wxT("検索(&F)...\tCtrl+F"));
+    menuSearch->Append(wxID_FIND,    wxT("検索(&F)...\tCtrl+F"));
+    menuSearch->Append(wxID_REPLACE, wxT("置換(&R)...\tCtrl+H"));
     menuBar->Append(menuSearch, wxT("検索(&S)"));
 
     auto* menuView = new wxMenu();
@@ -215,7 +217,12 @@ void CEditWndWx::OnPaste(wxCommandEvent&)     { m_editView->Paste(); }
 void CEditWndWx::OnSelectAll(wxCommandEvent&) { m_editView->SelectAll(); }
 
 void CEditWndWx::OnFind(wxCommandEvent&) {
-    auto* dlg = new CDlgSearchWx(this, m_editView);
+    auto* dlg = new CDlgSearchWx(this, m_editView, /*replaceFocus=*/false);
+    dlg->Show(true);
+}
+
+void CEditWndWx::OnReplace(wxCommandEvent&) {
+    auto* dlg = new CDlgSearchWx(this, m_editView, /*replaceFocus=*/true);
     dlg->Show(true);
 }
 

@@ -54,6 +54,7 @@ private:
     void OnPaste(wxCommandEvent& event);
     void OnSelectAll(wxCommandEvent& event);
     void OnFind(wxCommandEvent& event);
+    void OnReplace(wxCommandEvent& event);
 
     // 表示メニュー
     void OnToggleLineNumbers(wxCommandEvent& event);

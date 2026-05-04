@@ -1,17 +1,37 @@
 # sakura_core/ 非 Windows ビルド除外ファイル一覧
 
 生成日: 2026-05-04 (Phase 1)
-最終更新: 同上
+最終更新: 2026-05-04 (Phase 6)
 
 非 Windows ビルドで `sakura_core/CMakeLists.txt` の対象から外したファイルの一覧と理由。
 Phase 2 以降で段階的に含めていく。
 
 ## 現在の収録方針
 
-**Phase 1 時点では `sakura_core/platform/platform_impl_wx.cpp` のみを収録**
-（PAL の wxWidgets / POSIX 実装）。
+### Phase 6 時点（2026-05-04）
 
-それ以外の `sakura_core/` 配下 `.cpp` 374 ファイルはすべて除外。
+`sakura_core/CMakeLists.txt` の `SAKURA_CORE_SOURCES` に含まれているファイル:
+
+- `platform/platform_impl_wx.cpp` （PAL の wxWidgets / POSIX 実装）
+- `basis/CMyPoint.cpp`
+- `basis/CMyRect.cpp`
+- `basis/CMySize.cpp`
+- `basis/CStrictPoint.cpp`
+- `basis/CStrictRect.cpp`
+- `basis/CStrictRange.cpp`
+- `basis/CLaxInteger.cpp`
+
+合計 **8 ファイル**収録（Phase 1 時点の 1 ファイルから増加）。
+
+### Phase 6 で取り込みを試みて除外した／保留したファイル
+
+| ファイル | 失敗原因 | 対応 |
+|---|---|---|
+| `basis/CStrictInteger.cpp` | C++20 の spaceship 演算子と既存比較演算子が重複定義（CStrictInteger.h の既存ロジック） | Phase 7 で重複側を `#ifdef __cpp_impl_three_way_comparison` ガード |
+| `basis/CMyString.cpp` | `util/string_ex.h` 経由で `ACHAR`, `_vswprintf`, `std::span<>` の N 引数版テンプレート等を要求 | Phase 7 で `string_ex.h` の portable 化 |
+| `basis/CEol.cpp` | `charset/charset.h` 経由で `IsValidCodePage` (Win32 API)、`charset/charcode.h` で `cxx/ResourceHolder.hpp`（externals 系）が必要 | Phase 7 で charset 系の段階対応 |
+| `debug/CRunningTimer.cpp` | 同様に `util/string_ex.h` 依存 | Phase 7 |
+| `basis/CFileExt.cpp`, `EditInfo.cpp`, `GrepInfo.cpp` | `_main/global.h`, `config/maxdata.h`, `charset/*` の依存チェーン | Phase 7 以降 |
 
 ## 除外の根本原因
 

@@ -133,6 +133,17 @@ struct SYSTEMTIME {
 };
 
 // ============================================================
+// 色 (GDI 由来だが値型として広く使われるため stub に残す)
+// ============================================================
+using COLORREF = DWORD;
+#ifndef RGB
+#define RGB(r,g,b) (static_cast<COLORREF>( \
+    (static_cast<DWORD>(static_cast<BYTE>(r))) | \
+    (static_cast<DWORD>(static_cast<BYTE>(g)) << 8) | \
+    (static_cast<DWORD>(static_cast<BYTE>(b)) << 16)))
+#endif
+
+// ============================================================
 // 文字列関数（Win32 名 → POSIX 名 のマッピング）
 // 実装はインライン関数で提供。
 // ============================================================
@@ -143,6 +154,65 @@ inline int _strnicmp(const char* a, const char* b, size_t n) { return strncasecm
 inline int _wtoi(const wchar_t* s) { return static_cast<int>(wcstol(s, nullptr, 10)); }
 inline long _wtol(const wchar_t* s) { return wcstol(s, nullptr, 10); }
 inline long long _wtoi64(const wchar_t* s) { return wcstoll(s, nullptr, 10); }
+
+// _memicmp: memory case-insensitive 比較（MSVC 拡張）
+inline int _memicmp(const void* a, const void* b, size_t n) {
+    auto* pa = static_cast<const unsigned char*>(a);
+    auto* pb = static_cast<const unsigned char*>(b);
+    for (size_t i = 0; i < n; ++i) {
+        int ca = static_cast<int>(std::tolower(pa[i]));
+        int cb = static_cast<int>(std::tolower(pb[i]));
+        if (ca != cb) return ca - cb;
+    }
+    return 0;
+}
+
+// MSVC safe-string 系（_s 接尾辞）。
+// stub では境界チェックを省略してアンセーフ版へ転送する。
+// _TRUNCATE は MSVC で「dest バッファに合うだけ書き込む」サイズ指定だが、
+// ここではただの sentinel として扱う。
+#ifndef _TRUNCATE
+#define _TRUNCATE (static_cast<size_t>(-1))
+#endif
+
+inline int strncpy_s(char* dest, size_t destSize, const char* src, size_t n) {
+    if (!dest || !src || destSize == 0) return 22; // EINVAL 相当
+    if (n == _TRUNCATE) n = destSize - 1;
+    if (n >= destSize) n = destSize - 1;
+    std::strncpy(dest, src, n);
+    dest[n] = '\0';
+    return 0;
+}
+inline int wcsncpy_s(wchar_t* dest, size_t destSize, const wchar_t* src, size_t n) {
+    if (!dest || !src || destSize == 0) return 22;
+    if (n == _TRUNCATE) n = destSize - 1;
+    if (n >= destSize) n = destSize - 1;
+    wcsncpy(dest, src, n);
+    dest[n] = L'\0';
+    return 0;
+}
+inline int strcat_s(char* dest, size_t destSize, const char* src) {
+    if (!dest || !src || destSize == 0) return 22;
+    size_t curLen = std::strlen(dest);
+    if (curLen >= destSize) return 34; // ERANGE 相当
+    size_t avail = destSize - curLen - 1;
+    std::strncat(dest, src, avail);
+    return 0;
+}
+inline int wcscat_s(wchar_t* dest, size_t destSize, const wchar_t* src) {
+    if (!dest || !src || destSize == 0) return 22;
+    size_t curLen = wcslen(dest);
+    if (curLen >= destSize) return 34;
+    size_t avail = destSize - curLen - 1;
+    wcsncat(dest, src, avail);
+    return 0;
+}
+inline int strcpy_s(char* dest, size_t destSize, const char* src) {
+    return strncpy_s(dest, destSize, src, _TRUNCATE);
+}
+inline int wcscpy_s(wchar_t* dest, size_t destSize, const wchar_t* src) {
+    return wcsncpy_s(dest, destSize, src, _TRUNCATE);
+}
 
 // _T() / TEXT() マクロ — Win32 でワイド/マルチバイトを切り替えるが、
 // ここでは常に wchar_t 文字列リテラルとして扱う。

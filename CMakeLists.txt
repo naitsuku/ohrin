@@ -11,7 +11,9 @@ if(NOT WIN32)
     cmake_minimum_required(VERSION 3.20)
     project(SakuraEditor VERSION 2.5.0 LANGUAGES CXX)
 
-    set(CMAKE_CXX_STANDARD 17)
+    # Phase 6: sakura_core/util/string_ex.h が std::span を使うため C++20 が必要。
+    # wxWidgets 3.3 / Apple Clang 17 / GCC 11+ いずれも C++20 をサポートする。
+    set(CMAKE_CXX_STANDARD 20)
     set(CMAKE_CXX_STANDARD_REQUIRED ON)
     set(CMAKE_CXX_EXTENSIONS OFF)
 

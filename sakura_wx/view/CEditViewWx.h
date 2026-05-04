@@ -53,11 +53,20 @@ public:
 
     // --- ブックマーク（Phase 7） ---
     static constexpr int kBookmarkMargin = 1;
-    static constexpr int kBookmarkMarker = 0;
+    static constexpr int kBookmarkMarker  = 0;
+    static constexpr int kCurrentLineMarker = 2;  // 現在行アンダーライン
     void ToggleBookmarkAtCurrent();
     void GoToNextBookmark();
     void GoToPrevBookmark();
     void ClearAllBookmarks();
+
+    // --- 現在行アンダーライン (Phase 7 追加) ---
+    void SetCurrentLineUnderline(bool visible);
+    bool IsCurrentLineUnderlined() const { return m_currentLineUnderline; }
+
+    // --- [EOF] 表示 (Phase 7 追加) ---
+    void SetEofMarkVisible(bool visible);
+    bool IsEofMarkVisible() const { return m_showEofMark; }
 
 private:
     void InitializeEditor();
@@ -82,6 +91,8 @@ private:
     bool      m_showWhitespace      = false;
     bool      m_highlightIdeographic = false;
     bool      m_foldingEnabled      = false;
+    bool      m_currentLineUnderline = false;
+    bool      m_showEofMark         = false;
 
     wxDECLARE_EVENT_TABLE();
 };

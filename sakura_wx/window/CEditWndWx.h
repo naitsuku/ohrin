@@ -5,6 +5,7 @@
 #include <unordered_map>
 
 class CEditViewWx;
+namespace sakura_wx::ui { class CSakuraRuler; }
 
 /**
  * CEditWndWx - サクラエディタ メインウィンドウ（wxWidgets版）
@@ -92,6 +93,9 @@ private:
     void OnToggleWhitespace(wxCommandEvent& event);
     void OnToggleIdeographicSpace(wxCommandEvent& event);
     void OnToggleCodeFolding(wxCommandEvent& event);
+    void OnToggleRuler(wxCommandEvent& event);
+    void OnToggleCurrentLineUnderline(wxCommandEvent& event);
+    void OnToggleEofMark(wxCommandEvent& event);
     void OnFont(wxCommandEvent& event);
 
     // ブックマークメニュー
@@ -139,6 +143,9 @@ private:
     wxString     m_currentFile;
     bool         m_modified    = false;
 
+    // 単一ルーラー (アクティブビューに追従)
+    sakura_wx::ui::CSakuraRuler* m_ruler = nullptr;
+
     wxMenu*   m_recentMenu = nullptr;
 
     wxDECLARE_EVENT_TABLE();
@@ -150,6 +157,9 @@ enum {
     ID_VIEW_WHITESPACE,
     ID_VIEW_IDEOGRAPHIC_SPACE,
     ID_VIEW_CODE_FOLDING,
+    ID_VIEW_RULER,
+    ID_VIEW_CURRENT_LINE_UNDERLINE,
+    ID_VIEW_EOF_MARK,
     ID_SEARCH_GREP,
     ID_SEARCH_FIND_NEXT,
     ID_SEARCH_FIND_PREV,

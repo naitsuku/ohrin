@@ -35,6 +35,12 @@ void CEditViewWx::InitializeEditor() {
     MarkerDefine(kBookmarkMarker, wxSTC_MARK_CIRCLE);
     MarkerSetForeground(kBookmarkMarker, wxColour(255, 251, 240));
     MarkerSetBackground(kBookmarkMarker, wxColour(  0, 128, 192));
+
+    // 現在行アンダーライン用マーカー (STR_COLOR_CURSOR_LINE: RGB(0, 0, 255) 青)
+    // wxSTC_MARK_UNDERLINE は line の下端に水平線を描く。
+    MarkerDefine(kCurrentLineMarker, wxSTC_MARK_UNDERLINE);
+    MarkerSetForeground(kCurrentLineMarker, wxColour(0, 0, 255));
+    MarkerSetBackground(kCurrentLineMarker, wxColour(0, 0, 255));
     // マージンクリックハンドラを Bind
     Bind(wxEVT_STC_MARGINCLICK,
          [this](wxStyledTextEvent& e) {
@@ -159,6 +165,10 @@ bool CEditViewWx::LoadFile(const wxString& path) {
 
     m_currentPath = path;
     SetupSyntaxHighlighting(path);
+
+    // ロード後に [EOF] アノテーションと現在行アンダーラインを再配置
+    if (m_showEofMark) SetEofMarkVisible(true);
+    if (m_currentLineUnderline) SetCurrentLineUnderline(true);
     return true;
 }
 
@@ -279,6 +289,31 @@ void CEditViewWx::ConvertAllLineEndingsTo(EolMode m) {
                 : (m == EolMode::LF)   ? wxSTC_EOL_LF
                                        : wxSTC_EOL_CR;
     ConvertEOLs(sciMode);
+}
+
+void CEditViewWx::SetCurrentLineUnderline(bool visible) {
+    m_currentLineUnderline = visible;
+    if (visible) {
+        int line = GetCurrentLine();
+        MarkerDeleteAll(kCurrentLineMarker);
+        MarkerAdd(line, kCurrentLineMarker);
+    } else {
+        MarkerDeleteAll(kCurrentLineMarker);
+    }
+}
+
+void CEditViewWx::SetEofMarkVisible(bool visible) {
+    m_showEofMark = visible;
+    EOLAnnotationClearAll();
+    if (visible) {
+        // 全 EOL アノテーションのスタイル: STR_COLOR_EOF (前 cyan / 背 黒)
+        // EOLAnnotationSetStyleOffset で予約スタイル領域を設定する手もあるが、
+        // 簡易には wxSTC のデフォルト EOL アノテーションスタイルに依存。
+        EOLAnnotationSetVisible(wxSTC_EOLANNOTATION_STANDARD);
+        int last = GetLineCount() - 1;
+        if (last < 0) last = 0;
+        EOLAnnotationSetText(last, "[EOF]");
+    }
 }
 
 void CEditViewWx::ToggleBookmarkAtCurrent() {
@@ -404,11 +439,29 @@ void CEditViewWx::UpdateStatusBarPos() {
 }
 
 void CEditViewWx::OnModified(wxStyledTextEvent& event) {
+    // 行数変動 / テキスト挿入削除で [EOF] 位置が変わるため再配置
+    if (m_showEofMark) {
+        // 連続編集時のチラつきと再帰呼出を避けるため最終行のみ更新
+        int last = GetLineCount() - 1;
+        if (last < 0) last = 0;
+        EOLAnnotationClearAll();
+        EOLAnnotationSetText(last, "[EOF]");
+    }
     event.Skip();
 }
 
 void CEditViewWx::OnUpdateUI(wxStyledTextEvent& event) {
     UpdateStatusBarPos();
+
+    // 現在行アンダーライン: カーソル行が変わるたびに再配置
+    if (m_currentLineUnderline) {
+        int line = GetCurrentLine();
+        // 既に同じ行にあるか確認 (無駄な再描画防止)
+        if (!(MarkerGet(line) & (1 << kCurrentLineMarker))) {
+            MarkerDeleteAll(kCurrentLineMarker);
+            MarkerAdd(line, kCurrentLineMarker);
+        }
+    }
     event.Skip();
 }
 

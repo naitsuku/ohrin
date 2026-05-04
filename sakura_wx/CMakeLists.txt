@@ -37,6 +37,7 @@ set(SAKURA_WX_GUI_SOURCES
     app/SakuraApp.cpp
     window/CEditWndWx.cpp
     window/CSakuraToolBar.cpp
+    window/CSakuraRuler.cpp
     view/CEditViewWx.cpp
     dialog/CDlgSearchWx.cpp
     dialog/CDlgGrepWx.cpp

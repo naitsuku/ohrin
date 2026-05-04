@@ -1,5 +1,6 @@
 #include "CEditWndWx.h"
 #include "CSakuraToolBar.h"
+#include "CSakuraRuler.h"
 #include "view/CEditViewWx.h"
 #include "dialog/CDlgSearchWx.h"
 #include "dialog/CDlgGrepWx.h"
@@ -53,6 +54,9 @@ wxBEGIN_EVENT_TABLE(CEditWndWx, wxFrame)
     EVT_MENU(ID_VIEW_WHITESPACE,         CEditWndWx::OnToggleWhitespace)
     EVT_MENU(ID_VIEW_IDEOGRAPHIC_SPACE,  CEditWndWx::OnToggleIdeographicSpace)
     EVT_MENU(ID_VIEW_CODE_FOLDING,       CEditWndWx::OnToggleCodeFolding)
+    EVT_MENU(ID_VIEW_RULER,                  CEditWndWx::OnToggleRuler)
+    EVT_MENU(ID_VIEW_CURRENT_LINE_UNDERLINE, CEditWndWx::OnToggleCurrentLineUnderline)
+    EVT_MENU(ID_VIEW_EOF_MARK,               CEditWndWx::OnToggleEofMark)
     EVT_MENU(ID_BOOKMARK_TOGGLE,    CEditWndWx::OnBookmarkToggle)
     EVT_MENU(ID_BOOKMARK_NEXT,      CEditWndWx::OnBookmarkNext)
     EVT_MENU(ID_BOOKMARK_PREV,      CEditWndWx::OnBookmarkPrev)
@@ -84,9 +88,10 @@ CEditWndWx::CEditWndWx(const wxString& filePath)
     CreateStatusBarImpl();
 
     // ツールバー: 通常の wxToolBar を子として作り、タイトル直下に配置。
-    // wxFrame::CreateToolBar() / SetToolBar() は使わない（macOS で NSToolbar
-    // になり、タイトルバー右側に大アイコン表示されてしまうため）。
     auto* toolBar = sakura_wx::ui::CSakuraToolBar::Build(this);
+
+    // ルーラー: ツールバー直下、タブの上に配置。アクティブビューに追従。
+    m_ruler = new sakura_wx::ui::CSakuraRuler(this);
 
     // wxAuiNotebook をフレーム全体に配置。各タブが個別の CEditViewWx を持つ。
     m_notebook = new wxAuiNotebook(this, wxID_ANY,
@@ -95,9 +100,8 @@ CEditWndWx::CEditWndWx(const wxString& filePath)
             | wxAUI_NB_WINDOWLIST_BUTTON);
 
     auto* sizer = new wxBoxSizer(wxVERTICAL);
-    if (toolBar) {
-        sizer->Add(toolBar, 0, wxEXPAND);
-    }
+    if (toolBar) sizer->Add(toolBar, 0, wxEXPAND);
+    sizer->Add(m_ruler,    0, wxEXPAND);
     sizer->Add(m_notebook, 1, wxEXPAND);
     SetSizer(sizer);
 
@@ -151,11 +155,15 @@ void CEditWndWx::SyncMirrorFromActive() {
         m_modified = false;
     }
     UpdateTitle();
+    if (m_ruler) m_ruler->Attach(m_editView);
 }
 
 int CEditWndWx::AddNewTab(const wxString& title) {
     auto* view = new CEditViewWx(m_notebook, wxID_ANY);
     view->SetDropTarget(new SakuraFileDropTarget(this));
+    // デフォルトでメニュー初期チェック ON 項目を反映
+    view->SetCurrentLineUnderline(true);
+    view->SetEofMarkVisible(true);
     m_tabs[view] = TabState{};
     m_notebook->AddPage(view, title, /*select=*/true);
     SyncMirrorFromActive();
@@ -260,6 +268,15 @@ void CEditWndWx::CreateMenuBarImpl() {
     auto* menuView = new wxMenu();
     menuView->AppendCheckItem(ID_VIEW_LINE_NUMBERS, wxT("行番号を表示(&L)"));
     menuView->Check(ID_VIEW_LINE_NUMBERS, true);
+    menuView->AppendCheckItem(ID_VIEW_RULER,
+                              wxT("ルーラーを表示(&U)"));
+    menuView->Check(ID_VIEW_RULER, true);
+    menuView->AppendCheckItem(ID_VIEW_CURRENT_LINE_UNDERLINE,
+                              wxT("編集中行のアンダーライン(&K)"));
+    menuView->Check(ID_VIEW_CURRENT_LINE_UNDERLINE, true);
+    menuView->AppendCheckItem(ID_VIEW_EOF_MARK,
+                              wxT("[EOF] を表示(&Z)"));
+    menuView->Check(ID_VIEW_EOF_MARK, true);
     menuView->AppendCheckItem(ID_VIEW_WORD_WRAP, wxT("折り返し(&W)"));
     menuView->AppendCheckItem(ID_VIEW_WHITESPACE,
                               wxT("空白・タブを可視化(&S)"));
@@ -618,6 +635,15 @@ void CEditWndWx::OnToggleIdeographicSpace(wxCommandEvent& event) {
 }
 void CEditWndWx::OnToggleCodeFolding(wxCommandEvent& event) {
     if (m_editView) m_editView->SetCodeFoldingEnabled(event.IsChecked());
+}
+void CEditWndWx::OnToggleRuler(wxCommandEvent& event) {
+    if (m_ruler) m_ruler->SetVisibleByMenu(event.IsChecked());
+}
+void CEditWndWx::OnToggleCurrentLineUnderline(wxCommandEvent& event) {
+    if (m_editView) m_editView->SetCurrentLineUnderline(event.IsChecked());
+}
+void CEditWndWx::OnToggleEofMark(wxCommandEvent& event) {
+    if (m_editView) m_editView->SetEofMarkVisible(event.IsChecked());
 }
 
 // ============================================================

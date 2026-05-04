@@ -442,14 +442,7 @@ void CDlgGrepWx::OnResultActivated(wxListEvent& event) {
     long line = 0;
     lineStr.ToLong(&line);
 
-    if (m_mainWnd->OpenFile(path)) {
-        // 1-based 行番号 → 0-based + GotoLine
-        // CEditViewWx は wxStyledTextCtrl 派生なので GotoLine が使える。
-        // ただしここからは frame 経由で view に到達する必要があるが、
-        // OpenFile 後に親フレームが view を持っているので強引に再キャストせず、
-        // メニュー経由ではなく view メソッドを呼ぶための shortcut を後日整備する。
-    }
-    (void)line; // Phase 7 で行ジャンプを実装
+    m_mainWnd->OpenFileAtLine(path, static_cast<int>(line));
 }
 
 void CDlgGrepWx::OnClose(wxCommandEvent&) { Close(); }

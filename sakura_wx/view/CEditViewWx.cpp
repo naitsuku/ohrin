@@ -22,13 +22,40 @@ CEditViewWx::CEditViewWx(wxWindow* parent, wxWindowID id)
 }
 
 void CEditViewWx::InitializeEditor() {
-    // 行番号マージン
+    // マージン 0: 行番号
     SetMarginType(0, wxSTC_MARGIN_NUMBER);
     SetMarginWidth(0, 50);
 
-    // シンボルマージン（折りたたみ等で使う、初期非表示）
-    SetMarginType(1, wxSTC_MARGIN_SYMBOL);
-    SetMarginWidth(1, 0);
+    // マージン 1: ブックマーク（クリックで toggle）
+    SetMarginType(kBookmarkMargin, wxSTC_MARGIN_SYMBOL);
+    SetMarginWidth(kBookmarkMargin, 16);
+    SetMarginSensitive(kBookmarkMargin, true);
+    // ブックマークマーカーを定義（青い●）
+    MarkerDefine(kBookmarkMarker, wxSTC_MARK_CIRCLE);
+    MarkerSetForeground(kBookmarkMarker, wxColour(0, 0, 200));
+    MarkerSetBackground(kBookmarkMarker, wxColour(80, 130, 255));
+    // マージンクリックハンドラを Bind
+    Bind(wxEVT_STC_MARGINCLICK,
+         [this](wxStyledTextEvent& e) {
+             if (e.GetMargin() == kBookmarkMargin) {
+                 int line = LineFromPosition(e.GetPosition());
+                 if (MarkerGet(line) & (1 << kBookmarkMarker)) {
+                     MarkerDelete(line, kBookmarkMarker);
+                 } else {
+                     MarkerAdd(line, kBookmarkMarker);
+                 }
+             } else if (e.GetMargin() == 2) {
+                 // 折りたたみマージンクリック
+                 int line = LineFromPosition(e.GetPosition());
+                 ToggleFold(line);
+             }
+         });
+
+    // マージン 2: 折りたたみ（初期は非表示）
+    SetMarginType(2, wxSTC_MARGIN_SYMBOL);
+    SetMarginMask(2, wxSTC_MASK_FOLDERS);
+    SetMarginWidth(2, 0);
+    SetMarginSensitive(2, true);
 
     // タブ・インデント
     SetTabWidth(4);
@@ -138,6 +165,130 @@ void CEditViewWx::SetEditorFont(const wxFont& font) {
     if (!m_currentPath.IsEmpty()) {
         SetupSyntaxHighlighting(m_currentPath);
     }
+}
+
+void CEditViewWx::SetWhitespaceVisible(bool visible) {
+    m_showWhitespace = visible;
+    SetViewWhiteSpace(visible ? wxSTC_WS_VISIBLEALWAYS : wxSTC_WS_INVISIBLE);
+    SetWhitespaceForeground(true, wxColour(180, 180, 180));
+}
+
+void CEditViewWx::SetIdeographicSpaceHighlight(bool visible) {
+    m_highlightIdeographic = visible;
+    constexpr int kIdeoIndicator = 1;  // インジケータ #1 を全角空白用に確保
+    IndicatorSetStyle(kIdeoIndicator, wxSTC_INDIC_STRAIGHTBOX);
+    IndicatorSetForeground(kIdeoIndicator, wxColour(255, 230, 0));
+    IndicatorSetAlpha(kIdeoIndicator, 80);
+    SetIndicatorCurrent(kIdeoIndicator);
+    IndicatorClearRange(0, GetLength());
+    if (!visible) return;
+
+    wxString text = GetText();
+    int pos = 0;
+    for (size_t i = 0; i < text.length(); ++i) {
+        wxUniChar c = text[i];
+        if (c == wxUniChar(0x3000)) {  // U+3000 IDEOGRAPHIC SPACE
+            IndicatorFillRange(pos, 1);
+        }
+        // wxString は wchar_t なので 1 文字 = 1 STC バイト位置にはならないが、
+        // wxSTC は内部 UTF-8 のため utf8 byte 単位の position が必要。
+        // ここでは PositionFromLine + GetLineLength で行ベースに走査する近似実装でも
+        // よいが、簡略化のため 1 文字進めごとに pos++ を utf8 換算しないと不正確。
+        wxScopedCharBuffer buf = wxString(c).ToUTF8();
+        pos += static_cast<int>(buf.length());
+    }
+}
+
+void CEditViewWx::SetCodeFoldingEnabled(bool enabled) {
+    m_foldingEnabled = enabled;
+    if (enabled) {
+        SetMarginWidth(2, 16);
+        SetProperty(wxT("fold"), wxT("1"));
+        SetProperty(wxT("fold.compact"), wxT("0"));
+        SetProperty(wxT("fold.comment"), wxT("1"));
+        SetProperty(wxT("fold.preprocessor"), wxT("1"));
+        // 折りたたみマーカーのスタイル
+        MarkerDefine(wxSTC_MARKNUM_FOLDER,        wxSTC_MARK_BOXPLUS);
+        MarkerDefine(wxSTC_MARKNUM_FOLDEROPEN,    wxSTC_MARK_BOXMINUS);
+        MarkerDefine(wxSTC_MARKNUM_FOLDEREND,     wxSTC_MARK_BOXPLUSCONNECTED);
+        MarkerDefine(wxSTC_MARKNUM_FOLDERMIDTAIL, wxSTC_MARK_TCORNER);
+        MarkerDefine(wxSTC_MARKNUM_FOLDEROPENMID, wxSTC_MARK_BOXMINUSCONNECTED);
+        MarkerDefine(wxSTC_MARKNUM_FOLDERSUB,     wxSTC_MARK_VLINE);
+        MarkerDefine(wxSTC_MARKNUM_FOLDERTAIL,    wxSTC_MARK_LCORNER);
+        for (int m = wxSTC_MARKNUM_FOLDEREND; m <= wxSTC_MARKNUM_FOLDEROPEN; ++m) {
+            MarkerSetForeground(m, *wxWHITE);
+            MarkerSetBackground(m, wxColour(120, 120, 120));
+        }
+        SetFoldFlags(wxSTC_FOLDFLAG_LINEAFTER_CONTRACTED);
+    } else {
+        SetMarginWidth(2, 0);
+        SetProperty(wxT("fold"), wxT("0"));
+    }
+}
+
+const char* CEditViewWx::EolName(EolMode m) {
+    switch (m) {
+    case EolMode::CRLF: return "CRLF";
+    case EolMode::LF:   return "LF";
+    case EolMode::CR:   return "CR";
+    }
+    return "?";
+}
+
+void CEditViewWx::SetEolMode(EolMode m) {
+    m_eolMode = m;
+    switch (m) {
+    case EolMode::CRLF: wxStyledTextCtrl::SetEOLMode(wxSTC_EOL_CRLF); break;
+    case EolMode::LF:   wxStyledTextCtrl::SetEOLMode(wxSTC_EOL_LF);   break;
+    case EolMode::CR:   wxStyledTextCtrl::SetEOLMode(wxSTC_EOL_CR);   break;
+    }
+}
+
+void CEditViewWx::ConvertAllLineEndingsTo(EolMode m) {
+    SetEolMode(m);
+    int sciMode = (m == EolMode::CRLF) ? wxSTC_EOL_CRLF
+                : (m == EolMode::LF)   ? wxSTC_EOL_LF
+                                       : wxSTC_EOL_CR;
+    ConvertEOLs(sciMode);
+}
+
+void CEditViewWx::ToggleBookmarkAtCurrent() {
+    int line = GetCurrentLine();
+    if (MarkerGet(line) & (1 << kBookmarkMarker)) {
+        MarkerDelete(line, kBookmarkMarker);
+    } else {
+        MarkerAdd(line, kBookmarkMarker);
+    }
+}
+
+void CEditViewWx::GoToNextBookmark() {
+    int from = GetCurrentLine() + 1;
+    int found = MarkerNext(from, 1 << kBookmarkMarker);
+    if (found < 0) {
+        // 折り返し: 先頭から再探索
+        found = MarkerNext(0, 1 << kBookmarkMarker);
+    }
+    if (found >= 0) {
+        GotoLine(found);
+        EnsureCaretVisible();
+    }
+}
+
+void CEditViewWx::GoToPrevBookmark() {
+    int from = GetCurrentLine() - 1;
+    if (from < 0) from = GetLineCount() - 1;
+    int found = MarkerPrevious(from, 1 << kBookmarkMarker);
+    if (found < 0) {
+        found = MarkerPrevious(GetLineCount() - 1, 1 << kBookmarkMarker);
+    }
+    if (found >= 0) {
+        GotoLine(found);
+        EnsureCaretVisible();
+    }
+}
+
+void CEditViewWx::ClearAllBookmarks() {
+    MarkerDeleteAll(kBookmarkMarker);
 }
 
 void CEditViewWx::SetupSyntaxHighlighting(const wxString& filePath) {

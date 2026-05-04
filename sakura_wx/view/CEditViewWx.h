@@ -31,9 +31,33 @@ public:
     void SetEditorFont(const wxFont& font);
     wxFont GetCurrentEditorFont() const { return m_currentFont; }
 
+    // --- 表示の高度な設定（Phase 7） ---
+    void SetWhitespaceVisible(bool visible);  // タブ・半角空白の可視化
+    void SetIdeographicSpaceHighlight(bool visible); // 全角空白を黄色背景でハイライト
+    void SetCodeFoldingEnabled(bool enabled); // 折りたたみ用マージンを表示
+    bool IsWhitespaceVisible() const { return m_showWhitespace; }
+    bool IsIdeographicSpaceHighlighted() const { return m_highlightIdeographic; }
+    bool IsCodeFoldingEnabled() const { return m_foldingEnabled; }
+
     // --- 文字コード ---
     using Encoding = sakura_wx::charset::Encoding;
     Encoding GetCurrentEncoding() const { return m_encoding; }
+    void SetEncoding(Encoding e) { m_encoding = e; }
+
+    // --- 改行コードの手動指定（Phase 7） ---
+    enum class EolMode { CRLF, LF, CR };
+    EolMode GetCurrentEolMode() const { return m_eolMode; }
+    static const char* EolName(EolMode m);
+    void SetEolMode(EolMode m);
+    void ConvertAllLineEndingsTo(EolMode m);
+
+    // --- ブックマーク（Phase 7） ---
+    static constexpr int kBookmarkMargin = 1;
+    static constexpr int kBookmarkMarker = 0;
+    void ToggleBookmarkAtCurrent();
+    void GoToNextBookmark();
+    void GoToPrevBookmark();
+    void ClearAllBookmarks();
 
 private:
     void InitializeEditor();
@@ -53,6 +77,11 @@ private:
     Encoding  m_encoding = Encoding::UTF8;
     wxString  m_currentPath;
     wxFont    m_currentFont;
+    EolMode   m_eolMode = EolMode::LF;
+
+    bool      m_showWhitespace      = false;
+    bool      m_highlightIdeographic = false;
+    bool      m_foldingEnabled      = false;
 
     wxDECLARE_EVENT_TABLE();
 };

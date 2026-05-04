@@ -1,13 +1,33 @@
 #include "CEditWndWx.h"
+#include "CSakuraToolBar.h"
 #include "view/CEditViewWx.h"
 #include "dialog/CDlgSearchWx.h"
 #include "dialog/CDlgGrepWx.h"
+#include "dialog/CDlgSettingsWx.h"
+#include "app/SakuraApp.h"
+#include "config/SakuraConfig.h"
 
 #include <wx/aboutdlg.h>
+#include <wx/dnd.h>
 #include <wx/filedlg.h>
 #include <wx/filename.h>
 #include <wx/fontdlg.h>
 #include <wx/msgdlg.h>
+
+namespace {
+// FileDropTarget: ファイルドロップを受け取って CEditWndWx に転送
+class SakuraFileDropTarget : public wxFileDropTarget {
+public:
+    explicit SakuraFileDropTarget(CEditWndWx* wnd) : m_wnd(wnd) {}
+    bool OnDropFiles(wxCoord, wxCoord, const wxArrayString& files) override {
+        if (!m_wnd || files.IsEmpty()) return false;
+        m_wnd->OpenFile(files[0]);
+        return true;
+    }
+private:
+    CEditWndWx* m_wnd;
+};
+} // namespace
 
 wxBEGIN_EVENT_TABLE(CEditWndWx, wxFrame)
     EVT_MENU(wxID_NEW,             CEditWndWx::OnNew)
@@ -27,12 +47,29 @@ wxBEGIN_EVENT_TABLE(CEditWndWx, wxFrame)
     EVT_MENU(ID_SEARCH_GREP,       CEditWndWx::OnGrep)
     EVT_MENU(ID_VIEW_LINE_NUMBERS, CEditWndWx::OnToggleLineNumbers)
     EVT_MENU(ID_VIEW_WORD_WRAP,    CEditWndWx::OnToggleWordWrap)
+    EVT_MENU(ID_VIEW_WHITESPACE,         CEditWndWx::OnToggleWhitespace)
+    EVT_MENU(ID_VIEW_IDEOGRAPHIC_SPACE,  CEditWndWx::OnToggleIdeographicSpace)
+    EVT_MENU(ID_VIEW_CODE_FOLDING,       CEditWndWx::OnToggleCodeFolding)
+    EVT_MENU(ID_BOOKMARK_TOGGLE,    CEditWndWx::OnBookmarkToggle)
+    EVT_MENU(ID_BOOKMARK_NEXT,      CEditWndWx::OnBookmarkNext)
+    EVT_MENU(ID_BOOKMARK_PREV,      CEditWndWx::OnBookmarkPrev)
+    EVT_MENU(ID_BOOKMARK_CLEAR_ALL, CEditWndWx::OnBookmarkClearAll)
+    EVT_MENU_RANGE(ID_ENCODING_BASE, ID_ENCODING_UTF16BE,
+                   CEditWndWx::OnEncodingChange)
+    EVT_MENU_RANGE(ID_ENCODING_RELOAD_BASE, ID_ENCODING_RELOAD_BASE + 5,
+                   CEditWndWx::OnReloadAsEncoding)
+    EVT_MENU_RANGE(ID_EOL_CRLF, ID_EOL_CR, CEditWndWx::OnEolChange)
+    EVT_MENU_RANGE(ID_RECENT_FILE_BASE, ID_RECENT_FILE_LAST,
+                   CEditWndWx::OnRecentFile)
+    EVT_MENU(ID_RECENT_FILE_CLEAR, CEditWndWx::OnRecentFile)
     EVT_MENU(wxID_PREFERENCES,     CEditWndWx::OnFont)
     EVT_MENU(wxID_ABOUT,           CEditWndWx::OnAbout)
     EVT_CLOSE(CEditWndWx::OnCloseWindow)
     EVT_UPDATE_UI(wxID_SAVE,       CEditWndWx::OnUpdateUI)
     EVT_UPDATE_UI(wxID_UNDO,       CEditWndWx::OnUpdateUI)
     EVT_UPDATE_UI(wxID_REDO,       CEditWndWx::OnUpdateUI)
+    EVT_AUINOTEBOOK_PAGE_CHANGED(wxID_ANY, CEditWndWx::OnTabChanged)
+    EVT_AUINOTEBOOK_PAGE_CLOSE(wxID_ANY,   CEditWndWx::OnTabClose)
 wxEND_EVENT_TABLE()
 
 CEditWndWx::CEditWndWx(const wxString& filePath)
@@ -41,14 +78,26 @@ CEditWndWx::CEditWndWx(const wxString& filePath)
               wxDefaultPosition, wxSize(900, 700))
 {
     CreateMenuBarImpl();
+    sakura_wx::ui::CSakuraToolBar::Build(this);
     CreateStatusBarImpl();
 
-    m_editView = new CEditViewWx(this, wxID_ANY);
+    // wxAuiNotebook をフレーム全体に配置。各タブが個別の CEditViewWx を持つ。
+    m_notebook = new wxAuiNotebook(this, wxID_ANY,
+        wxDefaultPosition, wxDefaultSize,
+        wxAUI_NB_DEFAULT_STYLE | wxAUI_NB_TAB_MOVE | wxAUI_NB_CLOSE_ON_ACTIVE_TAB
+            | wxAUI_NB_WINDOWLIST_BUTTON);
 
     auto* sizer = new wxBoxSizer(wxVERTICAL);
-    sizer->Add(m_editView, 1, wxEXPAND);
+    sizer->Add(m_notebook, 1, wxEXPAND);
     SetSizer(sizer);
 
+    // 最初のタブを作成
+    AddNewTab();
+
+    // フレーム本体にもファイルドロップ
+    SetDropTarget(new SakuraFileDropTarget(this));
+
+    RefreshRecentFilesMenu();
     Centre();
 
     if (!filePath.IsEmpty()) {
@@ -56,6 +105,97 @@ CEditWndWx::CEditWndWx(const wxString& filePath)
     } else {
         UpdateTitle();
     }
+}
+
+// ============================================================
+// タブ管理
+// ============================================================
+CEditViewWx* CEditWndWx::ActiveView() const {
+    if (!m_notebook) return m_editView;
+    int sel = m_notebook->GetSelection();
+    if (sel == wxNOT_FOUND) return nullptr;
+    return dynamic_cast<CEditViewWx*>(m_notebook->GetPage(sel));
+}
+
+CEditWndWx::TabState* CEditWndWx::ActiveState() {
+    auto* v = ActiveView();
+    if (!v) return nullptr;
+    auto it = m_tabs.find(v);
+    return it == m_tabs.end() ? nullptr : &it->second;
+}
+
+const CEditWndWx::TabState* CEditWndWx::ActiveState() const {
+    auto* v = ActiveView();
+    if (!v) return nullptr;
+    auto it = m_tabs.find(v);
+    return it == m_tabs.end() ? nullptr : &it->second;
+}
+
+void CEditWndWx::SyncMirrorFromActive() {
+    m_editView = ActiveView();
+    if (auto* st = ActiveState()) {
+        m_currentFile = st->currentFile;
+        m_modified    = st->modified;
+    } else {
+        m_currentFile.Clear();
+        m_modified = false;
+    }
+    UpdateTitle();
+}
+
+int CEditWndWx::AddNewTab(const wxString& title) {
+    auto* view = new CEditViewWx(m_notebook, wxID_ANY);
+    view->SetDropTarget(new SakuraFileDropTarget(this));
+    m_tabs[view] = TabState{};
+    m_notebook->AddPage(view, title, /*select=*/true);
+    SyncMirrorFromActive();
+    return m_notebook->GetPageCount() - 1;
+}
+
+bool CEditWndWx::ActivateTabForFile(const wxString& path) {
+    if (!m_notebook) return false;
+    for (size_t i = 0; i < m_notebook->GetPageCount(); ++i) {
+        auto* view = dynamic_cast<CEditViewWx*>(m_notebook->GetPage(i));
+        if (!view) continue;
+        auto it = m_tabs.find(view);
+        if (it != m_tabs.end() && it->second.currentFile == path) {
+            m_notebook->SetSelection(i);
+            return true;
+        }
+    }
+    return false;
+}
+
+void CEditWndWx::OnTabChanged(wxAuiNotebookEvent& event) {
+    SyncMirrorFromActive();
+    event.Skip();
+}
+
+void CEditWndWx::OnTabClose(wxAuiNotebookEvent& event) {
+    int idx = event.GetSelection();
+    auto* view = dynamic_cast<CEditViewWx*>(m_notebook->GetPage(idx));
+    if (!view) { event.Skip(); return; }
+    auto it = m_tabs.find(view);
+    if (it != m_tabs.end() && it->second.modified) {
+        // 一旦アクティブにして保存確認
+        m_notebook->SetSelection(idx);
+        SyncMirrorFromActive();
+        if (!MaybeSaveBeforeAction()) {
+            event.Veto();
+            return;
+        }
+    }
+    if (it != m_tabs.end()) m_tabs.erase(it);
+
+    // 最後のタブが閉じられそうなら新規タブで補充
+    if (m_notebook->GetPageCount() <= 1) {
+        // close を許可した後、空にならないように後で 1 つ追加する。
+        CallAfter([this]{
+            if (m_notebook->GetPageCount() == 0) AddNewTab();
+            SyncMirrorFromActive();
+        });
+    }
+    event.Skip();
 }
 
 CEditWndWx::~CEditWndWx() = default;
@@ -69,6 +209,12 @@ void CEditWndWx::CreateMenuBarImpl() {
     menuFile->AppendSeparator();
     menuFile->Append(wxID_SAVE,   wxT("上書き保存(&S)\tCtrl+S"));
     menuFile->Append(wxID_SAVEAS, wxT("名前を付けて保存(&A)..."));
+    menuFile->AppendSeparator();
+
+    // 最近使ったファイル サブメニュー（後で RefreshRecentFilesMenu で内容更新）
+    m_recentMenu = new wxMenu();
+    menuFile->AppendSubMenu(m_recentMenu, wxT("最近使ったファイル(&R)"));
+
     menuFile->AppendSeparator();
     menuFile->Append(wxID_CLOSE,  wxT("閉じる(&W)\tCtrl+W"));
     menuFile->AppendSeparator();
@@ -91,15 +237,51 @@ void CEditWndWx::CreateMenuBarImpl() {
     menuSearch->Append(wxID_REPLACE, wxT("置換(&R)...\tCtrl+H"));
     menuSearch->AppendSeparator();
     menuSearch->Append(ID_SEARCH_GREP, wxT("Grep（フォルダ検索）(&G)...\tCtrl+G"));
+    menuSearch->AppendSeparator();
+    menuSearch->Append(ID_BOOKMARK_TOGGLE,    wxT("ブックマーク 切替\tF2"));
+    menuSearch->Append(ID_BOOKMARK_NEXT,      wxT("次のブックマーク\tF3"));
+    menuSearch->Append(ID_BOOKMARK_PREV,      wxT("前のブックマーク\tShift+F3"));
+    menuSearch->Append(ID_BOOKMARK_CLEAR_ALL, wxT("すべてのブックマークをクリア"));
     menuBar->Append(menuSearch, wxT("検索(&S)"));
 
     auto* menuView = new wxMenu();
     menuView->AppendCheckItem(ID_VIEW_LINE_NUMBERS, wxT("行番号を表示(&L)"));
     menuView->Check(ID_VIEW_LINE_NUMBERS, true);
-    menuView->AppendCheckItem(ID_VIEW_WORD_WRAP,    wxT("折り返し(&W)"));
-    menuView->Check(ID_VIEW_WORD_WRAP, false);
+    menuView->AppendCheckItem(ID_VIEW_WORD_WRAP, wxT("折り返し(&W)"));
+    menuView->AppendCheckItem(ID_VIEW_WHITESPACE,
+                              wxT("空白・タブを可視化(&S)"));
+    menuView->AppendCheckItem(ID_VIEW_IDEOGRAPHIC_SPACE,
+                              wxT("全角空白をハイライト(&I)"));
+    menuView->AppendCheckItem(ID_VIEW_CODE_FOLDING,
+                              wxT("コード折りたたみ(&D)"));
     menuView->AppendSeparator();
-    menuView->Append(wxID_PREFERENCES, wxT("フォント設定(&F)..."));
+
+    // 文字コード サブメニュー
+    auto* menuEnc = new wxMenu();
+    menuEnc->Append(ID_ENCODING_UTF8,     wxT("UTF-8 として保存"));
+    menuEnc->Append(ID_ENCODING_UTF8_BOM, wxT("UTF-8 BOM として保存"));
+    menuEnc->Append(ID_ENCODING_SJIS,     wxT("Shift-JIS として保存"));
+    menuEnc->Append(ID_ENCODING_EUCJP,    wxT("EUC-JP として保存"));
+    menuEnc->Append(ID_ENCODING_UTF16LE,  wxT("UTF-16 LE として保存"));
+    menuEnc->Append(ID_ENCODING_UTF16BE,  wxT("UTF-16 BE として保存"));
+    menuEnc->AppendSeparator();
+    menuEnc->Append(ID_ENCODING_RELOAD_BASE + 0, wxT("UTF-8 として再読み込み"));
+    menuEnc->Append(ID_ENCODING_RELOAD_BASE + 1, wxT("UTF-8 BOM として再読み込み"));
+    menuEnc->Append(ID_ENCODING_RELOAD_BASE + 2, wxT("Shift-JIS として再読み込み"));
+    menuEnc->Append(ID_ENCODING_RELOAD_BASE + 3, wxT("EUC-JP として再読み込み"));
+    menuEnc->Append(ID_ENCODING_RELOAD_BASE + 4, wxT("UTF-16 LE として再読み込み"));
+    menuEnc->Append(ID_ENCODING_RELOAD_BASE + 5, wxT("UTF-16 BE として再読み込み"));
+    menuView->AppendSubMenu(menuEnc, wxT("文字コード(&C)"));
+
+    // 改行コード サブメニュー
+    auto* menuEol = new wxMenu();
+    menuEol->Append(ID_EOL_CRLF, wxT("CRLF (Windows)"));
+    menuEol->Append(ID_EOL_LF,   wxT("LF (macOS / Linux)"));
+    menuEol->Append(ID_EOL_CR,   wxT("CR (旧 Mac)"));
+    menuView->AppendSubMenu(menuEol, wxT("改行コード(&E)"));
+
+    menuView->AppendSeparator();
+    menuView->Append(wxID_PREFERENCES, wxT("設定(&P)..."));
     menuBar->Append(menuView, wxT("表示(&V)"));
 
     auto* menuHelp = new wxMenu();
@@ -124,39 +306,74 @@ bool CEditWndWx::OpenFile(const wxString& path) {
                      wxT("エラー"), wxOK | wxICON_ERROR);
         return false;
     }
-    if (!m_editView->LoadFile(path)) {
+    // 既に開いているタブがあればそちらをアクティブ化
+    if (ActivateTabForFile(path)) return true;
+
+    // アクティブタブが「無題かつ未編集」なら再利用、そうでなければ新規タブ
+    auto* st = ActiveState();
+    bool reuse = (st && st->currentFile.IsEmpty() && !st->modified);
+    if (!reuse) AddNewTab();
+
+    auto* view = ActiveView();
+    if (!view || !view->LoadFile(path)) {
         wxMessageBox(wxT("ファイルを開けませんでした: ") + path,
                      wxT("エラー"), wxOK | wxICON_ERROR);
         return false;
     }
-    m_currentFile = path;
-    m_modified = false;
-    UpdateTitle();
+    if (auto* s = ActiveState()) {
+        s->currentFile = path;
+        s->modified    = false;
+    }
+    SyncMirrorFromActive();
+
+    // タブタイトルをファイル名に
+    int sel = m_notebook->GetSelection();
+    if (sel != wxNOT_FOUND) {
+        m_notebook->SetPageText(sel, wxFileName(path).GetFullName());
+    }
     SetStatusText(path, kStatusFieldFile);
+
+    if (auto* app = wxDynamicCast(wxTheApp, SakuraApp)) {
+        if (auto* cfg = app->Config()) {
+            cfg->AddRecentFile(path);
+            cfg->Save();
+            RefreshRecentFilesMenu();
+        }
+    }
     return true;
 }
 
 bool CEditWndWx::SaveFile() {
-    if (m_currentFile.IsEmpty()) return SaveFileAs();
-    if (!m_editView->SaveFile(m_currentFile)) {
-        wxMessageBox(wxT("保存に失敗しました: ") + m_currentFile,
+    auto* view = ActiveView();
+    auto* st   = ActiveState();
+    if (!view || !st) return false;
+    if (st->currentFile.IsEmpty()) return SaveFileAs();
+    if (!view->SaveFile(st->currentFile)) {
+        wxMessageBox(wxT("保存に失敗しました: ") + st->currentFile,
                      wxT("エラー"), wxOK | wxICON_ERROR);
         return false;
     }
-    m_modified = false;
-    UpdateTitle();
+    st->modified = false;
+    SyncMirrorFromActive();
     return true;
 }
 
 bool CEditWndWx::SaveFileAs() {
+    auto* st = ActiveState();
+    if (!st) return false;
     wxFileDialog dlg(this,
         wxT("名前を付けて保存"),
         wxEmptyString,
-        m_currentFile.IsEmpty() ? wxT("無題.txt") : wxFileName(m_currentFile).GetFullName(),
+        st->currentFile.IsEmpty() ? wxT("無題.txt")
+                                  : wxFileName(st->currentFile).GetFullName(),
         wxT("テキストファイル (*.txt)|*.txt|すべてのファイル (*.*)|*.*"),
         wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
     if (dlg.ShowModal() != wxID_OK) return false;
-    m_currentFile = dlg.GetPath();
+    st->currentFile = dlg.GetPath();
+    int sel = m_notebook ? m_notebook->GetSelection() : wxNOT_FOUND;
+    if (sel != wxNOT_FOUND) {
+        m_notebook->SetPageText(sel, wxFileName(st->currentFile).GetFullName());
+    }
     return SaveFile();
 }
 
@@ -168,9 +385,30 @@ void CEditWndWx::UpdateTitle() {
     SetTitle(name + wxT(" - サクラエディタ (wxWidgets)"));
 }
 
+bool CEditWndWx::OpenFileAtLine(const wxString& path, int line1Based) {
+    if (!OpenFile(path)) return false;
+    if (!m_editView) return false;
+    if (line1Based <= 0) return true;
+    int target = line1Based - 1;  // wxSTC は 0-based
+    m_editView->GotoLine(target);
+    m_editView->EnsureCaretVisible();
+    m_editView->SetFocus();
+    return true;
+}
+
 void CEditWndWx::NotifyModified(bool modified) {
+    auto* st = ActiveState();
+    if (st) st->modified = modified;
     if (m_modified == modified) return;
     m_modified = modified;
+    // タブタイトルに * を反映
+    int sel = m_notebook ? m_notebook->GetSelection() : wxNOT_FOUND;
+    if (sel != wxNOT_FOUND && st) {
+        wxString base = st->currentFile.IsEmpty()
+            ? wxString(wxT("無題"))
+            : wxFileName(st->currentFile).GetFullName();
+        m_notebook->SetPageText(sel, modified ? wxT("* ") + base : base);
+    }
     UpdateTitle();
 }
 
@@ -185,13 +423,8 @@ bool CEditWndWx::MaybeSaveBeforeAction() {
 }
 
 void CEditWndWx::OnNew(wxCommandEvent&) {
-    if (!MaybeSaveBeforeAction()) return;
-    m_editView->ClearAll();
-    m_editView->EmptyUndoBuffer();
-    m_editView->SetSavePoint();
-    m_currentFile.Clear();
-    m_modified = false;
-    UpdateTitle();
+    // 新規タブを開く（既存タブはそのまま残す）
+    AddNewTab();
     SetStatusText(wxT("Ready"), kStatusFieldFile);
 }
 
@@ -210,7 +443,17 @@ void CEditWndWx::OnOpen(wxCommandEvent&) {
 void CEditWndWx::OnSave(wxCommandEvent&)   { SaveFile(); }
 void CEditWndWx::OnSaveAs(wxCommandEvent&) { SaveFileAs(); }
 
-void CEditWndWx::OnCloseFile(wxCommandEvent& event) { OnNew(event); }
+void CEditWndWx::OnCloseFile(wxCommandEvent&) {
+    if (!m_notebook) return;
+    int sel = m_notebook->GetSelection();
+    if (sel == wxNOT_FOUND) return;
+    // wxAuiNotebook::DeletePage は内部で PAGE_CLOSE イベントを発火する
+    m_notebook->DeletePage(sel);
+    if (m_notebook->GetPageCount() == 0) {
+        AddNewTab();
+    }
+    SyncMirrorFromActive();
+}
 void CEditWndWx::OnQuit(wxCommandEvent&)            { Close(); }
 
 void CEditWndWx::OnUndo(wxCommandEvent&)      { m_editView->Undo(); }
@@ -244,11 +487,17 @@ void CEditWndWx::OnToggleWordWrap(wxCommandEvent& event) {
 }
 
 void CEditWndWx::OnFont(wxCommandEvent&) {
-    wxFontData data;
-    data.SetInitialFont(m_editView->GetCurrentEditorFont());
-    wxFontDialog dlg(this, data);
+    auto* app = wxDynamicCast(wxTheApp, SakuraApp);
+    SakuraConfig* cfg = app ? app->Config() : nullptr;
+    sakura_wx::dialog::CDlgSettingsWx dlg(this, cfg);
     if (dlg.ShowModal() == wxID_OK) {
-        m_editView->SetEditorFont(dlg.GetFontData().GetChosenFont());
+        // 即時反映: 現在のアクティブビューに新しいフォント／設定を当てる
+        if (m_editView && cfg) {
+            m_editView->SetEditorFont(cfg->GetEditorFont());
+            m_editView->SetLineNumbersVisible(cfg->GetShowLineNumbers());
+            m_editView->SetWordWrapEnabled(cfg->GetWordWrap());
+            m_editView->SetTabWidth(cfg->GetTabWidth());
+        }
     }
 }
 
@@ -278,4 +527,135 @@ void CEditWndWx::OnUpdateUI(wxUpdateUIEvent& event) {
     case wxID_REDO: event.Enable(m_editView && m_editView->CanRedo()); break;
     default: event.Skip(); break;
     }
+}
+
+// ============================================================
+// Phase 7: 表示の高度な切替
+// ============================================================
+void CEditWndWx::OnToggleWhitespace(wxCommandEvent& event) {
+    if (m_editView) m_editView->SetWhitespaceVisible(event.IsChecked());
+}
+void CEditWndWx::OnToggleIdeographicSpace(wxCommandEvent& event) {
+    if (m_editView) m_editView->SetIdeographicSpaceHighlight(event.IsChecked());
+}
+void CEditWndWx::OnToggleCodeFolding(wxCommandEvent& event) {
+    if (m_editView) m_editView->SetCodeFoldingEnabled(event.IsChecked());
+}
+
+// ============================================================
+// Phase 7: ブックマーク
+// ============================================================
+void CEditWndWx::OnBookmarkToggle(wxCommandEvent&) {
+    if (m_editView) m_editView->ToggleBookmarkAtCurrent();
+}
+void CEditWndWx::OnBookmarkNext(wxCommandEvent&) {
+    if (m_editView) m_editView->GoToNextBookmark();
+}
+void CEditWndWx::OnBookmarkPrev(wxCommandEvent&) {
+    if (m_editView) m_editView->GoToPrevBookmark();
+}
+void CEditWndWx::OnBookmarkClearAll(wxCommandEvent&) {
+    if (m_editView) m_editView->ClearAllBookmarks();
+}
+
+// ============================================================
+// Phase 7: 文字コード／改行コード
+// ============================================================
+namespace {
+sakura_wx::charset::Encoding EncIdToEnum(int id, int base) {
+    using E = sakura_wx::charset::Encoding;
+    switch (id - base) {
+    case 0: return E::UTF8;
+    case 1: return E::UTF8_BOM;
+    case 2: return E::SJIS;
+    case 3: return E::EUCJP;
+    case 4: return E::UTF16LE;
+    case 5: return E::UTF16BE;
+    default: return E::UTF8;
+    }
+}
+} // namespace
+
+void CEditWndWx::OnEncodingChange(wxCommandEvent& event) {
+    if (!m_editView) return;
+    auto enc = EncIdToEnum(event.GetId(), ID_ENCODING_BASE);
+    m_editView->SetEncoding(enc);
+    SetStatusText(wxString::FromUTF8(sakura_wx::charset::EncodingName(enc)),
+                  kStatusFieldEncoding);
+    NotifyModified(true); // 保存時に書き出すため変更扱い
+}
+
+void CEditWndWx::OnReloadAsEncoding(wxCommandEvent& event) {
+    if (!m_editView || m_currentFile.IsEmpty()) return;
+    if (!MaybeSaveBeforeAction()) return;
+    auto enc = EncIdToEnum(event.GetId(), ID_ENCODING_RELOAD_BASE);
+    // 単純実装: 一旦ファイルを開き直してから encoding を上書き
+    m_editView->SetEncoding(enc);
+    m_editView->LoadFile(m_currentFile);
+    m_editView->SetEncoding(enc);  // 自動判定上書き
+    NotifyModified(false);
+}
+
+void CEditWndWx::OnEolChange(wxCommandEvent& event) {
+    if (!m_editView) return;
+    using EM = CEditViewWx::EolMode;
+    EM mode = EM::LF;
+    switch (event.GetId()) {
+    case ID_EOL_CRLF: mode = EM::CRLF; break;
+    case ID_EOL_LF:   mode = EM::LF;   break;
+    case ID_EOL_CR:   mode = EM::CR;   break;
+    }
+    m_editView->ConvertAllLineEndingsTo(mode);
+    NotifyModified(true);
+}
+
+// ============================================================
+// Phase 7: 最近使ったファイル
+// ============================================================
+void CEditWndWx::RefreshRecentFilesMenu() {
+    if (!m_recentMenu) return;
+    // 既存項目をすべて削除
+    while (m_recentMenu->GetMenuItemCount() > 0) {
+        auto* it = m_recentMenu->FindItemByPosition(0);
+        if (!it) break;
+        m_recentMenu->Destroy(it);
+    }
+    auto* app = wxDynamicCast(wxTheApp, SakuraApp);
+    if (!app || !app->Config()) {
+        m_recentMenu->Append(wxID_ANY, wxT("(なし)"))->Enable(false);
+        return;
+    }
+    auto files = app->Config()->GetRecentFiles();
+    if (files.IsEmpty()) {
+        m_recentMenu->Append(wxID_ANY, wxT("(なし)"))->Enable(false);
+        return;
+    }
+    int n = static_cast<int>(files.GetCount());
+    if (n > (ID_RECENT_FILE_LAST - ID_RECENT_FILE_BASE + 1)) {
+        n = (ID_RECENT_FILE_LAST - ID_RECENT_FILE_BASE + 1);
+    }
+    for (int i = 0; i < n; ++i) {
+        wxString label = wxString::Format(wxT("&%d  %s"), (i + 1) % 10, files[i]);
+        m_recentMenu->Append(ID_RECENT_FILE_BASE + i, label);
+    }
+    m_recentMenu->AppendSeparator();
+    m_recentMenu->Append(ID_RECENT_FILE_CLEAR, wxT("履歴をクリア"));
+}
+
+void CEditWndWx::OnRecentFile(wxCommandEvent& event) {
+    auto* app = wxDynamicCast(wxTheApp, SakuraApp);
+    if (!app || !app->Config()) return;
+
+    if (event.GetId() == ID_RECENT_FILE_CLEAR) {
+        app->Config()->ClearRecentFiles();
+        app->Config()->Save();
+        RefreshRecentFilesMenu();
+        return;
+    }
+
+    int idx = event.GetId() - ID_RECENT_FILE_BASE;
+    auto files = app->Config()->GetRecentFiles();
+    if (idx < 0 || idx >= static_cast<int>(files.GetCount())) return;
+    if (!MaybeSaveBeforeAction()) return;
+    OpenFile(files[idx]);
 }

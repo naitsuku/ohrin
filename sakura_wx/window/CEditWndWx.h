@@ -1,6 +1,8 @@
 #pragma once
 #include <wx/wx.h>
-#include <wx/aui/aui.h>
+#include <wx/aui/auibook.h>
+
+#include <unordered_map>
 
 class CEditViewWx;
 
@@ -25,6 +27,17 @@ public:
 
     // --- 編集状態の通知（CEditViewWx から呼ばれる） ---
     void NotifyModified(bool modified);
+
+    // --- ビューアクセサ（アクティブタブの view を返す） ---
+    CEditViewWx* GetEditView() { return ActiveView(); }
+    CEditViewWx* ActiveView() const;
+
+    // --- ファイルを開いて指定行へジャンプ（Grep 結果ダブルクリック等） ---
+    bool OpenFileAtLine(const wxString& path, int line1Based);
+
+    // --- タブ管理 ---
+    int  AddNewTab(const wxString& title = wxT("無題"));  // 新規タブ作成、index を返す
+    bool ActivateTabForFile(const wxString& path);         // 既に開いているタブをアクティブ化
 
     // --- ステータスバー アクセサ ---
     enum {
@@ -60,7 +73,25 @@ private:
     // 表示メニュー
     void OnToggleLineNumbers(wxCommandEvent& event);
     void OnToggleWordWrap(wxCommandEvent& event);
+    void OnToggleWhitespace(wxCommandEvent& event);
+    void OnToggleIdeographicSpace(wxCommandEvent& event);
+    void OnToggleCodeFolding(wxCommandEvent& event);
     void OnFont(wxCommandEvent& event);
+
+    // ブックマークメニュー
+    void OnBookmarkToggle(wxCommandEvent& event);
+    void OnBookmarkNext(wxCommandEvent& event);
+    void OnBookmarkPrev(wxCommandEvent& event);
+    void OnBookmarkClearAll(wxCommandEvent& event);
+
+    // 文字コード／改行コード
+    void OnEncodingChange(wxCommandEvent& event);   // ID_ENCODING_*
+    void OnEolChange(wxCommandEvent& event);        // ID_EOL_*
+    void OnReloadAsEncoding(wxCommandEvent& event);
+
+    // 最近使ったファイル
+    void OnRecentFile(wxCommandEvent& event);
+    void RefreshRecentFilesMenu();
 
     // ヘルプメニュー
     void OnAbout(wxCommandEvent& event);
@@ -71,9 +102,28 @@ private:
 
     bool MaybeSaveBeforeAction();
 
-    CEditViewWx*  m_editView   = nullptr;
-    wxString      m_currentFile;
-    bool          m_modified   = false;
+    // タブ毎のメタデータ
+    struct TabState {
+        wxString currentFile;
+        bool     modified = false;
+    };
+
+    wxAuiNotebook* m_notebook = nullptr;
+    std::unordered_map<CEditViewWx*, TabState> m_tabs;
+
+    TabState* ActiveState();
+    const TabState* ActiveState() const;
+    void SyncMirrorFromActive();  // m_currentFile / m_modified を同期
+
+    void OnTabClose(wxAuiNotebookEvent& event);
+    void OnTabChanged(wxAuiNotebookEvent& event);
+
+    // アクティブタブのミラー（既存コードからの参照を維持するため）
+    CEditViewWx* m_editView    = nullptr;
+    wxString     m_currentFile;
+    bool         m_modified    = false;
+
+    wxMenu*   m_recentMenu = nullptr;
 
     wxDECLARE_EVENT_TABLE();
 };
@@ -81,5 +131,34 @@ private:
 enum {
     ID_VIEW_LINE_NUMBERS = wxID_HIGHEST + 100,
     ID_VIEW_WORD_WRAP,
+    ID_VIEW_WHITESPACE,
+    ID_VIEW_IDEOGRAPHIC_SPACE,
+    ID_VIEW_CODE_FOLDING,
     ID_SEARCH_GREP,
+
+    // ブックマーク
+    ID_BOOKMARK_TOGGLE = wxID_HIGHEST + 120,
+    ID_BOOKMARK_NEXT,
+    ID_BOOKMARK_PREV,
+    ID_BOOKMARK_CLEAR_ALL,
+
+    // 文字コード（再読み込み・変換）
+    ID_ENCODING_BASE = wxID_HIGHEST + 140,
+    ID_ENCODING_UTF8        = ID_ENCODING_BASE,
+    ID_ENCODING_UTF8_BOM,
+    ID_ENCODING_SJIS,
+    ID_ENCODING_EUCJP,
+    ID_ENCODING_UTF16LE,
+    ID_ENCODING_UTF16BE,
+    ID_ENCODING_RELOAD_BASE = wxID_HIGHEST + 160,  // 再読み込み版（同じ順）
+
+    // 改行コード
+    ID_EOL_CRLF = wxID_HIGHEST + 180,
+    ID_EOL_LF,
+    ID_EOL_CR,
+
+    // 最近使ったファイル（最大 10 個分の予約 ID）
+    ID_RECENT_FILE_BASE = wxID_HIGHEST + 200,
+    ID_RECENT_FILE_LAST = ID_RECENT_FILE_BASE + 9,
+    ID_RECENT_FILE_CLEAR = wxID_HIGHEST + 210,
 };

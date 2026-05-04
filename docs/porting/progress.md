@@ -1,5 +1,93 @@
 # 移植作業進捗ログ
 
+## 2026-05-04 — Phase 3.5 部分完了（同日）
+
+Phase 3.5 prompt は Phase 3 / 4 / 5 の 3 フェーズを含む大きな範囲。
+今回のセッションでは下記を実装。残りは Phase 6 以降に持ち越し。
+
+### 実施内容
+
+- [x] **Phase 3 Task 3-1: SakuraConfig**
+  - `sakura_wx/config/SakuraConfig.{h,cpp}` を新規作成
+  - PAL `IConfigStore` を介して INI ファイルへ読み書き
+    - macOS: `~/Library/Application Support/SakuraEditor/sakura.ini`
+    - Linux: `~/.config/sakura/sakura.ini`
+  - フォント、行番号表示、折り返し、タブ幅、ウィンドウ位置・サイズ、
+    最近使ったファイル（重複排除＋最大 10 件）を管理
+  - `SakuraApp::OnInit()` で `Load()`、`OnExit()` で `Save()` 自動呼び出し
+  - スモークテスト後の `sakura.ini` を実際に確認、期待通り書き出されている
+
+- [x] **Phase 3 Task 3-2 (修正版): SakuraSharedData**
+  - 上流の `DLLSHAREDATA` 構造体は StdAfx.h 経由で大量の Win32 SDK ヘッダに
+    依存しており Phase 1 状態では非 Windows でコンパイル不可
+  - 代わりに `sakura_wx/ipc/SakuraSharedData.{h,cpp}` を新規作成し、PAL の
+    `ISharedMemory` 上に最小ポータブル版（マジック番号、バージョン、
+    プロセスカウンタ、最後のウィンドウ位置）を実装
+  - 異常終了時の破損ヘッダ検知で再初期化、std::atomic でカウンタ管理
+  - Phase 6 で StdAfx.h 解体が完了次第、上流 DLLSHAREDATA を取り込む計画
+
+- [x] **Phase 4 Task 4-3: 文字コード round-trip テスト**
+  - 文字コード判定／変換ロジックを CEditViewWx から
+    `sakura_wx/charset/Encoding.{h,cpp}` に切り出し（`sakura_wx_core`
+    静的ライブラリ経由でテスト可能に）
+  - `tests/wx_tests/test_encoding.cpp` を新規作成、14 テスト全パス
+    - Detect: ASCII/UTF-8/UTF-8 BOM/UTF-16 LE/BE/Shift-JIS/EUC-JP
+    - Decode/Encode: round-trip（"日本語" "Hello, 世界" "こんにちは" 等）
+
+- [x] **Phase 5 Task 5-1: Replace を CDlgSearchWx に追加**
+  - 検索欄＋置換欄の2行 UI、「置換して次へ」「すべて置換」ボタン
+  - `wxSTC_FIND_REGEXP` フラグ時は `ReplaceTargetRE` を使用（後方参照対応）
+  - 「すべて置換」は `BeginUndoAction`/`EndUndoAction` で 1 アクション化
+  - 0 幅置換の暴走防止
+  - メニュー「検索 → 置換」と Ctrl+H で開く（置換欄にフォーカス）
+
+- [x] **Phase 5 Task 5-5: PORTING_GUIDE.md**
+  - `docs/porting/PORTING_GUIDE.md` を新規作成
+  - アーキテクチャ図、ビルド手順、テスト方法、ディレクトリ変更可否表、
+    Win32→wxWidgets ポーティングパターン集、よくある落とし穴、
+    CI 設定、ロードマップを統合
+
+- [x] **テストスイート追加**
+  - PAL 9 + Encoding 14 + SakuraConfig 4 + SharedData 3 = **30/30 全パス**
+  - テスト時間 2.58 秒
+
+- [x] **GUI smoke test (refactor 後)**
+  - 4 シナリオ全パス（charset 切り出しによる回帰なし）
+  - 起動後 INI ファイル `~/Library/Application Support/SakuraEditor/sakura.ini`
+    が実際に書き出されることを確認
+
+### 先送り項目（Phase 6 以降）
+
+- [ ] **Phase 4 Task 4-1/4-2: 実 IME 対話確認**
+  - macOS TSM、Linux IBus/Fcitx5 で日本語入力の実画面検証が必要
+  - wxSTC は IME 標準サポート済みのため、実装側の追加作業はおそらく
+    最小限。ユーザー環境での `docs/porting/ime_issues.md` 作成が次の一歩
+- [ ] **Phase 5 Task 5-2: Grep ダイアログ**
+  - `std::filesystem::recursive_directory_iterator` + `wxThread` で実装可能
+  - ファイル走査・正規表現検索・結果一覧表示が必要、別セッション推奨
+- [ ] **Phase 5 Task 5-3/5-4: macOS DMG / Linux AppImage**
+  - リリースタグ駆動の YAML を追加するだけだが、CI テストには
+    実際のタグ push が必要なため、最初のリリース準備時にまとめて整備
+- [ ] **StdAfx.h 解体（事前承認済み）**
+  - `#ifdef _WIN32` ガードを `<comdef.h>` 等の Win32 SDK include に追加
+  - これが完了すれば sakura_core の多数ファイルを段階的に非 Windows ビルド
+    に取り込める
+
+## Phase 3.5 完了チェックリスト（実施部分のみ）
+
+- [x] SakuraConfig が IConfigStore に接続され、INI が書き出される
+- [x] SakuraSharedData が PAL ISharedMemory で動作（カウンタ／位置記録）
+- [x] 文字コード round-trip テストが通る（14/14）
+- [x] CDlgSearchWx に置換機能（個別／全件）追加
+- [x] PORTING_GUIDE.md が存在する
+- [x] 全テスト（30/30）パス
+- [x] GUI 起動 smoke test 維持
+
+**Phase 6 で StdAfx.h 解体着手 → sakura_core 段階的取り込み → 実 IME 検証 →
+Grep / リリース整備 の順で進める想定。**
+
+---
+
 ## 2026-05-04 — Phase 2 完了（同日）
 
 ### 実施内容

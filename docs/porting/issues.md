@@ -70,6 +70,34 @@ Phase 2 で対応方針を決定する：
 
 **ステータス**: Phase 2 で対応
 
+### I-006: 上流 DLLSHAREDATA の取り込みは StdAfx.h 解体待ち
+
+**症状**: `sakura_core/env/DLLSHAREDATA.h` が `debug/Debug2.h`,
+`config/maxdata.h`, `env/CAppNodeManager.h` 等を経由して StdAfx.h に依存し、
+非 Windows ビルドで使用不可。
+
+**回避策**: Phase 3 では sakura_wx 独自の最小共有データ構造
+`sakura_wx::ipc::SakuraSharedData`（マジック番号、カウンタ、ウィンドウ位置）
+を PAL ISharedMemory 上に実装。フル機能の DLLSHAREDATA 統合は Phase 6 で
+StdAfx.h ガード追加後に着手する。
+
+**ステータス**: Phase 6 で対応
+
+---
+
+### I-007: 実 IME 対話確認は環境依存テスト
+
+**症状**: macOS TSM、Linux IBus/Fcitx5 での日本語入力動作は実画面確認が
+必要で、ヘッドレスでは検証不可能。
+
+**回避策**: コード上は wxStyledTextCtrl の標準 IME サポートを利用。
+実環境テストはユーザー側で実施し、`docs/porting/ime_issues.md` に問題が
+あれば記録してから Phase 4 Task 4-2 を再開する流れ。
+
+**ステータス**: Phase 6 で対応（要ユーザー操作）
+
+---
+
 ### I-005: シム Windows.h の case sensitivity
 
 **症状**: macOS の APFS は通常 case-insensitive だが、Linux ext4 は case-sensitive。

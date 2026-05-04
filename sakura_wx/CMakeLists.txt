@@ -38,6 +38,7 @@ set(SAKURA_WX_GUI_SOURCES
     window/CEditWndWx.cpp
     view/CEditViewWx.cpp
     dialog/CDlgSearchWx.cpp
+    dialog/CDlgGrepWx.cpp
 )
 
 if(APPLE)

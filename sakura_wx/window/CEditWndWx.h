@@ -55,6 +55,7 @@ private:
     void OnSelectAll(wxCommandEvent& event);
     void OnFind(wxCommandEvent& event);
     void OnReplace(wxCommandEvent& event);
+    void OnGrep(wxCommandEvent& event);
 
     // 表示メニュー
     void OnToggleLineNumbers(wxCommandEvent& event);
@@ -80,4 +81,5 @@ private:
 enum {
     ID_VIEW_LINE_NUMBERS = wxID_HIGHEST + 100,
     ID_VIEW_WORD_WRAP,
+    ID_SEARCH_GREP,
 };

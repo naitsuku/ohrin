@@ -1,6 +1,7 @@
 #include "CEditWndWx.h"
 #include "view/CEditViewWx.h"
 #include "dialog/CDlgSearchWx.h"
+#include "dialog/CDlgGrepWx.h"
 
 #include <wx/aboutdlg.h>
 #include <wx/filedlg.h>
@@ -23,6 +24,7 @@ wxBEGIN_EVENT_TABLE(CEditWndWx, wxFrame)
     EVT_MENU(wxID_SELECTALL,       CEditWndWx::OnSelectAll)
     EVT_MENU(wxID_FIND,            CEditWndWx::OnFind)
     EVT_MENU(wxID_REPLACE,         CEditWndWx::OnReplace)
+    EVT_MENU(ID_SEARCH_GREP,       CEditWndWx::OnGrep)
     EVT_MENU(ID_VIEW_LINE_NUMBERS, CEditWndWx::OnToggleLineNumbers)
     EVT_MENU(ID_VIEW_WORD_WRAP,    CEditWndWx::OnToggleWordWrap)
     EVT_MENU(wxID_PREFERENCES,     CEditWndWx::OnFont)
@@ -87,6 +89,8 @@ void CEditWndWx::CreateMenuBarImpl() {
     auto* menuSearch = new wxMenu();
     menuSearch->Append(wxID_FIND,    wxT("検索(&F)...\tCtrl+F"));
     menuSearch->Append(wxID_REPLACE, wxT("置換(&R)...\tCtrl+H"));
+    menuSearch->AppendSeparator();
+    menuSearch->Append(ID_SEARCH_GREP, wxT("Grep（フォルダ検索）(&G)...\tCtrl+G"));
     menuBar->Append(menuSearch, wxT("検索(&S)"));
 
     auto* menuView = new wxMenu();
@@ -223,6 +227,11 @@ void CEditWndWx::OnFind(wxCommandEvent&) {
 
 void CEditWndWx::OnReplace(wxCommandEvent&) {
     auto* dlg = new CDlgSearchWx(this, m_editView, /*replaceFocus=*/true);
+    dlg->Show(true);
+}
+
+void CEditWndWx::OnGrep(wxCommandEvent&) {
+    auto* dlg = new sakura_wx::dialog::CDlgGrepWx(this, this);
     dlg->Show(true);
 }
 

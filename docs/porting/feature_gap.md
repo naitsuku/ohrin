@@ -1,6 +1,6 @@
 # 機能差分一覧 — Win32 サクラエディタ vs wxWidgets 移植版
 
-最終更新: 2026-05-04 (Phase 7 完了時点)
+最終更新: 2026-05-04 (Phase 8 完了時点)
 
 本ドキュメントは Win32 オリジナル版 (`src/`) と wxWidgets 移植版 (`sakura_wx/`)
 の機能差分を一覧化し、各機能の実装フェーズ計画と取捨選択方針を明示する。
@@ -26,7 +26,7 @@
 | 行番号表示 | ✅ | ✅ | Phase 2 | メニュー切替対応 |
 | 折り返し | ✅ | ✅ | Phase 2 | 単純 ON/OFF。複数モード（指定桁、ウィンドウ幅）は Phase 8 |
 | 自動インデント | ✅ | ✅ | Phase 2 | 前行のインデントを継承 |
-| 矩形選択 | ✅ | 🔄 | **Phase 8** | wxSTC は Alt+ドラッグ対応。コピー/貼り付け挙動の整備が必要 |
+| 矩形選択 | ✅ | ✅ | Phase 8 | wxSTC ネイティブ + 複数キャレット編集 + virtual space 有効化 |
 | 折りたたみ | ✅ | ✅ | Phase 7 | wxSTC SetFoldFlags、C++/Python レキサー対応 |
 | ブックマーク | ✅ | ✅ | Phase 7 | マージン1 sensitive + F2/F3/Shift+F3 |
 | 全角空白・タブ可視化 | ✅ | ✅ | Phase 7 | SetViewWhiteSpace + U+3000 専用インジケータ |
@@ -50,7 +50,7 @@
 | 文字コード自動判定 | ✅ | ✅ | Phase 2/4 | UTF-8/BOM, SJIS, EUC-JP, UTF-16 LE/BE |
 | 文字コード手動指定（メニュー） | ✅ | ✅ | Phase 7 | 6 エンコーディングで保存／再読み込み |
 | 改行コード手動指定 | ✅ | ✅ | Phase 7 | CRLF/LF/CR、ConvertEOLs で一括変換 |
-| 改行コード可視化 | ✅ | ⚠️ | **Phase 8** | wxSTC SetViewEOL の有効化メニューが未 |
+| 改行コード可視化 | ✅ | ✅ | Phase 8 | SetViewEOL + メニュー切替 |
 | 最近使ったファイル | ✅ | ✅ | Phase 7 | ファイルメニューのサブメニューに動的構築 |
 | ファイルドロップ | ✅ | ✅ | Phase 7 | wxFileDropTarget でフレーム＋ビューに登録 |
 | ファイル比較 | ✅ | ❌ | – | 後回し（外部ツール `meld` / `FileMerge` 連携で代替を推奨） |
@@ -72,7 +72,7 @@
 |---|:---:|:---:|---|---|
 | 設定の永続化 | ✅ | ✅ | Phase 3 | INI ファイル経由（PAL IConfigStore） |
 | 設定ダイアログ（基本タブ） | ✅ | ✅ | Phase 7 | wxNotebook 3 タブ（全般／フォント／キーバインド一覧） |
-| 設定ダイアログ（タイプ別） | ✅ | 📅 | **Phase 8** | シンタックス色、キーワード、コメント記号、インデント |
+| 設定ダイアログ（タイプ別） | ✅ | ✅ | Phase 8 | 4 タイプ × 4 シンタックス色のオーバーライド (簡易版) |
 | 設定ダイアログ（マクロ／外部ツール） | ✅ | ❌ | – | マクロ機能を断念したため不要 |
 | フォント選択ダイアログ | ✅ | ✅ | Phase 2 | wxFontDialog 直接呼び出し |
 | バージョン情報ダイアログ | ✅ | ✅ | Phase 2 | wxAboutBox |
@@ -81,8 +81,8 @@
 
 | 機能 | Win32 | wx | フェーズ | メモ |
 |---|:---:|:---:|---|---|
-| アウトライン解析 | ✅ | 📅 | **Phase 8** | 簡易版（関数定義 regex）+ wxTreeCtrl サイドパネル。フル版は sakura_core/outline 取り込み待ち（Phase 6 以降） |
-| 印刷／印刷プレビュー | ✅ | 📅 | **Phase 8** | wxPrintout / wxPreviewFrame |
+| アウトライン解析 | ✅ | ✅ | Phase 8 | 簡易版（regex + wxTreeCtrl サイドパネル）。フル版は sakura_core/outline 取り込み待ち |
+| 印刷／印刷プレビュー | ✅ | ✅ | Phase 8 | wxPrintout / wxPreviewFrame、ヘッダフッタ・ページ番号付き |
 | ルーラー表示 | ✅ | ➖ | – | 使用頻度低、保留 |
 | カラム指定線 | ✅ | ➖ | – | wxSTC EdgeColumn で対応可、優先度低 |
 

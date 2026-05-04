@@ -1,5 +1,98 @@
 # 移植作業進捗ログ
 
+## 2026-05-04 — Phase 8 完了（同日、Tier 2 GUI 機能群）
+
+### 実施内容
+
+- [x] **改行コード可視化** (Phase 7 carryover)
+  - `CEditViewWx::SetEolVisible(bool)` で `SetViewEOL` を切替
+  - 表示メニューに「改行コードを表示」を追加
+
+- [x] **矩形選択ハンドリング整備**
+  - `EnableRectangularEditing()` を `InitializeEditor()` 末尾で呼び、
+    `SetMultipleSelection`, `SetAdditionalSelectionTyping`,
+    `SetMultiPaste(wxSTC_MULTIPASTE_EACH)`,
+    `SetVirtualSpaceOptions(RECTANGULARSELECTION | USERACCESSIBLE)` を有効化
+  - macOS では Alt+ドラッグで矩形選択、Ctrl+クリックで複数キャレット
+
+- [x] **アウトラインサイドパネル**
+  - 新規追加 `sakura_wx/window/CSakuraOutline.{h,cpp}`
+  - `wxSplitterWindow` で左にアウトライン (220px)、右にタブを配置
+  - 言語別の簡易 regex でシンボル抽出:
+    - C/C++: `class/struct/namespace` + 関数定義（戻り型 + 名前 + (...)）
+    - Python: `def` / `class` / `async def`
+    - Markdown: `#` 〜 `######` 見出し（深さでインデント表示）
+  - `wxTreeCtrl` ツリービュー、ダブルクリックで該当行へジャンプ
+  - タブ切替時に `SyncMirrorFromActive` から自動 Rebuild
+  - メニュー: 表示 → アウトラインを表示／更新 (F5)
+
+- [x] **印刷／印刷プレビュー**
+  - 新規追加 `sakura_wx/window/CSakuraPrintout.{h,cpp}` — `wxPrintout` 派生
+  - `wxStyledTextCtrl::FormatRange` でシンタックスハイライト含めた印刷
+  - ページ余白 15mm、ヘッダ（左: ファイル名、右: 日時）、
+    フッタ（中央: ページ番号 / 総ページ）
+  - `OnPreparePrinting` で各ページ開始位置を事前計算
+  - `wxPageSetupDialog` / `wxPrintDialog` / `wxPrintPreview` を統合
+  - グローバル `wxPrintData` をプロセス内で保持、設定の永続化
+  - メニュー: ファイル → ページ設定 / 印刷プレビュー / 印刷 (Ctrl+P)
+
+- [x] **タイプ別設定タブ**
+  - `SakuraConfig` に `GetSyntaxColor / SetSyntaxColor / ClearSyntaxColors`
+    を追加。INI に `syn_<type>_<kind>=R,G,B` 形式で保存
+  - 4 タイプ (cpp / py / md / default) × 4 色 (comment / string / keyword /
+    number) のオーバーライド可能
+  - `CDlgSettingsWx` に「タイプ別」タブ (4 番目) を追加
+  - `wxChoice` でタイプ選択、`wxColourPickerCtrl` × 4 で色指定
+  - 「初期値に戻す」ボタンで該当タイプの色設定をクリア
+  - `CEditViewWx::SetupSyntaxHighlighting` を SakuraConfig 経由に変更、
+    オーバーライドが無ければサクラ初期色をフォールバック
+
+- [x] **Phase 7 EOLAnnotation 再帰クラッシュ修正** (緊急パッチ)
+  - `OnModified` を実テキスト変更 (`MOD_INSERTTEXT|MOD_DELETETEXT`) のみに
+    限定し、`MOD_CHANGEEOLANNOTATION` ループを切断
+  - `m_updatingEofMark` フラグで保険的な再入防止
+  - 起動直後の stack overflow 5748 レベルが解消
+
+### 検証結果
+
+- 30/30 全テストパス
+- GUI smoke test (印刷プレビュー以外) 全パス
+- アウトライン: C++ サンプルファイルで関数 + class が抽出できる
+- ファイルメニュー → 印刷プレビューで実際にダイアログが開く
+
+### Phase 8 で発生した課題
+
+1. **wxStaticText の wxWindow::Refresh() メソッドとの衝突**: `CSakuraOutline`
+   の更新メソッドを `Refresh()` と命名すると wxWindow の virtual 関数を
+   隠蔽してしまうため、`Rebuild()` にリネーム。
+2. **タイプ判定がタブテキスト依存**: `CSakuraOutline::Rebuild` でファイル
+   タイプをタブタイトルから推定する簡易実装。Phase 9 で `CEditViewWx` に
+   `GetCurrentPath()` 公開アクセサを追加して正規化したい。
+
+### Phase 8 完了チェックリスト
+
+- [x] 改行コード可視化
+- [x] 矩形選択ハンドリング整備
+- [x] アウトライン (簡易版、サイドパネル + ツリー)
+- [x] 印刷 / 印刷プレビュー
+- [x] タイプ別設定タブ (シンタックス色 4 色 × 4 タイプ)
+
+### Phase 9+ への申し送り
+
+Tier 1+2 がほぼ完了。残課題:
+
+- ツールバー アイコン index の MainMenu.ini ベース正規化
+- タブのミラーフィールド廃止
+- `util/string_ex.h` portable 化 → charset/, doc/ 系の sakura_core 取り込み
+- 上流 DLLSHAREDATA の取り込み (StdAfx.h 解体は完了済み)
+- アウトライン: ツリー階層化 (現状は flat list)、編集中の自動更新
+- 印刷: ヘッダフッタのカスタマイズ UI
+- タイプ別設定: 拡張子追加 / カラースキーム保存
+
+(Tier 3 は **断念済み**。代替: マクロ/補完/比較/タグジャンプは外部ツール / LSP)
+
+---
+
 ## 2026-05-04 — Phase 7 完了（同日、Tier 1 GUI 機能群）
 
 ### 実施内容

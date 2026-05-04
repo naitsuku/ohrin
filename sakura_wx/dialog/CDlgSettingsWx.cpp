@@ -13,12 +13,11 @@
 namespace sakura_wx::dialog {
 
 wxBEGIN_EVENT_TABLE(CDlgSettingsWx, wxDialog)
-    EVT_BUTTON(wxID_OK, CDlgSettingsWx::OnOk)
+    EVT_BUTTON(wxID_OK,    CDlgSettingsWx::OnOk)
     EVT_BUTTON(wxID_RESET, CDlgSettingsWx::OnColorReset)
 wxEND_EVENT_TABLE()
 
 namespace {
-// タブのタイプ名 (UI 表示) と config キー名のペア
 struct TypeEntry { const wxChar* label; const wxChar* key; };
 const TypeEntry kTypes[] = {
     { wxT("C / C++"),  wxT("cpp")     },
@@ -27,7 +26,6 @@ const TypeEntry kTypes[] = {
     { wxT("既定"),     wxT("default") },
 };
 
-// 各タイプ kind のサクラ初期色 (CEditViewWx と同じ値)
 wxColour DefaultColor(const wxString& /*type*/, const wxString& kind) {
     if (kind == wxT("comment")) return wxColour(  0, 128,   0);
     if (kind == wxT("string"))  return wxColour(128,   0,  64);
@@ -38,8 +36,8 @@ wxColour DefaultColor(const wxString& /*type*/, const wxString& kind) {
 } // namespace
 
 CDlgSettingsWx::CDlgSettingsWx(wxWindow* parent, SakuraConfig* config)
-    : wxDialog(parent, wxID_ANY, wxT("設定"),
-               wxDefaultPosition, wxSize(540, 400),
+    : wxDialog(parent, wxID_ANY, wxT("共通設定"),
+               wxDefaultPosition, wxSize(640, 480),
                wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER)
     , m_config(config)
 {
@@ -52,25 +50,60 @@ void CDlgSettingsWx::BuildUI() {
 
     m_notebook = new wxNotebook(this, wxID_ANY);
 
-    // タブ 1: 全般
-    auto* pageGen = new wxPanel(m_notebook);
-    BuildTabGeneral(pageGen);
-    m_notebook->AddPage(pageGen, wxT("全般"));
+    // ============================================================
+    // upstream sakura_core/prop/CPropCommon.cpp:193-211 のタブ順を踏襲。
+    // 未実装タブは BuildTabPlaceholder で「Phase X で対応予定」を表示。
+    // ============================================================
 
-    // タブ 2: フォント
-    auto* pageFont = new wxPanel(m_notebook);
-    BuildTabFont(pageFont);
-    m_notebook->AddPage(pageFont, wxT("フォント"));
+    auto addPlaceholder = [&](const wxString& title, const wxString& note) {
+        auto* page = new wxPanel(m_notebook);
+        BuildTabPlaceholder(page, title, note);
+        m_notebook->AddPage(page, title);
+    };
+    auto addPanel = [&](const wxString& title,
+                        void (CDlgSettingsWx::*builder)(wxPanel*)) {
+        auto* page = new wxPanel(m_notebook);
+        (this->*builder)(page);
+        m_notebook->AddPage(page, title);
+    };
 
-    // タブ 3: キーバインド一覧
-    auto* pageKey = new wxPanel(m_notebook);
-    BuildTabKeybind(pageKey);
-    m_notebook->AddPage(pageKey, wxT("キーバインド"));
-
-    // タブ 4: タイプ別シンタックス色 (Phase 8 追加)
-    auto* pageTypes = new wxPanel(m_notebook);
-    BuildTabTypes(pageTypes);
-    m_notebook->AddPage(pageTypes, wxT("タイプ別"));
+    addPanel(wxT("全般"),         &CDlgSettingsWx::BuildTabGeneral);          // 1
+    addPlaceholder(wxT("ウィンドウ"),
+                   wxT("ウィンドウのサイズ・位置・配色設定。Phase 10 以降で対応予定。"));   // 2
+    addPlaceholder(wxT("メインメニュー"),
+                   wxT("メインメニューのカスタマイズ。Phase 10 以降で対応予定。"));         // 3
+    addPlaceholder(wxT("ツールバー"),
+                   wxT("ツールバー項目の選択。Phase 10 以降で対応予定。\n"
+                       "現在は upstream DEFAULT_TOOL_BUTTONS 準拠の固定配列。"));            // 4
+    addPlaceholder(wxT("タブバー"),
+                   wxT("タブバーの表示／配色設定。Phase 10 以降で対応予定。"));             // 5
+    addPlaceholder(wxT("ステータスバー"),
+                   wxT("ステータスバーの表示項目。Phase 10 以降で対応予定。"));             // 6
+    addPlaceholder(wxT("編集"),
+                   wxT("自動インデント、矩形選択挙動など編集動作の詳細。\n"
+                       "現状は CEditViewWx::InitializeEditor 内のハードコード値を使用。"));  // 7
+    addPlaceholder(wxT("ファイル"),
+                   wxT("既定の文字コード／改行コード／BOM 設定。Phase 10 以降で対応予定。"));// 8
+    addPlaceholder(wxT("ファイル名表示"),
+                   wxT("タイトルバーのファイル名表示形式。Phase 10 以降で対応予定。"));     // 9
+    addPlaceholder(wxT("バックアップ"),
+                   wxT("自動バックアップ設定。Phase 10 以降で対応予定。"));                 // 10
+    addPlaceholder(wxT("書式"),
+                   wxT("整形ルール (改行幅、インデント等)。Phase 10 以降で対応予定。"));    // 11
+    addPlaceholder(wxT("検索"),
+                   wxT("検索／Grep のデフォルト設定。Phase 10 以降で対応予定。"));          // 12
+    addPanel(wxT("キー割り当て"),    &CDlgSettingsWx::BuildTabKeybind);        // 13
+    addPlaceholder(wxT("カスタムメニュー"),
+                   wxT("カスタムメニュー。Phase 10 以降で対応予定。"));                     // 14
+    addPanel(wxT("強調キーワード"),  &CDlgSettingsWx::BuildTabKeyword);        // 15
+    addPlaceholder(wxT("支援"),
+                   wxT("支援機能 (タグジャンプ等)。Tier 3 として断念済み。\n"
+                       "外部 LSP の利用を推奨。"));                                        // 16
+    addPlaceholder(wxT("マクロ"),
+                   wxT("マクロエンジン。Tier 3 として断念済み。\n"
+                       "代替: 外部スクリプト (zsh/python) または将来 LSP コードアクション。"));// 17
+    addPlaceholder(wxT("プラグイン"),
+                   wxT("プラグイン管理。Tier 3 として断念済み。"));                         // 18
 
     outer->Add(m_notebook, 1, wxEXPAND | wxALL, 8);
 
@@ -80,18 +113,50 @@ void CDlgSettingsWx::BuildUI() {
     SetSizer(outer);
 }
 
+void CDlgSettingsWx::BuildTabPlaceholder(wxPanel* page,
+                                         const wxString& title,
+                                         const wxString& note) {
+    auto* sizer = new wxBoxSizer(wxVERTICAL);
+    auto* heading = new wxStaticText(page, wxID_ANY, title);
+    wxFont hf = heading->GetFont();
+    hf.SetWeight(wxFONTWEIGHT_BOLD);
+    hf.SetPointSize(hf.GetPointSize() + 2);
+    heading->SetFont(hf);
+    sizer->Add(heading, 0, wxALL, 16);
+
+    auto* msg = new wxStaticText(page, wxID_ANY, note);
+    msg->Wrap(540);
+    sizer->Add(msg, 0, wxLEFT | wxRIGHT, 16);
+
+    sizer->AddStretchSpacer(1);
+    page->SetSizer(sizer);
+}
+
 void CDlgSettingsWx::BuildTabGeneral(wxPanel* page) {
     auto* sizer = new wxBoxSizer(wxVERTICAL);
 
+    // フォント (旧フォントタブと統合)
+    auto* fontRow = new wxBoxSizer(wxHORIZONTAL);
+    fontRow->Add(new wxStaticText(page, wxID_ANY, wxT("エディタフォント:")),
+                 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 8);
+    wxFont initial = m_config ? m_config->GetEditorFont() : wxFont();
+    m_fontPicker = new wxFontPickerCtrl(page, wxID_ANY, initial,
+        wxDefaultPosition, wxDefaultSize,
+        wxFNTP_FONTDESC_AS_LABEL | wxFNTP_USEFONT_FOR_LABEL);
+    fontRow->Add(m_fontPicker, 1, wxEXPAND);
+    sizer->Add(fontRow, 0, wxEXPAND | wxALL, 8);
+
+    // 表示
     m_cbLineNumbers = new wxCheckBox(page, wxID_ANY, wxT("行番号を表示"));
     m_cbWordWrap    = new wxCheckBox(page, wxID_ANY, wxT("折り返しを有効化"));
     if (m_config) {
         m_cbLineNumbers->SetValue(m_config->GetShowLineNumbers());
         m_cbWordWrap->SetValue(m_config->GetWordWrap());
     }
-    sizer->Add(m_cbLineNumbers, 0, wxALL, 8);
+    sizer->Add(m_cbLineNumbers, 0, wxLEFT | wxRIGHT | wxBOTTOM, 8);
     sizer->Add(m_cbWordWrap,    0, wxLEFT | wxRIGHT | wxBOTTOM, 8);
 
+    // タブ幅
     auto* tabRow = new wxBoxSizer(wxHORIZONTAL);
     tabRow->Add(new wxStaticText(page, wxID_ANY, wxT("タブ幅:")), 0,
                 wxALIGN_CENTER_VERTICAL | wxRIGHT, 6);
@@ -107,37 +172,17 @@ void CDlgSettingsWx::BuildTabGeneral(wxPanel* page) {
     sizer->AddStretchSpacer(1);
 
     auto* note = new wxStaticText(page, wxID_ANY,
-        wxT("注: ここの設定は新規ウィンドウから反映されます。\n"
-            "現在のウィンドウへの即時反映は Phase 8 で対応予定。"));
-    note->Wrap(500);
+        wxT("OK 押下後、開いている全タブに即時反映されます。"));
+    note->Wrap(540);
     sizer->Add(note, 0, wxALL, 8);
 
-    page->SetSizer(sizer);
-}
-
-void CDlgSettingsWx::BuildTabFont(wxPanel* page) {
-    auto* sizer = new wxBoxSizer(wxVERTICAL);
-    sizer->Add(new wxStaticText(page, wxID_ANY, wxT("エディタフォント:")),
-               0, wxALL, 8);
-    wxFont initial = m_config ? m_config->GetEditorFont() : wxFont();
-    m_fontPicker = new wxFontPickerCtrl(page, wxID_ANY, initial,
-        wxDefaultPosition, wxDefaultSize,
-        wxFNTP_FONTDESC_AS_LABEL | wxFNTP_USEFONT_FOR_LABEL);
-    sizer->Add(m_fontPicker, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 8);
-
-    sizer->AddStretchSpacer(1);
-    auto* note = new wxStaticText(page, wxID_ANY,
-        wxT("等幅 (monospace) フォントを推奨します。\n"
-            "macOS: Menlo / Osaka-Mono、Linux: Noto Sans Mono CJK JP / DejaVu Sans Mono"));
-    note->Wrap(500);
-    sizer->Add(note, 0, wxALL, 8);
     page->SetSizer(sizer);
 }
 
 void CDlgSettingsWx::BuildTabKeybind(wxPanel* page) {
     auto* sizer = new wxBoxSizer(wxVERTICAL);
     sizer->Add(new wxStaticText(page, wxID_ANY,
-        wxT("Phase 7 時点の主要キーバインド一覧（参照のみ）:")),
+        wxT("Phase 9 時点の主要キーバインド一覧 (参照のみ):")),
         0, wxALL, 8);
 
     wxArrayString items;
@@ -145,26 +190,36 @@ void CDlgSettingsWx::BuildTabKeybind(wxPanel* page) {
     items.Add(wxT("Ctrl+O           開く"));
     items.Add(wxT("Ctrl+S           上書き保存"));
     items.Add(wxT("Ctrl+W           タブを閉じる"));
+    items.Add(wxT("Ctrl+P           印刷"));
     items.Add(wxT("Ctrl+Z / Ctrl+Shift+Z   元に戻す / やり直し"));
     items.Add(wxT("Ctrl+X / Ctrl+C / Ctrl+V    切り取り / コピー / 貼り付け"));
     items.Add(wxT("Ctrl+A           すべて選択"));
-    items.Add(wxT("Ctrl+F / Ctrl+H  検索 / 置換"));
+    items.Add(wxT("Ctrl+F           検索"));
+    items.Add(wxT("Ctrl+H           置換"));
     items.Add(wxT("Ctrl+G           Grep（フォルダ検索）"));
-    items.Add(wxT("F2               ブックマーク 切替"));
-    items.Add(wxT("F3 / Shift+F3    次のブックマーク / 前のブックマーク"));
+    items.Add(wxT("F3 / Shift+F3    次を検索 / 前を検索"));
+    items.Add(wxT("F2 / Shift+F2    次のブックマーク / 前のブックマーク"));
+    items.Add(wxT("Ctrl+F2          ブックマーク 切替"));
+    items.Add(wxT("F5               アウトラインを更新"));
 
-    auto* lb = new wxListBox(page, wxID_ANY, wxDefaultPosition, wxDefaultSize, items,
+    auto* lb = new wxListBox(page, wxID_ANY,
+                             wxDefaultPosition, wxDefaultSize, items,
                              wxLB_SINGLE | wxLB_HSCROLL);
     sizer->Add(lb, 1, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 8);
 
     auto* note = new wxStaticText(page, wxID_ANY,
-        wxT("カスタマイズ機能は Phase 8 以降で追加予定。"));
+        wxT("カスタマイズ機能は Phase 10 以降で追加予定。"));
     sizer->Add(note, 0, wxALL, 8);
     page->SetSizer(sizer);
 }
 
-void CDlgSettingsWx::BuildTabTypes(wxPanel* page) {
+void CDlgSettingsWx::BuildTabKeyword(wxPanel* page) {
     auto* sizer = new wxBoxSizer(wxVERTICAL);
+
+    auto* lead = new wxStaticText(page, wxID_ANY,
+        wxT("ファイルタイプごとのシンタックス強調色を設定します。"));
+    lead->Wrap(540);
+    sizer->Add(lead, 0, wxALL, 8);
 
     // タイプ選択
     auto* typeRow = new wxBoxSizer(wxHORIZONTAL);
@@ -178,9 +233,8 @@ void CDlgSettingsWx::BuildTabTypes(wxPanel* page) {
     m_typeChoice->Bind(wxEVT_CHOICE,
         [this](wxCommandEvent&) { RefreshColorPickers(); });
     typeRow->Add(m_typeChoice, 1, wxEXPAND);
-    sizer->Add(typeRow, 0, wxEXPAND | wxALL, 8);
+    sizer->Add(typeRow, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 8);
 
-    // 4 色のピッカー
     auto addRow = [&](const wxString& label, wxColourPickerCtrl*& outPicker) {
         auto* row = new wxBoxSizer(wxHORIZONTAL);
         row->Add(new wxStaticText(page, wxID_ANY, label,
@@ -190,10 +244,10 @@ void CDlgSettingsWx::BuildTabTypes(wxPanel* page) {
         row->Add(outPicker);
         sizer->Add(row, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 8);
     };
-    addRow(wxT("コメント:"), m_pkComment);
-    addRow(wxT("文字列:"),   m_pkString);
-    addRow(wxT("キーワード:"),m_pkKeyword);
-    addRow(wxT("数値:"),     m_pkNumber);
+    addRow(wxT("コメント:"),  m_pkComment);
+    addRow(wxT("文字列:"),    m_pkString);
+    addRow(wxT("キーワード:"), m_pkKeyword);
+    addRow(wxT("数値:"),      m_pkNumber);
 
     sizer->AddStretchSpacer(1);
 
@@ -203,8 +257,8 @@ void CDlgSettingsWx::BuildTabTypes(wxPanel* page) {
     sizer->Add(btnRow, 0, wxEXPAND | wxALL, 8);
 
     auto* note = new wxStaticText(page, wxID_ANY,
-        wxT("色の変更は OK 押下後、新規タブまたはファイルを開き直すと反映されます。"));
-    note->Wrap(500);
+        wxT("変更は OK 押下後、開いている全タブに即時反映されます。"));
+    note->Wrap(540);
     sizer->Add(note, 0, wxALL, 8);
 
     page->SetSizer(sizer);
@@ -246,7 +300,6 @@ void CDlgSettingsWx::OnColorReset(wxCommandEvent&) {
     m_pkKeyword->SetColour(DefaultColor(typeKey, wxT("keyword")));
     m_pkNumber ->SetColour(DefaultColor(typeKey, wxT("number")));
 
-    // 設定ストアからもクリア (デフォルトに戻す)
     if (m_config) {
         m_config->SetSyntaxColor(typeKey, wxT("comment"), wxNullColour);
         m_config->SetSyntaxColor(typeKey, wxT("string"),  wxNullColour);
@@ -262,7 +315,6 @@ void CDlgSettingsWx::OnOk(wxCommandEvent& event) {
         if (m_spTabWidth)    m_config->SetTabWidth(m_spTabWidth->GetValue());
         if (m_fontPicker)    m_config->SetEditorFont(m_fontPicker->GetSelectedFont());
 
-        // タイプ別シンタックス色: 現在選択中のタイプの 4 色を保存
         if (m_typeChoice && m_pkComment) {
             int sel = m_typeChoice->GetSelection();
             if (sel >= 0 && sel < static_cast<int>(std::size(kTypes))) {

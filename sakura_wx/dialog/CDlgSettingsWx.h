@@ -14,13 +14,34 @@ class wxListBox;
 namespace sakura_wx::dialog {
 
 /**
- * CDlgSettingsWx — 設定ダイアログ（基本タブのみ）。
+ * CDlgSettingsWx — 共通設定ダイアログ。
  *
- * Phase 7 では「全般」「フォント」「キーバインド一覧（参照のみ）」の 3 タブ。
- * タイプ別シンタックス設定は Phase 8 で別ダイアログとして追加予定。
+ * Phase 9 で upstream の sakura_core/prop/CPropCommon.cpp:193-211 の
+ * 18 タブ構成 (タブ名・順序) に揃えた。コード自体は GDI 依存のため
+ * upstream を流用せず、wxNotebook + wxPanel で再実装。
  *
- * モーダル動作：OK 時に SakuraConfig を更新して Save し、メインウィンドウへ
- * 反映を促す。Cancel 時は破棄。
+ * Upstream 18 タブ:
+ *   1. 全般 (General)              — フォント／表示／タブ幅 (実装)
+ *   2. ウィンドウ (Window)         — ウィンドウサイズ・位置設定 (placeholder)
+ *   3. メインメニュー (MainMenu)   — メニュー構成 (placeholder)
+ *   4. ツールバー (Toolbar)        — ツールバー項目 (placeholder)
+ *   5. タブバー (Tabs)             — タブの色／表示 (placeholder)
+ *   6. ステータスバー (Statusbar)  — 表示項目 (placeholder)
+ *   7. 編集 (Editing)              — 自動インデント等 (placeholder)
+ *   8. ファイル (File)             — 文字コード／改行 (placeholder)
+ *   9. ファイル名表示 (FileName)   — タイトル表示形式 (placeholder)
+ *  10. バックアップ (Backup)       — 自動バックアップ (placeholder)
+ *  11. 書式 (Format)               — 整形ルール (placeholder)
+ *  12. 検索 (Search/Grep)          — 検索デフォルト (placeholder)
+ *  13. キー割り当て (Keybind)      — ショートカット一覧 (実装、参照のみ)
+ *  14. カスタムメニュー (Custmenu) — カスタムメニュー (placeholder)
+ *  15. 強調キーワード (Keyword)    — タイプ別シンタックス (実装)
+ *  16. 支援 (Support)              — 支援機能 (placeholder)
+ *  17. マクロ (Macro)              — マクロ管理 (Tier 3 で断念済み — placeholder)
+ *  18. プラグイン (Plugin)         — プラグイン (Tier 3 で断念済み — placeholder)
+ *
+ * 「強調キーワード」タブは Phase 8 で実装したタイプ別シンタックス色設定を
+ * upstream の対応するタブに移動した形。
  */
 class CDlgSettingsWx : public wxDialog {
 public:
@@ -28,10 +49,16 @@ public:
 
 private:
     void BuildUI();
-    void BuildTabGeneral(wxPanel* page);
-    void BuildTabFont(wxPanel* page);
-    void BuildTabKeybind(wxPanel* page);
-    void BuildTabTypes(wxPanel* page);
+
+    // 実装済みタブ
+    void BuildTabGeneral(wxPanel* page);    // 1
+    void BuildTabKeybind(wxPanel* page);    // 13
+    void BuildTabKeyword(wxPanel* page);    // 15 (旧「タイプ別」と同等)
+
+    // プレースホルダタブ (Phase 10 以降で実装予定)
+    void BuildTabPlaceholder(wxPanel* page,
+                             const wxString& title,
+                             const wxString& note);
 
     void OnOk(wxCommandEvent& event);
     void OnTypeChange(wxCommandEvent& event);
@@ -42,14 +69,12 @@ private:
     wxNotebook*      m_notebook = nullptr;
 
     // 全般タブ
-    wxCheckBox*      m_cbLineNumbers = nullptr;
-    wxCheckBox*      m_cbWordWrap    = nullptr;
-    wxSpinCtrl*      m_spTabWidth    = nullptr;
+    wxCheckBox*       m_cbLineNumbers = nullptr;
+    wxCheckBox*       m_cbWordWrap    = nullptr;
+    wxSpinCtrl*       m_spTabWidth    = nullptr;
+    wxFontPickerCtrl* m_fontPicker    = nullptr;
 
-    // フォントタブ
-    wxFontPickerCtrl* m_fontPicker = nullptr;
-
-    // タイプ別タブ
+    // 強調キーワードタブ (旧タイプ別)
     wxChoice*           m_typeChoice = nullptr;
     wxColourPickerCtrl* m_pkComment  = nullptr;
     wxColourPickerCtrl* m_pkString   = nullptr;

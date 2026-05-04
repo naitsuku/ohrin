@@ -2,6 +2,7 @@
 #include "CEditWndWx.h"
 
 #include <wx/artprov.h>
+#include <wx/aui/aui.h>
 #include <wx/bitmap.h>
 #include <wx/filename.h>
 #include <wx/image.h>
@@ -106,23 +107,73 @@ wxToolBar* CSakuraToolBar::Build(CEditWndWx* frame) {
         return GetFallback(artFallback);
     };
 
-    // Phase 7: 主要 12 アイコンを並べる。
-    // 列インデックスはオリジナル MainMenu.ini を読まずに「最初の 1 行 33 アイコン」
-    // からの推測。間違っていれば Phase 8 で MainMenu.ini をパースして正規化する。
-    tb->AddTool(wxID_NEW,    wxT("新規"),         pick( 0, 0, wxART_NEW),         wxT("新規ファイル"));
-    tb->AddTool(wxID_OPEN,   wxT("開く"),         pick( 1, 0, wxART_FILE_OPEN),   wxT("ファイルを開く"));
-    tb->AddTool(wxID_SAVE,   wxT("保存"),         pick( 2, 0, wxART_FILE_SAVE),   wxT("上書き保存"));
-    tb->AddTool(wxID_SAVEAS, wxT("名前を付けて"), pick( 3, 0, wxART_FILE_SAVE_AS),wxT("名前を付けて保存"));
+    // ============================================================
+    // 順序は upstream の DEFAULT_TOOL_BUTTONS (sakura_core/env/CShareData.cpp:1189)
+    // を踏襲。未実装機能（移動履歴、アウトライン、タイプ別／共通設定の細分化、
+    // コマンド一覧）は省略。アイコン strip 上の cell index は 1 行目から
+    // 順番に割り当てる簡易マッピング (Phase 8 で MainMenu.ini ベースの
+    // 正規化検討)。
+    // ============================================================
+
+    // ファイル系
+    tb->AddTool(wxID_NEW,    wxT("新規"),
+                pick( 0, 0, wxART_NEW),         wxT("新規ファイル"));
+    tb->AddTool(wxID_OPEN,   wxT("開く"),
+                pick( 1, 0, wxART_FILE_OPEN),   wxT("ファイルを開く"));
+    tb->AddTool(wxID_SAVE,   wxT("保存"),
+                pick( 2, 0, wxART_FILE_SAVE),   wxT("上書き保存"));
+    tb->AddTool(wxID_SAVEAS, wxT("名前を付けて保存"),
+                pick( 3, 0, wxART_FILE_SAVE_AS),wxT("名前を付けて保存"));
     tb->AddSeparator();
-    tb->AddTool(wxID_UNDO,   wxT("元に戻す"),     pick( 4, 0, wxART_UNDO),        wxT("元に戻す"));
-    tb->AddTool(wxID_REDO,   wxT("やり直し"),     pick( 5, 0, wxART_REDO),        wxT("やり直し"));
+
+    // 編集 (アンドゥ・リドゥ)
+    tb->AddTool(wxID_UNDO,   wxT("元に戻す"),
+                pick( 4, 0, wxART_UNDO),        wxT("元に戻す (Ctrl+Z)"));
+    tb->AddTool(wxID_REDO,   wxT("やり直し"),
+                pick( 5, 0, wxART_REDO),        wxT("やり直し (Ctrl+Shift+Z)"));
     tb->AddSeparator();
-    tb->AddTool(wxID_CUT,    wxT("切り取り"),     pick( 6, 0, wxART_CUT),         wxT("切り取り"));
-    tb->AddTool(wxID_COPY,   wxT("コピー"),       pick( 7, 0, wxART_COPY),        wxT("コピー"));
-    tb->AddTool(wxID_PASTE,  wxT("貼り付け"),     pick( 8, 0, wxART_PASTE),       wxT("貼り付け"));
+
+    // クリップボード
+    tb->AddTool(wxID_CUT,    wxT("切り取り"),
+                pick( 6, 0, wxART_CUT),         wxT("切り取り (Ctrl+X)"));
+    tb->AddTool(wxID_COPY,   wxT("コピー"),
+                pick( 7, 0, wxART_COPY),        wxT("コピー (Ctrl+C)"));
+    tb->AddTool(wxID_PASTE,  wxT("貼り付け"),
+                pick( 8, 0, wxART_PASTE),       wxT("貼り付け (Ctrl+V)"));
     tb->AddSeparator();
-    tb->AddTool(wxID_FIND,    wxT("検索"),        pick( 9, 0, wxART_FIND),        wxT("検索"));
-    tb->AddTool(wxID_REPLACE, wxT("置換"),        pick(10, 0, wxART_FIND_AND_REPLACE), wxT("置換"));
+
+    // 検索系 (オリジナル: 検索/次を検索/前を検索/置換/検索クリア/Grep)
+    tb->AddTool(ID_SEARCH_FIND_PREV, wxT("前を検索"),
+                pick(11, 0, wxART_GO_BACK),     wxT("前を検索 (Shift+F3)"));
+    tb->AddTool(ID_SEARCH_FIND_NEXT, wxT("次を検索"),
+                pick(12, 0, wxART_GO_FORWARD),  wxT("次を検索 (F3)"));
+    tb->AddTool(wxID_FIND,    wxT("検索"),
+                pick( 9, 0, wxART_FIND),        wxT("検索 (Ctrl+F)"));
+    tb->AddTool(wxID_REPLACE, wxT("置換"),
+                pick(10, 0, wxART_FIND_AND_REPLACE),
+                wxT("置換 (Ctrl+H)"));
+    tb->AddTool(ID_SEARCH_CLEAR_MARKS, wxT("検索クリア"),
+                pick(13, 0, wxART_DELETE),      wxT("検索ハイライトをクリア"));
+    tb->AddTool(ID_SEARCH_GREP, wxT("Grep"),
+                pick(14, 0, wxART_FIND),        wxT("Grep（フォルダ検索） (Ctrl+G)"));
+    tb->AddSeparator();
+
+    // ブックマーク
+    tb->AddTool(ID_BOOKMARK_TOGGLE, wxT("ブックマーク 切替"),
+                pick(15, 0, wxART_TICK_MARK),
+                wxT("ブックマーク 切替 (Ctrl+F2)"));
+    tb->AddTool(ID_BOOKMARK_PREV,   wxT("前のブックマーク"),
+                pick(16, 0, wxART_GO_UP),
+                wxT("前のブックマーク (Shift+F2)"));
+    tb->AddTool(ID_BOOKMARK_NEXT,   wxT("次のブックマーク"),
+                pick(17, 0, wxART_GO_DOWN),
+                wxT("次のブックマーク (F2)"));
+    tb->AddSeparator();
+
+    // 設定
+    tb->AddTool(wxID_PREFERENCES, wxT("設定"),
+                pick(18, 0, wxART_HELP_SETTINGS),
+                wxT("設定..."));
 
     tb->Realize();
     return tb;

@@ -1,5 +1,6 @@
 #include "CDlgSearchWx.h"
 #include "view/CEditViewWx.h"
+#include "window/CEditWndWx.h"
 
 #include <wx/checkbox.h>
 #include <wx/sizer.h>
@@ -112,6 +113,11 @@ bool CDlgSearchWx::DoFind(bool forward) {
     }
 
     int flags = BuildSearchFlags();
+
+    // 最後の検索状態をメインフレームに保存 (ツールバーの「次を検索」用)
+    if (auto* frame = dynamic_cast<CEditWndWx*>(GetParent())) {
+        frame->StoreLastSearch(needle, flags);
+    }
     int start, end;
     if (forward) {
         start = m_editor->GetCurrentPos();

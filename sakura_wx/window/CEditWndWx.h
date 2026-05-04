@@ -70,6 +70,22 @@ private:
     void OnReplace(wxCommandEvent& event);
     void OnGrep(wxCommandEvent& event);
 
+    // 「次を検索」「前を検索」「検索クリア」 — 最後の検索状態を使って再実行
+    void OnFindNext(wxCommandEvent& event);
+    void OnFindPrev(wxCommandEvent& event);
+    void OnClearSearchMarks(wxCommandEvent& event);
+
+public:
+    // CDlgSearchWx から最後の検索状態を受け取る
+    void StoreLastSearch(const wxString& needle, int searchFlags) {
+        m_lastSearchNeedle = needle;
+        m_lastSearchFlags  = searchFlags;
+    }
+
+private:
+    wxString m_lastSearchNeedle;
+    int      m_lastSearchFlags = 0;
+
     // 表示メニュー
     void OnToggleLineNumbers(wxCommandEvent& event);
     void OnToggleWordWrap(wxCommandEvent& event);
@@ -135,6 +151,9 @@ enum {
     ID_VIEW_IDEOGRAPHIC_SPACE,
     ID_VIEW_CODE_FOLDING,
     ID_SEARCH_GREP,
+    ID_SEARCH_FIND_NEXT,
+    ID_SEARCH_FIND_PREV,
+    ID_SEARCH_CLEAR_MARKS,
 
     // ブックマーク
     ID_BOOKMARK_TOGGLE = wxID_HIGHEST + 120,

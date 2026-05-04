@@ -45,6 +45,9 @@ wxBEGIN_EVENT_TABLE(CEditWndWx, wxFrame)
     EVT_MENU(wxID_FIND,            CEditWndWx::OnFind)
     EVT_MENU(wxID_REPLACE,         CEditWndWx::OnReplace)
     EVT_MENU(ID_SEARCH_GREP,       CEditWndWx::OnGrep)
+    EVT_MENU(ID_SEARCH_FIND_NEXT,    CEditWndWx::OnFindNext)
+    EVT_MENU(ID_SEARCH_FIND_PREV,    CEditWndWx::OnFindPrev)
+    EVT_MENU(ID_SEARCH_CLEAR_MARKS,  CEditWndWx::OnClearSearchMarks)
     EVT_MENU(ID_VIEW_LINE_NUMBERS, CEditWndWx::OnToggleLineNumbers)
     EVT_MENU(ID_VIEW_WORD_WRAP,    CEditWndWx::OnToggleWordWrap)
     EVT_MENU(ID_VIEW_WHITESPACE,         CEditWndWx::OnToggleWhitespace)
@@ -240,14 +243,17 @@ void CEditWndWx::CreateMenuBarImpl() {
     menuBar->Append(menuEdit, wxT("編集(&E)"));
 
     auto* menuSearch = new wxMenu();
-    menuSearch->Append(wxID_FIND,    wxT("検索(&F)...\tCtrl+F"));
-    menuSearch->Append(wxID_REPLACE, wxT("置換(&R)...\tCtrl+H"));
+    menuSearch->Append(wxID_FIND,             wxT("検索(&F)...\tCtrl+F"));
+    menuSearch->Append(ID_SEARCH_FIND_NEXT,   wxT("次を検索(&N)\tF3"));
+    menuSearch->Append(ID_SEARCH_FIND_PREV,   wxT("前を検索(&P)\tShift+F3"));
+    menuSearch->Append(wxID_REPLACE,          wxT("置換(&R)...\tCtrl+H"));
+    menuSearch->Append(ID_SEARCH_CLEAR_MARKS, wxT("検索マーククリア"));
     menuSearch->AppendSeparator();
-    menuSearch->Append(ID_SEARCH_GREP, wxT("Grep（フォルダ検索）(&G)...\tCtrl+G"));
+    menuSearch->Append(ID_SEARCH_GREP,        wxT("Grep（フォルダ検索）(&G)...\tCtrl+G"));
     menuSearch->AppendSeparator();
-    menuSearch->Append(ID_BOOKMARK_TOGGLE,    wxT("ブックマーク 切替\tF2"));
-    menuSearch->Append(ID_BOOKMARK_NEXT,      wxT("次のブックマーク\tF3"));
-    menuSearch->Append(ID_BOOKMARK_PREV,      wxT("前のブックマーク\tShift+F3"));
+    menuSearch->Append(ID_BOOKMARK_TOGGLE,    wxT("ブックマーク 切替\tCtrl+F2"));
+    menuSearch->Append(ID_BOOKMARK_NEXT,      wxT("次のブックマーク\tF2"));
+    menuSearch->Append(ID_BOOKMARK_PREV,      wxT("前のブックマーク\tShift+F2"));
     menuSearch->Append(ID_BOOKMARK_CLEAR_ALL, wxT("すべてのブックマークをクリア"));
     menuBar->Append(menuSearch, wxT("検索(&S)"));
 
@@ -483,6 +489,71 @@ void CEditWndWx::OnReplace(wxCommandEvent&) {
 void CEditWndWx::OnGrep(wxCommandEvent&) {
     auto* dlg = new sakura_wx::dialog::CDlgGrepWx(this, this);
     dlg->Show(true);
+}
+
+namespace {
+// 検索 1 回分の内部関数。CDlgSearchWx::DoFind と同じロジックの軽量版。
+bool RepeatSearchOnce(CEditViewWx* ed, const wxString& needle, int flags, bool forward) {
+    if (!ed || needle.IsEmpty()) return false;
+    int start, end;
+    if (forward) {
+        start = ed->GetCurrentPos();
+        end   = ed->GetLength();
+    } else {
+        start = ed->GetCurrentPos() - 1;
+        if (start < 0) start = 0;
+        end = 0;
+    }
+    ed->SetTargetStart(start);
+    ed->SetTargetEnd(end);
+    ed->SetSearchFlags(flags);
+    int found = ed->SearchInTarget(needle);
+    if (found < 0) {
+        // 折り返し検索
+        ed->SetTargetStart(forward ? 0 : ed->GetLength());
+        ed->SetTargetEnd(forward ? ed->GetLength() : 0);
+        found = ed->SearchInTarget(needle);
+        if (found < 0) return false;
+    }
+    int matchStart = ed->GetTargetStart();
+    int matchEnd   = ed->GetTargetEnd();
+    ed->SetSelection(matchStart, matchEnd);
+    ed->EnsureCaretVisible();
+    return true;
+}
+} // namespace
+
+void CEditWndWx::OnFindNext(wxCommandEvent&) {
+    if (m_lastSearchNeedle.IsEmpty()) {
+        // まだ検索していなければ検索ダイアログを開く
+        wxCommandEvent dummy;
+        OnFind(dummy);
+        return;
+    }
+    if (!RepeatSearchOnce(m_editView, m_lastSearchNeedle,
+                          m_lastSearchFlags, /*forward=*/true)) {
+        SetStatusText(wxT("見つかりません"), kStatusFieldFile);
+    }
+}
+
+void CEditWndWx::OnFindPrev(wxCommandEvent&) {
+    if (m_lastSearchNeedle.IsEmpty()) {
+        wxCommandEvent dummy;
+        OnFind(dummy);
+        return;
+    }
+    if (!RepeatSearchOnce(m_editView, m_lastSearchNeedle,
+                          m_lastSearchFlags, /*forward=*/false)) {
+        SetStatusText(wxT("見つかりません"), kStatusFieldFile);
+    }
+}
+
+void CEditWndWx::OnClearSearchMarks(wxCommandEvent&) {
+    if (!m_editView) return;
+    constexpr int kIndicator = 0;  // CDlgSearchWx::OnHighlightAll が使うのと同じ #0
+    m_editView->SetIndicatorCurrent(kIndicator);
+    m_editView->IndicatorClearRange(0, m_editView->GetLength());
+    SetStatusText(wxT("検索ハイライトをクリアしました"), kStatusFieldFile);
 }
 
 void CEditWndWx::OnToggleLineNumbers(wxCommandEvent& event) {

@@ -1,5 +1,6 @@
 #include "CDlgSettingsWx.h"
 #include "config/SakuraConfig.h"
+#include "env/SettingsMeta.h"
 
 #include <wx/checkbox.h>
 #include <wx/choice.h>
@@ -9,6 +10,7 @@
 #include <wx/sizer.h>
 #include <wx/spinctrl.h>
 #include <wx/stattext.h>
+#include <wx/statline.h>
 
 namespace sakura_wx::dialog {
 
@@ -169,13 +171,93 @@ void CDlgSettingsWx::BuildTabGeneral(wxPanel* page) {
     tabRow->Add(m_spTabWidth);
     sizer->Add(tabRow, 0, wxLEFT | wxRIGHT | wxBOTTOM, 8);
 
-    sizer->AddStretchSpacer(1);
-
     auto* note = new wxStaticText(page, wxID_ANY,
         wxT("OK 押下後、開いている全タブに即時反映されます。"));
     note->Wrap(540);
     sizer->Add(note, 0, wxALL, 8);
 
+    // ----------------------------------------------------------
+    // Phase 11: メタテーブル駆動セクション
+    //   sakura_core/env/SettingsMeta.h の kGeneralFields を読み、
+    //   フィールド種別に応じた wx widget を自動生成する。
+    //   Win32 版でも同じテーブルを読んで dialog を組めるよう設計。
+    //   現状は値の永続化未接続 (Phase 12 で CommonSetting と接続予定)。
+    // ----------------------------------------------------------
+    sizer->Add(new wxStaticLine(page, wxID_ANY), 0, wxEXPAND | wxALL, 6);
+    {
+        auto* heading = new wxStaticText(page, wxID_ANY,
+            wxT("--- 共通設定メタテーブル試行 (Phase 11) ---"));
+        wxFont hf = heading->GetFont();
+        hf.MakeBold();
+        heading->SetFont(hf);
+        sizer->Add(heading, 0, wxLEFT | wxRIGHT | wxTOP, 8);
+    }
+    namespace meta = sakura::settings_meta;
+    const meta::TabDef& generalTab = meta::kSettingsTabs[0]; // "general"
+    auto* metaGrid = new wxFlexGridSizer(2, wxSize(8, 4));
+    metaGrid->AddGrowableCol(1, 1);
+    for (std::size_t i = 0; i < generalTab.field_count; ++i) {
+        const meta::FieldDef& f = generalTab.fields[i];
+        if (!f.visible) continue;
+        wxString label = wxString::FromUTF8(std::string(f.label).c_str());
+        wxString tip   = wxString::FromUTF8(std::string(f.tooltip).c_str());
+
+        wxWindow* ctl = nullptr;
+        switch (f.kind) {
+        case meta::FieldKind::Bool: {
+            auto* cb = new wxCheckBox(page, wxID_ANY, label);
+            cb->SetValue(f.default_value != 0);
+            cb->SetToolTip(tip);
+            metaGrid->Add(cb, 0, wxALIGN_CENTER_VERTICAL);
+            metaGrid->AddSpacer(0);
+            ctl = cb;
+            break;
+        }
+        case meta::FieldKind::Int: {
+            metaGrid->Add(new wxStaticText(page, wxID_ANY, label),
+                          0, wxALIGN_CENTER_VERTICAL);
+            auto* sp = new wxSpinCtrl(page, wxID_ANY, wxEmptyString,
+                wxDefaultPosition, wxDefaultSize, wxSP_ARROW_KEYS,
+                static_cast<int>(f.min_value),
+                static_cast<int>(f.max_value),
+                static_cast<int>(f.default_value));
+            sp->SetToolTip(tip);
+            metaGrid->Add(sp, 0, wxEXPAND);
+            ctl = sp;
+            break;
+        }
+        case meta::FieldKind::Choice: {
+            metaGrid->Add(new wxStaticText(page, wxID_ANY, label),
+                          0, wxALIGN_CENTER_VERTICAL);
+            wxArrayString items;
+            int defaultIdx = 0;
+            for (std::size_t k = 0; k < f.choice_count; ++k) {
+                items.Add(wxString::FromUTF8(
+                    std::string(f.choices[k].label).c_str()));
+                if (f.choices[k].value == static_cast<int>(f.default_value)) {
+                    defaultIdx = static_cast<int>(k);
+                }
+            }
+            auto* ch = new wxChoice(page, wxID_ANY,
+                wxDefaultPosition, wxDefaultSize, items);
+            ch->SetSelection(defaultIdx);
+            ch->SetToolTip(tip);
+            metaGrid->Add(ch, 0, wxEXPAND);
+            ctl = ch;
+            break;
+        }
+        default:
+            metaGrid->Add(new wxStaticText(page, wxID_ANY, label),
+                          0, wxALIGN_CENTER_VERTICAL);
+            metaGrid->Add(new wxStaticText(page, wxID_ANY,
+                wxT("(未対応の種別)")), 0);
+            break;
+        }
+        (void)ctl;
+    }
+    sizer->Add(metaGrid, 0, wxEXPAND | wxALL, 8);
+
+    sizer->AddStretchSpacer(1);
     page->SetSizer(sizer);
 }
 

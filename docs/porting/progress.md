@@ -1,5 +1,88 @@
 # 移植作業進捗ログ
 
+## 2026-05-05 — Phase 11 完了（HeaderMake 移植 + メタテーブル方式の試行）
+
+### 実施内容
+
+- **HeaderMake.exe (Win32 限定) を Python に移植**
+  - `tools/porting/gen_funccode.py` を新規作成 (189 行)
+  - 入力: `sakura_core/Funccode_x.hsrc` (480 行 / 600 行物理行)
+  - 出力: `Funccode_enum.h` (`enum EFunctionCode { ... }`) と
+    `Funccode_define.h` (`#define F_xxx 値` 並び)
+  - upstream `tools/HeaderMake/HeaderMake.cpp` のアルゴリズム互換:
+    コメント除去 → 行ごとにトークン抽出 → 先頭 2 トークンを id/value とする
+  - 480 個の有効エントリを生成 (F_INVALID=-1 〜 F_ISEARCH_DEL_BACK=0xC003)
+
+- **CMake 統合**
+  - `sakura_core/CMakeLists.txt` で `find_package(Python3)` し、
+    `add_custom_command(OUTPUT ...)` で生成器を呼び出す
+  - 生成先: `${CMAKE_BINARY_DIR}/generated/sakura_core/`
+  - `add_dependencies(sakura_core sakura_funccode_headers)` でビルド前生成
+  - include path に追加し、将来の `func/CKeyBind.h` 等の取り込みに備える
+  - `Funccode_x.hsrc` 変更時のみ再生成される (`DEPENDS` 指定)
+
+- **CKeyBind.h / CommonSetting.h 取り込みは断念 (シム連鎖)**
+  - 実際に試行: `CommonSetting.h` をスタンドアロンでコンパイルしようとしたが
+    以下の壁が判明:
+    - `basis/CMyString.h:31`: `std::filesystem::path::remove_filename()` →
+      Win32 では `wstring` に暗黙変換できるが macOS/Linux では不可
+    - `util/file.h:77`: `FileTimeToLocalFileTime` / `FileTimeToSystemTime` の
+      Win32 ファイル時刻 API
+    - その先に `io/CFile.h` 経由で文字コード変換 (Phase 10 既知)
+  - 個別シム化を続けると工数が膨大なため、戦略を**メタテーブル方式に切り替え**
+
+- **メタテーブル方式 (Q3) の試行 — sakura_core 側**
+  - `sakura_core/env/SettingsMeta.h` を新規作成 (純粋データ、
+    `<Windows.h>` や basis/ に非依存)
+  - `namespace sakura::settings_meta` で型定義:
+    `FieldKind` (Bool/Int/Choice/String/KeyCode/Color/Reserved),
+    `ChoiceItem`, `FieldDef`, `TabDef`
+  - `kSettingsTabs[18]` を upstream `CPropCommon.cpp` の AddPage 順で宣言
+  - 「全般」タブの 13 フィールドを `kGeneralFields[]` でメタ化:
+    `m_nCaretType`, `m_bIsINSMode`, `m_bIsFreeCursorMode`,
+    `m_bStopsBothEndsWhenSearchWord`, `m_bStopsBothEndsWhenSearchParagraph`,
+    `m_bNoCaretMoveByActivation`, `m_nRepeatedScrollLineNum`,
+    `m_nRepeatedMoveCaretNum`, `m_nPageScrollByWheel`,
+    `m_nMRUArrNum_MAX`, `m_nOPENFOLDERArrNum_MAX`,
+    `m_bCloseAllConfirm`, `m_bExitConfirm`
+  - 残り 17 タブは `supported=false` で placeholder 扱い (Phase 12+)
+
+- **メタテーブル方式 — sakura_wx 側の消費**
+  - `CDlgSettingsWx::BuildTabGeneral` でメタ駆動セクションを追加
+  - `kGeneralFields[]` を反復し、`FieldKind` に応じて
+    `wxCheckBox` / `wxSpinCtrl` / `wxChoice` を自動生成
+  - `wxFlexGridSizer(2列)` でラベル+widget をきれいに配置
+  - 既存の `SakuraConfig` 駆動の 3 フィールド (LineNumbers/WordWrap/TabWidth) は
+    互換のため残置。メタ駆動セクションは仕切り線 + 太字見出しで区別
+
+### Win32 共通化への展望
+
+- 今後 upstream の `CPropCommon.cpp` 側でも `kSettingsTabs[]` を読んで
+  `AddPage()` を呼ぶ実装に書き換え可能 (Phase 11 後半 or Phase 12)
+- メタテーブル → 値の get/set は `CommonSetting_*` 構造体側で行う設計
+  (id 文字列でフィールド名を解決)
+- 将来的にはマクロ `SETTING_FIELD(name, type, label, default, ...)` で
+  CommonSetting_General と SettingsMeta を**単一定義から生成**することも可能
+  (X-macro 方式)
+
+### Phase 11 完了チェックリスト
+
+- [x] HeaderMake.exe の Python 移植 (gen_funccode.py)
+- [x] CMake で生成器を呼び出して `build/generated/sakura_core/` に出力
+- [x] sakura_core の include path に生成ディレクトリを追加
+- [x] `SettingsMeta.h` を新規作成 (18 タブ宣言、全般 13 フィールド)
+- [x] `CDlgSettingsWx` でメタテーブルを消費 (Bool/Int/Choice 対応)
+- [x] 既存 30 テスト全 pass
+- [-] CKeyBind.h / CommonSetting.h wholesale 取り込み — シム連鎖で断念
+
+### Phase 12 への申し送り
+
+1. メタテーブル拡充: 「ウィンドウ」「編集」「ファイル」タブを順次メタ化
+2. 値の永続化: `CommonSetting_General` または `SakuraConfig` と接続
+3. 将来的に upstream Win32 側も同テーブルを読むよう変更 (PR 化候補)
+4. `func/CKeyBind.cpp` を狭い範囲で取り込む試行 (Funccode_enum.h 効果検証)
+
+
 ## 2026-05-04 — Phase 10 完了（同日、ツールバー正規化 + 設定 18 タブ + シム拡張）
 
 ### 実施内容

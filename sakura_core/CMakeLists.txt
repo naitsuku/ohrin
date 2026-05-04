@@ -17,6 +17,47 @@ if(WIN32)
 endif()
 
 # ------------------------------------------------------------
+# Phase 11: Funccode_enum.h / Funccode_define.h を Python 生成器で出力。
+# upstream HeaderMake.exe (Win32 限定) の Python 移植版を CMake から起動。
+# 生成物は ${CMAKE_BINARY_DIR}/generated/sakura_core/ に置き、include path に追加。
+# 入力 .hsrc が変わったら再生成される（add_custom_command の DEPENDS）。
+# ------------------------------------------------------------
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+
+set(SAKURA_GENERATED_DIR ${CMAKE_BINARY_DIR}/generated/sakura_core)
+set(SAKURA_FUNCCODE_HSRC ${CMAKE_CURRENT_SOURCE_DIR}/Funccode_x.hsrc)
+set(SAKURA_FUNCCODE_GEN  ${CMAKE_SOURCE_DIR}/tools/porting/gen_funccode.py)
+set(SAKURA_FUNCCODE_ENUM_H   ${SAKURA_GENERATED_DIR}/Funccode_enum.h)
+set(SAKURA_FUNCCODE_DEFINE_H ${SAKURA_GENERATED_DIR}/Funccode_define.h)
+
+add_custom_command(
+    OUTPUT  ${SAKURA_FUNCCODE_ENUM_H}
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${SAKURA_GENERATED_DIR}
+    COMMAND ${Python3_EXECUTABLE} ${SAKURA_FUNCCODE_GEN}
+            --in   ${SAKURA_FUNCCODE_HSRC}
+            --out  ${SAKURA_FUNCCODE_ENUM_H}
+            --mode enum
+            --enum EFunctionCode
+    DEPENDS ${SAKURA_FUNCCODE_HSRC} ${SAKURA_FUNCCODE_GEN}
+    COMMENT "Generating Funccode_enum.h from Funccode_x.hsrc"
+    VERBATIM
+)
+add_custom_command(
+    OUTPUT  ${SAKURA_FUNCCODE_DEFINE_H}
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${SAKURA_GENERATED_DIR}
+    COMMAND ${Python3_EXECUTABLE} ${SAKURA_FUNCCODE_GEN}
+            --in   ${SAKURA_FUNCCODE_HSRC}
+            --out  ${SAKURA_FUNCCODE_DEFINE_H}
+            --mode define
+    DEPENDS ${SAKURA_FUNCCODE_HSRC} ${SAKURA_FUNCCODE_GEN}
+    COMMENT "Generating Funccode_define.h from Funccode_x.hsrc"
+    VERBATIM
+)
+add_custom_target(sakura_funccode_headers
+    DEPENDS ${SAKURA_FUNCCODE_ENUM_H} ${SAKURA_FUNCCODE_DEFINE_H}
+)
+
+# ------------------------------------------------------------
 # Phase 1 初期段階で含めるソース（基盤のみ）
 #
 # 方針: Win32 API 直接依存度ゼロ または PAL 経由で代替可能なものに限定。
@@ -77,6 +118,9 @@ list(APPEND SAKURA_CORE_SOURCES
 # ------------------------------------------------------------
 add_library(sakura_core STATIC ${SAKURA_CORE_SOURCES})
 
+# Funccode_enum.h / Funccode_define.h を確実に先に生成させる
+add_dependencies(sakura_core sakura_funccode_headers)
+
 # shim_win32/ を最優先で配置: <Windows.h> 参照を本シムにルーティングする。
 target_include_directories(sakura_core BEFORE PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/platform/shim_win32
@@ -87,6 +131,8 @@ target_include_directories(sakura_core PUBLIC
     # Phase 9: src/main/cpp の cxx/ResourceHolder.hpp 等を参照可能にする
     # (これらは portable な C++20 ヘッダであり、src/ 自体を変更せず利用)
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/main/cpp
+    # Phase 11: gen_funccode.py が生成するヘッダ
+    ${SAKURA_GENERATED_DIR}
 )
 
 target_compile_definitions(sakura_core PUBLIC

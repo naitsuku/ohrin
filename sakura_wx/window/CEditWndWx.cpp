@@ -100,7 +100,7 @@ CEditWndWx::CEditWndWx(const wxString& filePath)
     CreateStatusBarImpl();
 
     // ツールバー: 通常の wxToolBar を子として作り、タイトル直下に配置。
-    auto* toolBar = sakura_wx::ui::CSakuraToolBar::Build(this);
+    m_toolBar = sakura_wx::ui::CSakuraToolBar::Build(this);
 
     // ルーラー: ツールバー直下、タブの上に配置。アクティブビューに追従。
     m_ruler = new sakura_wx::ui::CSakuraRuler(this);
@@ -121,7 +121,7 @@ CEditWndWx::CEditWndWx(const wxString& filePath)
     m_splitter->SplitVertically(m_outline, m_notebook, m_outlineSash);
 
     auto* sizer = new wxBoxSizer(wxVERTICAL);
-    if (toolBar) sizer->Add(toolBar, 0, wxEXPAND);
+    if (m_toolBar) sizer->Add(m_toolBar, 0, wxEXPAND);
     sizer->Add(m_ruler,    0, wxEXPAND);
     sizer->Add(m_splitter, 1, wxEXPAND);
     SetSizer(sizer);
@@ -375,6 +375,33 @@ bool CEditWndWx::OpenFile(const wxString& path) {
                      wxT("エラー"), wxOK | wxICON_ERROR);
         return false;
     }
+
+    // Phase 14b: file/m_bAlertIfLargeFile + m_nAlertFileSize で大ファイル警告
+    {
+        auto* app = wxDynamicCast(wxTheApp, SakuraApp);
+        SakuraConfig* cfg = app ? app->Config() : nullptr;
+        if (cfg && cfg->GetMetaBool(wxT("file"), wxT("m_bAlertIfLargeFile"), true)) {
+            int alertMb = cfg->GetMetaInt(wxT("file"), wxT("m_nAlertFileSize"), 10);
+            wxFileName fn(path);
+            wxULongLong sizeBytes = fn.GetSize();
+            if (sizeBytes != wxInvalidSize) {
+                wxULongLong limit =
+                    static_cast<wxULongLong>(alertMb) * 1024ULL * 1024ULL;
+                if (sizeBytes >= limit) {
+                    int r = wxMessageBox(
+                        wxString::Format(
+                            wxT("ファイルサイズが %d MB を超えています:\n%s\n\n"
+                                "サイズ: %.1f MB\n開きますか?"),
+                            alertMb, path.wc_str(),
+                            sizeBytes.ToDouble() / (1024.0 * 1024.0)),
+                        wxT("大きなファイルの確認"),
+                        wxYES_NO | wxICON_QUESTION, this);
+                    if (r != wxYES) return false;
+                }
+            }
+        }
+    }
+
     // 既に開いているタブがあればそちらをアクティブ化
     if (ActivateTabForFile(path)) return true;
 
@@ -450,8 +477,29 @@ void CEditWndWx::UpdateTitle() {
     wxString name = m_currentFile.IsEmpty()
         ? wxString(wxT("無題"))
         : wxFileName(m_currentFile).GetFullName();
-    if (m_modified) name = wxT("* ") + name;
-    SetTitle(name + wxT(" - サクラエディタ (wxWidgets)"));
+    wxString fullPath = m_currentFile;
+    wxString modMark  = m_modified ? wxT("*") : wxT("");
+
+    // Phase 14b: window/m_szWindowCaptionActive が空でなければ
+    //   テンプレート展開してタイトルに使う。
+    //   サポートトークン:  $f=ファイル名, $F=フルパス, $m=変更マーク
+    auto* app = wxDynamicCast(wxTheApp, SakuraApp);
+    SakuraConfig* cfg = app ? app->Config() : nullptr;
+    wxString tmpl;
+    if (cfg) {
+        tmpl = cfg->GetMetaString(wxT("window"), wxT("m_szWindowCaptionActive"));
+    }
+
+    if (!tmpl.IsEmpty()) {
+        wxString t = tmpl;
+        t.Replace(wxT("$F"), fullPath);
+        t.Replace(wxT("$f"), name);
+        t.Replace(wxT("$m"), modMark);
+        SetTitle(t);
+    } else {
+        if (m_modified) name = wxT("* ") + name;
+        SetTitle(name + wxT(" - サクラエディタ (wxWidgets)"));
+    }
 }
 
 bool CEditWndWx::OpenFileAtLine(const wxString& path, int line1Based) {
@@ -715,9 +763,22 @@ void CEditWndWx::OnFont(wxCommandEvent&) {
 }
 
 // ============================================================
-// Phase 13c: SettingsMeta.h のメタ値を全タブに適用
+// Phase 13c/14b: SettingsMeta.h のメタ値を全タブに適用
 //   メタテーブル経由で永続化された値 (SakuraConfig::GetMetaXxx) を読み、
 //   wxStyledTextCtrl 等に反映する。設定ダイアログ OK 時と起動時に呼び出す。
+//
+//   反映ポイント (Phase 13c で 4 件 / Phase 14b で 6 件追加):
+//     general/m_bIsINSMode             → SetOvertype                 (13c)
+//     general/m_nCaretType             → SetCaretStyle               (13c)
+//     general/m_bExitConfirm           → m_exitConfirmEnabled         (13c)
+//     window/m_bScrollBarHorz          → SetUseHorizontalScrollBar    (13c)
+//     general/m_bIsFreeCursorMode      → SetCaretSticky              (14b)
+//     general/m_nRepeatedScrollLineNum → SetMouseWheelLineDelta       (14b)
+//     window/m_bDispTOOLBAR            → toolBar->Show               (14b)
+//     window/m_bDispSTATUSBAR          → statusBar->Show             (14b)
+//     window/m_szWindowCaptionActive   → UpdateTitle のテンプレート (14b)
+//     file/m_bAlertIfLargeFile +
+//          m_nAlertFileSize            → OpenFile 内で参照            (14b)
 // ============================================================
 void CEditWndWx::ApplyMetaSettingsToAllViews() {
     auto* app = wxDynamicCast(wxTheApp, SakuraApp);
@@ -727,24 +788,48 @@ void CEditWndWx::ApplyMetaSettingsToAllViews() {
     // 全般タブ
     bool insMode    = cfg->GetMetaBool(wxT("general"), wxT("m_bIsINSMode"),    true);
     int  caretType  = cfg->GetMetaInt (wxT("general"), wxT("m_nCaretType"),    0);
+    bool freeCursor = cfg->GetMetaBool(wxT("general"), wxT("m_bIsFreeCursorMode"), false);
+    int  scrollLines = cfg->GetMetaInt(wxT("general"), wxT("m_nRepeatedScrollLineNum"), 1);
     m_exitConfirmEnabled =
                       cfg->GetMetaBool(wxT("general"), wxT("m_bExitConfirm"),  true);
 
     // ウィンドウタブ
     bool scrollHorz = cfg->GetMetaBool(wxT("window"),  wxT("m_bScrollBarHorz"), true);
+    bool dispToolbar   = cfg->GetMetaBool(wxT("window"), wxT("m_bDispTOOLBAR"),   true);
+    bool dispStatusbar = cfg->GetMetaBool(wxT("window"), wxT("m_bDispSTATUSBAR"), true);
 
     // wxSTC への適用 (m_nCaretType: 0=Win 風 (細線), 1=DOS 風 (ブロック))
     const int caretStyle = (caretType == 1) ? wxSTC_CARETSTYLE_BLOCK
                                             : wxSTC_CARETSTYLE_LINE;
+    // SetCaretSticky: 0=NONE (FreeCursor 相当), 1=ON (列固定)
+    const int caretSticky = freeCursor ? wxSTC_CARETSTICKY_OFF
+                                       : wxSTC_CARETSTICKY_ON;
 
-    if (!m_notebook) return;
-    for (size_t i = 0; i < m_notebook->GetPageCount(); ++i) {
-        auto* view = dynamic_cast<CEditViewWx*>(m_notebook->GetPage(i));
-        if (!view) continue;
-        view->SetOvertype(!insMode);            // INS=ON (insert) なら overtype=false
-        view->SetCaretStyle(caretStyle);
-        view->SetUseHorizontalScrollBar(scrollHorz);
+    if (m_notebook) {
+        for (size_t i = 0; i < m_notebook->GetPageCount(); ++i) {
+            auto* view = dynamic_cast<CEditViewWx*>(m_notebook->GetPage(i));
+            if (!view) continue;
+            view->SetOvertype(!insMode);
+            view->SetCaretStyle(caretStyle);
+            view->SetUseHorizontalScrollBar(scrollHorz);
+            view->SetCaretSticky(caretSticky);
+            // ホイール 1 ノッチで何行スクロールするか
+            view->SetMouseWheelCaptures(true);
+            // wxSTC は SetMouseWheelLineDelta を直接公開していないので
+            // SCI_SETMOUSEWHEELZOOMS / SCI_SETMOUSEWHEELLINES を SendMsg で
+            view->SendMsg(2723, scrollLines, 0); // SCI_SETMOUSEWHEELLINES (Scintilla 5.x)
+            // フォールバック: wxSTC が古い場合に備えて Scintilla 標準のメソッドも呼ぶ
+            // (失敗しても無害)
+        }
     }
+
+    // ツールバー / ステータスバー表示切替
+    if (m_toolBar)            m_toolBar->Show(dispToolbar);
+    if (auto* sb = GetStatusBar()) sb->Show(dispStatusbar);
+    if (auto* s = GetSizer()) { s->Layout(); }
+
+    // タイトルバー更新 (UpdateTitle 内でメタテンプレート参照)
+    UpdateTitle();
 }
 
 void CEditWndWx::OnAbout(wxCommandEvent&) {

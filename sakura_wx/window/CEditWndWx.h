@@ -171,6 +171,9 @@ private:
     //   ApplyMetaSettingsToAllViews で更新される。
     bool         m_exitConfirmEnabled = true;
 
+    // ツールバー (Phase 14b: m_bDispTOOLBAR で表示切替するため保持)
+    wxToolBar* m_toolBar = nullptr;
+
     // 単一ルーラー (アクティブビューに追従)
     sakura_wx::ui::CSakuraRuler* m_ruler = nullptr;
 

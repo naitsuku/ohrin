@@ -1,5 +1,86 @@
 # 移植作業進捗ログ
 
+## 2026-05-04 — Phase 6 部分完了（同日）
+
+### 実施内容
+
+- [x] **StdAfx.h 解体（最重要マイルストーン）**
+  - `sakura_core/StdAfx.h` の Win32 SDK 多重 include を `#ifdef _WIN32`
+    でガード。非 Windows 時は `platform/win32_types_stub.h` を読み込む
+  - `<vadefs.h>` `<tchar.h>` のシムを `sakura_core/platform/shim_win32/`
+    に追加（既存 `Windows.h` シムと並列）
+  - `env/DLLSHAREDATA.h` の include もガード（非 Windows では
+    `sakura_wx::ipc::SakuraSharedData` を使う方針）
+
+- [x] **sakura_core 段階的取り込み（第 1 弾）**
+  - `basis/` 系の幾何・整数型派生クラス 7 ファイルを `SAKURA_CORE_SOURCES`
+    に追加: `CMyPoint`, `CMyRect`, `CMySize`, `CStrictPoint`, `CStrictRect`,
+    `CStrictRange`, `CLaxInteger`
+  - `win32_types_stub.h` を拡張: `COLORREF`, `RGB`, `_memicmp`,
+    MSVC safe-string (`strncpy_s`, `wcsncpy_s`, `strcat_s`, `wcscat_s`,
+    `strcpy_s`, `wcscpy_s`), `_TRUNCATE`
+  - C++ 標準を **C++20** に引き上げ（`std::span` 対応のため、wxWidgets 3.3 / Apple Clang 17 / GCC 11+ いずれもサポート）
+  - 取り込み試行で失敗したファイルは `excluded_files.md` に詳細記録
+
+- [x] **Phase 5-2: Grep ダイアログ実装**
+  - `sakura_wx/dialog/CDlgGrepWx.{h,cpp}` を新規追加
+  - `wxThread`（Detached）+ `std::filesystem::recursive_directory_iterator`
+    で非同期再帰検索
+  - 大小区別／単語単位／正規表現／再帰の各オプション
+  - ファイルパターンは glob (`*.cpp;*.h` 等のセミコロン区切り) を std::regex に変換
+  - 結果は `wxListCtrl` に表示、ダブルクリックでファイルを開く
+    （行ジャンプの完成は Phase 7 — view 直接アクセスの整理が必要）
+  - 進捗ゲージ＋ステータス表示、中止ボタン
+  - メニュー「検索 → Grep（フォルダ検索）...」+ Ctrl+G
+
+- [x] **macOS .dmg / Linux AppImage リリース CI**
+  - `.github/workflows/release.yml` を新規追加
+  - tag `wxport-v*` の push、または manual workflow_dispatch でトリガー
+  - macOS: `create-dmg` で .dmg 生成、Apple Silicon 専用
+  - Linux: `linuxdeploy` + GTK plugin で AppImage 生成、x86_64
+  - `softprops/action-gh-release@v2` で GitHub Releases に自動アップロード
+
+- [x] **IME 対話確認手順書**
+  - `docs/porting/ime_test_procedure.md` を新規追加
+  - macOS / Linux IBus / Linux Fcitx5 の各環境向け起動手順
+  - 18 項目のチェックリスト（preedit、変換、候補位置、フォーカス遷移等）
+  - 問題発生時の調整ポイント（IME スタイル、候補位置通知等）
+
+- [x] **テスト・smoke test 維持**
+  - 30/30 全テストパス
+  - GUI smoke test も通過（refactor 後も挙動維持）
+
+### Phase 6 で発見した課題
+
+1. **C++20 への移行**: `string_ex.h` が `std::span` を要求するため C++20 必須に。
+   既存 wxWidgets / Apple Clang 17 / Linux GCC 11+ で問題なし。
+2. **`CStrictInteger.h` の C++20 互換性問題**: `operator<=>` と既存の
+   `<,<=,>,>=,==,!=` が重複定義になる。Phase 7 で
+   `#ifdef __cpp_impl_three_way_comparison` ガードを追加する必要。
+3. **`util/string_ex.h` の壁**: `ACHAR`, `_vswprintf`, `std::span` ベースの
+   テンプレート群があり、ここを portable 化するのが Phase 7 の最初の山。
+4. **Grep の行ジャンプ未完**: ダブルクリックでファイルは開くが、該当行への
+   ジャンプは未実装。CEditWndWx → CEditViewWx の view 公開アクセサ整備が
+   必要。Phase 7 で対応。
+
+### Phase 6 完了チェックリスト（実施部分のみ）
+
+- [x] StdAfx.h に `#ifdef _WIN32` ガードを追加
+- [x] sakura_core/ から最低 1 ファイルが非 Windows でビルドできる（→ 8 ファイル達成）
+- [x] Grep ダイアログが起動する
+- [x] macOS .dmg / Linux AppImage の CI ワークフローが存在する
+- [x] IME 対話確認手順書が存在する
+
+### 先送り（Phase 7 へ）
+
+- [ ] **行ジャンプ完成**: Grep 結果ダブルクリックで該当行へ
+- [ ] **CStrictInteger 対応**: spaceship 演算子のガード
+- [ ] **string_ex.h 解体**: ACHAR, _vswprintf 等の portable 化
+- [ ] **charset/ 系取り込み**: IsValidCodePage の PAL 化、ResourceHolder の代替
+- [ ] **実 IME 検証**: ユーザー環境で `ime_test_procedure.md` を実行
+
+---
+
 ## 2026-05-04 — Phase 6 以降のロードマップ確定（同日）
 
 ユーザーとの戦略確認の結果、Phase 6 以降のロードマップを以下に確定。

@@ -147,6 +147,11 @@
 #include <time.h>
 #include <wchar.h>
 
+// === wxWidgets 移植プロジェクト分岐 (Phase 6) =================================
+// 非 Windows ビルドでは Win32 SDK ヘッダの代わりに最小限の型 stub を読み込む。
+// Win32 ビルドではここから下のロジックは従来どおり実行され、挙動に変化はない。
+#ifdef _WIN32
+
 // Windowsヘッダー(他のSDKヘッダーとは別格。)
 #include <Windows.h>
 
@@ -167,6 +172,17 @@
 #include <wrl.h>
 #include <wrl/client.h>
 
+#else  // !_WIN32
+
+// 非 Windows: Phase 6 で導入した Win32 型 stub を流し込む。
+// HWND/HDC/POINT/RECT/DWORD/BOOL/TCHAR/_tcs* 等の最小限を提供する。
+// COM (comdef/wrl)、共通コントロール (CommCtrl)、IME (imm)、Shell の各
+// インターフェースは shim せず、それらを実際に呼ぶ .cpp は
+// sakura_core/CMakeLists.txt の収録対象から除外する方針。
+#include "platform/win32_types_stub.h"
+
+#endif  // _WIN32
+
 /*!
  * NORETURNマクロ
  *
@@ -184,7 +200,14 @@
 
 // プロジェクト内のファイルだがプリコンパイル対象とする。
 // プリコンパイルの有無がビルドパフォーマンスに大きく影響するため。
+//
+// ただし非 Windows では DLLSHAREDATA.h が <vadefs.h> や上流 sakura_core ヘッダ
+// 経由で大量の Win32 SDK 依存を引き連れてくるため、Phase 6 では #ifdef _WIN32
+// でガードする。非 Windows での共有データは sakura_wx::ipc::SakuraSharedData
+// を使う（DLLSHAREDATA の段階的取り込みは Phase 6 後半以降）。
+#ifdef _WIN32
 #include "env/DLLSHAREDATA.h"
+#endif
 
 //{{AFX_INSERT_LOCATION}}
 // Microsoft Visual C++ は前行の直前に追加の宣言を挿入します。

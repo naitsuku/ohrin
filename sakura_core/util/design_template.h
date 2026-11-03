@@ -40,7 +40,13 @@ public:
 	//公開インターフェース
 	static T* getInstance()
 	{
+#ifdef SAKURA_WINPORT
+		// [winport] 1 スレッド = 1 仮想プロセス（docs/porting/mac_native_plan.md）なので、
+		// プロセス単位のシングルトンはスレッド単位に持つ
+		static thread_local T instance;
+#else
 		static T instance;
+#endif
 		return &instance;
 	}
 
@@ -75,7 +81,12 @@ class TSingleInstance {
 private:
 	using Me = TSingleInstance<T>;
 
+#ifdef SAKURA_WINPORT
+	static thread_local T* gm_instance;	//!< [winport] 仮想プロセス（スレッド）ごとのインスタンス
+	static inline std::atomic<T*> gm_fallback{nullptr};	//!< [winport] ワーカースレッド用
+#else
 	static T* gm_instance;				//!< シングルインスタンスを保持するポインタ
+#endif
 
 public:
 	/*!
@@ -84,7 +95,13 @@ public:
 		@returns 作成済みのインスタンス
 		@retval nullptr インスタンスが未生成
 	 */
+#ifdef SAKURA_WINPORT
+	// [winport] 上流が std::thread で作るワーカースレッド（レイアウト・読み込みの並列化）には
+	// 仮想プロセスの文脈が引き継がれないので、最後に生成されたインスタンスを代わりに返す
+	[[nodiscard]] static T* getInstance() noexcept { return gm_instance ? gm_instance : gm_fallback.load(); }
+#else
 	[[nodiscard]] static T* getInstance() noexcept { return gm_instance; }
+#endif
 
 	TSingleInstance(const Me&) = delete;
 	Me& operator = (const Me&) = delete;
@@ -103,6 +120,9 @@ protected:
 			throw multi_instance_not_allowed();
 		}
 		gm_instance = static_cast<T*>(this);
+#ifdef SAKURA_WINPORT
+		gm_fallback = gm_instance;
+#endif
 	}
 
 	/*!
@@ -112,6 +132,10 @@ protected:
 	 */
 	virtual ~TSingleInstance() noexcept
 	{
+#ifdef SAKURA_WINPORT
+		T* self = gm_instance;
+		gm_fallback.compare_exchange_strong(self, nullptr);
+#endif
 		gm_instance = nullptr;
 	}
 };
@@ -122,8 +146,13 @@ protected:
 	1プロセスあたり1つのインスタンスだけを許可する機構で、
 	TSingleInstance<T>以外からはアクセスさせない。
  */
+#ifdef SAKURA_WINPORT
+template <class T>
+thread_local T* TSingleInstance<T>::gm_instance = nullptr;
+#else
 template <class T>
 T* TSingleInstance<T>::gm_instance = nullptr;
+#endif
 
 /*!
 	インスタンスホルダー
@@ -140,7 +169,11 @@ class TInstanceHolder {
 private:
 	using Me = TInstanceHolder<T>;
 
+#ifdef SAKURA_WINPORT
+	static thread_local std::vector<T*> gm_table;	//!< [winport] 仮想プロセス（スレッド）ごと
+#else
 	static std::vector<T*> gm_table;	//!< インスタンスを保持する動的配列
+#endif
 
 public:
 	/*!
@@ -210,7 +243,12 @@ protected:
 	プロセスで生成したインスタンスを記録する機構で、
 	TInstanceHolder<T>以外からはアクセスさせない。
  */
+#ifdef SAKURA_WINPORT
+template <class T>
+thread_local std::vector<T*> TInstanceHolder<T>::gm_table;
+#else
 template <class T>
 std::vector<T*> TInstanceHolder<T>::gm_table;
+#endif
 
 #endif /* SAKURA_DESIGN_TEMPLATE_BBC57590_CED0_40D0_B719_F5A4522B8A56_H_ */

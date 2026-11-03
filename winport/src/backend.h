@@ -57,6 +57,8 @@ void ScrollBarsChanged(void* hwnd);
 void Beep();
 //! 全仮想プロセスが終了した
 void Quit();
+//! 未確定文字列の描画に使うフォント（PostScript 名、大きさ）
+void SetImeFont(const char* postscriptName, double size);
 //! 表示系が動いているか（テストでは Initialize を呼ばないので false）
 bool Available();
 //! メッセージボックスを出す。待たずに戻り、閉じられたら *result に IDOK 等が入る（type は MB_* の値）
@@ -121,8 +123,8 @@ void PostWheel(void* hwnd, int delta, bool horizontal, int x, int y, unsigned mo
 void PostKey(void* topLevel, int macKeyCode, bool down, bool repeat, const std::u16string& chars, unsigned modifiers);
 //! 修飾キーの押下状態の変化
 void ModifiersChanged(void* topLevel, unsigned modifiers);
-//! テキスト入力（IME の確定など）
-void PostText(void* topLevel, const std::u16string& text);
+//! IME の確定文字列。フォーカスのあるウィンドウへ WM_IME_COMPOSITION(GCS_RESULTSTR) を送る
+void PostImeResult(void* topLevel, const std::u16string& text);
 //! ユーザー操作でトップレベルが動いた／大きさが変わった（スクリーン座標のウィンドウ矩形）
 void FrameMovedByUser(void* hwnd, const Rect& windowRect);
 void Activated(void* hwnd, bool active);

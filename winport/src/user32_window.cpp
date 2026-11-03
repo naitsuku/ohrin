@@ -8,6 +8,8 @@
 */
 #include "user32_internal.h"
 
+#include <imm.h>
+
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
@@ -1232,6 +1234,15 @@ LRESULT WINAPI DefWindowProcW(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam)
 		return reinterpret_cast<LRESULT>(GetSysColorBrush(COLOR_WINDOW));
 	case WM_NOTIFYFORMAT:
 		return NFR_UNICODE;
+	case WM_IME_COMPOSITION:
+		// 確定文字列を 1 文字ずつ WM_IME_CHAR にする（sakura の上書きモードはこちらを使う）
+		if (lParam & GCS_RESULTSTR) {
+			const LONG bytes = ImmGetCompositionStringW(nullptr, GCS_RESULTSTR, nullptr, 0);
+			std::wstring text(static_cast<size_t>(bytes) / sizeof(WCHAR), L'\0');
+			ImmGetCompositionStringW(nullptr, GCS_RESULTSTR, text.data(), bytes);
+			for (wchar_t c : text) SendMessageW(hWnd, WM_IME_CHAR, static_cast<WPARAM>(c), 1);
+		}
+		return 0;
 	default:
 		return 0;
 	}

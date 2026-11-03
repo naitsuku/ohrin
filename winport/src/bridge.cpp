@@ -10,6 +10,8 @@
 */
 #include "user32_internal.h"
 
+#include <imm.h>
+
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
@@ -30,7 +32,11 @@ constexpr UINT WM_WINPORT_FRAME = 0x7FF0;      //!< wParam = MAKEWPARAM(x, y), l
 constexpr UINT WM_WINPORT_ACTIVATE = 0x7FF1;   //!< wParam = TRUE/FALSE
 constexpr UINT WM_WINPORT_SETCURSOR = 0x7FF2;  //!< lParam = MAKELPARAM(HTCLIENT, mouse message)
 
-bool IsInternalMessage(UINT msg) { return msg >= WM_WINPORT_FRAME && msg <= WM_WINPORT_SETCURSOR; }
+constexpr UINT WM_WINPORT_IMERESULT = 0x7FF3;  //!< lParam = new std::wstring（受け側で解放）
+
+extern thread_local std::wstring t_imeResult;  // imm32.cpp
+
+bool IsInternalMessage(UINT msg) { return msg >= WM_WINPORT_FRAME && msg <= WM_WINPORT_IMERESULT; }
 
 void HandleInternalMessage(const MSG& m)
 {
@@ -48,6 +54,15 @@ void HandleInternalMessage(const MSG& m)
 			SetFocus(nullptr);
 		}
 		break;
+	case WM_WINPORT_IMERESULT: {
+		std::unique_ptr<std::wstring> text(reinterpret_cast<std::wstring*>(m.lParam));
+		t_imeResult = *text;
+		SendMessageW(m.hwnd, WM_IME_STARTCOMPOSITION, 0, 0);
+		SendMessageW(m.hwnd, WM_IME_COMPOSITION, 0, GCS_RESULTSTR);
+		SendMessageW(m.hwnd, WM_IME_ENDCOMPOSITION, 0, 0);
+		t_imeResult.clear();
+		break;
+	}
 	case WM_WINPORT_SETCURSOR:
 		if (!SendMessageW(m.hwnd, WM_SETCURSOR, reinterpret_cast<WPARAM>(m.hwnd), m.lParam)) SetCursor(LoadCursorW(nullptr, IDC_ARROW));
 		break;
@@ -331,11 +346,11 @@ void PostKey(void* topLevel, int macKeyCode, bool down, bool repeat, const std::
 	PostKeyMessage(target, msg, k->vk, lp, text);
 }
 
-void PostText(void* topLevel, const std::u16string& text)
+void PostImeResult(void* topLevel, const std::u16string& text)
 {
 	const HWND target = KeyTarget(topLevel);
 	if (!target) return;
-	for (char16_t c : text) Post(target, WM_CHAR, static_cast<WPARAM>(c), 1);
+	Post(target, WM_WINPORT_IMERESULT, 0, reinterpret_cast<LPARAM>(new std::wstring(text.begin(), text.end())));
 }
 
 void FrameMovedByUser(void* hwnd, const Rect& r)

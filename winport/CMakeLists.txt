@@ -41,6 +41,7 @@ add_library(winport STATIC
     src/crt.cpp
     src/gdi.cpp
     src/gdi_text.cpp
+    src/imm32.cpp
     src/kernel32.cpp
     src/kernel32_file.cpp
     src/kernel32_object.cpp

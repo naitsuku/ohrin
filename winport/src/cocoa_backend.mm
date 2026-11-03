@@ -45,6 +45,11 @@ struct CaretState {
 	bool blinkOn = true;
 } g_caret;
 
+// IME の未確定文字列（全体で 1 つ。表示はキャレットのあるビュー）
+NSAttributedString* g_marked = nil;
+NSRange g_markedSelection = {0, 0};
+NSFont* g_imeFont = nil;
+
 NSRect ToCocoaScreen(const BRect& r)
 {
 	return NSMakeRect(r.left, g_primaryHeight - r.bottom, r.Width(), r.Height());
@@ -88,13 +93,14 @@ std::u16string ToU16(NSString* s)
 @property(nonatomic) BOOL applyingFrame;
 @end
 
-@interface WPView : NSView
+@interface WPView : NSView <NSTextInputClient>
 @property(nonatomic) void* hwnd;
 @property(nonatomic) BOOL isContentView;
 @property(nonatomic, strong) NSScroller* vScroller;
 @property(nonatomic, strong) NSScroller* hScroller;
 @property(nonatomic) double wheelAccumY;
 @property(nonatomic) double wheelAccumX;
+@property(nonatomic, strong) NSEvent* currentKey;  //!< interpretKeyEvents 中のキーイベント
 - (void)syncScrollBars;
 @end
 
@@ -268,13 +274,41 @@ void OnMain(dispatch_block_t block) { dispatch_async(dispatch_get_main_queue(), 
 		CGContextRestoreGState(ctx);
 		CGImageRelease(img);
 	}
-	if (g_caret.hwnd == self.hwnd && g_caret.visible && g_caret.blinkOn) {
+	if (g_caret.hwnd == self.hwnd && g_marked.length) {
+		[self drawMarkedTextAt:c];
+	} else if (g_caret.hwnd == self.hwnd && g_caret.visible && g_caret.blinkOn) {
 		CGContextSaveGState(ctx);
 		CGContextSetBlendMode(ctx, kCGBlendModeDifference);
 		CGContextSetRGBFillColor(ctx, 1, 1, 1, 1);
 		CGContextFillRect(ctx, CGRectMake(c.left + g_caret.rc.left, c.top + g_caret.rc.top, g_caret.rc.Width(), g_caret.rc.Height()));
 		CGContextRestoreGState(ctx);
 	}
+}
+
+//! IME の未確定文字列をキャレット位置に描く（Windows の IME のコンポジションウィンドウに相当）
+- (void)drawMarkedTextAt:(BRect)c
+{
+	const CGFloat h = std::max(g_caret.rc.Height(), 14);
+	NSFont* font = g_imeFont ?: [NSFont systemFontOfSize:h * 0.8];
+	NSDictionary* attrs = @{NSFontAttributeName: font, NSForegroundColorAttributeName: NSColor.blackColor};
+	NSAttributedString* text = [[NSAttributedString alloc] initWithString:g_marked.string attributes:attrs];
+	const NSSize size = text.size;
+	CGFloat x = c.left + g_caret.rc.left;
+	const CGFloat y = c.top + g_caret.rc.top;
+	const CGFloat maxX = c.right - size.width - 2;
+	if (x > maxX) x = std::max<CGFloat>(c.left, maxX);
+	[[NSColor colorWithRed:1 green:1 blue:0.94 alpha:1] setFill];
+	NSRectFill(NSMakeRect(x, y, size.width + 2, h));
+	// 変換中の文節は背景で示す
+	if (g_markedSelection.length && NSMaxRange(g_markedSelection) <= text.length) {
+		const CGFloat x0 = [text attributedSubstringFromRange:NSMakeRange(0, g_markedSelection.location)].size.width;
+		const CGFloat w = [text attributedSubstringFromRange:g_markedSelection].size.width;
+		[[NSColor colorWithRed:0.75 green:0.85 blue:1 alpha:1] setFill];
+		NSRectFill(NSMakeRect(x + x0, y, w, h));
+	}
+	[text drawAtPoint:NSMakePoint(x, y + (h - size.height) / 2)];
+	[NSColor.blackColor setFill];
+	NSRectFill(NSMakeRect(x, y + h - 1, size.width, 1));
 }
 
 // ---- スクロールバー ----
@@ -384,7 +418,83 @@ void OnMain(dispatch_block_t block) { dispatch_async(dispatch_get_main_queue(), 
 
 - (void)keyDown:(NSEvent*)e
 {
-	bridge::PostKey([self topLevelHwnd], e.keyCode, true, e.isARepeat, ToU16(e.characters), ModifiersOf(e.modifierFlags));
+	// Cmd / Ctrl / Option の組み合わせはコマンドとして sakura へ（未確定文字列があるときは IME へ）
+	const NSEventModifierFlags cmdLike = NSEventModifierFlagCommand | NSEventModifierFlagControl | NSEventModifierFlagOption;
+	if ((e.modifierFlags & cmdLike) && !g_marked.length) {
+		bridge::PostKey([self topLevelHwnd], e.keyCode, true, e.isARepeat, ToU16(e.characters), ModifiersOf(e.modifierFlags));
+		return;
+	}
+	// IME を通す。結果は insertText / setMarkedText / doCommandBySelector のいずれかで届く
+	self.currentKey = e;
+	[self interpretKeyEvents:@[e]];
+	self.currentKey = nil;
+}
+
+// ---- NSTextInputClient ----
+- (void)redrawMarked
+{
+	if (WPPlatform* p = g_caret.hwnd ? PlatformOf(g_caret.hwnd) : nil) [p.view setNeedsDisplay:YES];
+}
+
+- (void)insertText:(id)string replacementRange:(NSRange)replacementRange
+{
+	NSString* text = [string isKindOfClass:NSAttributedString.class] ? ((NSAttributedString*)string).string : string;
+	const BOOL hadMarked = g_marked.length > 0;
+	g_marked = nil;
+	if (hadMarked) [self redrawMarked];
+	NSEvent* e = self.currentKey;
+	if (e && !hadMarked && text.length == 1) {
+		// 変換を経ない通常のキー入力。WM_KEYDOWN → WM_CHAR の流れにする
+		bridge::PostKey([self topLevelHwnd], e.keyCode, true, e.isARepeat, ToU16(text), ModifiersOf(e.modifierFlags));
+	} else if (text.length) {
+		bridge::PostImeResult([self topLevelHwnd], ToU16(text));
+	}
+}
+
+- (void)setMarkedText:(id)string selectedRange:(NSRange)selectedRange replacementRange:(NSRange)replacementRange
+{
+	g_marked = [string isKindOfClass:NSAttributedString.class] ? string : [[NSAttributedString alloc] initWithString:string];
+	g_markedSelection = selectedRange;
+	[self redrawMarked];
+}
+
+- (void)unmarkText
+{
+	if (!g_marked.length) return;
+	NSString* text = g_marked.string;
+	g_marked = nil;
+	[self redrawMarked];
+	bridge::PostImeResult([self topLevelHwnd], ToU16(text));
+}
+
+- (void)doCommandBySelector:(SEL)selector
+{
+	NSEvent* e = self.currentKey;
+	if (e) bridge::PostKey([self topLevelHwnd], e.keyCode, true, e.isARepeat, ToU16(e.characters), ModifiersOf(e.modifierFlags));
+}
+
+- (BOOL)hasMarkedText { return g_marked.length > 0; }
+- (NSRange)markedRange { return g_marked.length ? NSMakeRange(0, g_marked.length) : NSMakeRange(NSNotFound, 0); }
+- (NSRange)selectedRange { return g_marked.length ? g_markedSelection : NSMakeRange(0, 0); }
+- (NSArray<NSAttributedStringKey>*)validAttributesForMarkedText { return @[]; }
+- (NSUInteger)characterIndexForPoint:(NSPoint)point { return 0; }
+
+- (NSAttributedString*)attributedSubstringForProposedRange:(NSRange)range actualRange:(NSRangePointer)actualRange
+{
+	if (!g_marked.length || NSMaxRange(range) > g_marked.length) return nil;
+	if (actualRange) *actualRange = range;
+	return [g_marked attributedSubstringFromRange:range];
+}
+
+//! 変換候補ウィンドウの位置。Win32 スレッドを待たないよう、表示系が持つキャレット位置で答える
+- (NSRect)firstRectForCharacterRange:(NSRange)range actualRange:(NSRangePointer)actualRange
+{
+	if (actualRange) *actualRange = range;
+	WPPlatform* p = g_caret.hwnd ? PlatformOf(g_caret.hwnd) : nil;
+	if (!p) return [self.window convertRectToScreen:self.frame];
+	const auto info = bridge::GetInfo(g_caret.hwnd);
+	const NSRect r = NSMakeRect(info.clientInView.left + g_caret.rc.left, info.clientInView.top + g_caret.rc.top, 1, g_caret.rc.Height());
+	return [p.view.window convertRectToScreen:[p.view convertRect:r toView:nil]];
 }
 
 - (void)keyUp:(NSEvent*)e
@@ -579,6 +689,12 @@ void ScrollBarsChanged(void* hwnd)
 void Beep() { OnMain(^{ NSBeep(); }); }
 
 bool Available() { return g_available; }
+
+void SetImeFont(const char* postscriptName, double size)
+{
+	NSString* name = @(postscriptName);
+	OnMain(^{ g_imeFont = [NSFont fontWithName:name size:size]; });
+}
 
 void ShowMessageBox(const std::u16string& text, const std::u16string& caption, unsigned type, std::atomic<int>* result)
 {

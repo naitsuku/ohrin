@@ -20,4 +20,21 @@ void ReportUnimplemented(const char* dll, const char* name);
 std::string WideToUtf8(std::wstring_view ws);
 std::wstring Utf8ToWide(std::string_view s);
 
+//! Win32 API に渡されたパスを POSIX パス（UTF-8、区切りは '/'）にする。'\\' も区切りとして扱う
+std::string ToNativePath(const wchar_t* path);
+
+//! errno を Win32 のエラーコードに変換して SetLastError する
+void SetLastErrorFromErrno(int err);
+
+//! カーネルオブジェクト（HANDLE の実体）。参照カウントで寿命を管理する
+struct KernelObject {
+	virtual ~KernelObject() = default;
+	//! WaitForSingleObject 用。timeoutMs は INFINITE 可。シグナルされたら true
+	virtual bool Wait(unsigned long timeoutMs);
+	int refs = 1;
+};
+
+//! HANDLE を KernelObject として取り出す（擬似ハンドル・無効値は nullptr）
+KernelObject* ObjectFromHandle(void* h);
+
 }  // namespace winport

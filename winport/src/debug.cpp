@@ -83,3 +83,16 @@ std::wstring Utf8ToWide(std::string_view s)
 }
 
 }  // namespace winport
+
+namespace winport {
+
+std::string ToNativePath(const wchar_t* path)
+{
+	std::string s = WideToUtf8(path ? path : L"");
+	for (auto& c : s) {
+		if (c == '\\') c = '/';
+	}
+	return s;
+}
+
+}  // namespace winport

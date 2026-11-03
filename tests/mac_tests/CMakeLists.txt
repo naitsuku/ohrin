@@ -29,10 +29,27 @@ set(TESTS1_ENABLED
     test-parameterized.cpp
     test-sample.cpp
     test-ssearchoption.cpp
+    env/ShareDataTestSuite.cpp
+    test-zoom.cpp
+    test-mydevmode.cpp
+    test-messageboxf.cpp
+    test-loadstring.cpp
+    test-docoutline.cpp
+    test-ctextmetrics.cpp
+    test-csearchagent.cpp
+    test-crunningtimer.cpp
+    test-cprofile.cpp
+    test-cfuncinfoarr.cpp
+    test-cfileext.cpp
+    test-cdoctypemanager.cpp
+    test-ccommandline.cpp
     test-string_ex.cpp
 )
 # 除外中（理由）:
-#   test-statictype.cpp … std::filesystem::path を wstring と直接比較するテストがあり mac ではコンパイル不可
+#   test-statictype.cpp / test-file.cpp / test-csakuraenvironment.cpp
+#       … テスト側が std::filesystem::path を wstring として扱う（mac の path は char）
+#   test-csharedata.cpp … std::jthread（Apple libc++ 未対応）
+#   test-cerrorinfo.cpp … COM（_com_raise_error / IErrorInfo）前提
 list(TRANSFORM TESTS1_ENABLED PREPEND ${TESTS1_DIR}/)
 
 add_executable(sakura_mac_tests

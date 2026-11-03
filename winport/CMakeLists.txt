@@ -35,6 +35,8 @@ add_library(winport STATIC
     src/codepage.cpp
     src/crt.cpp
     src/kernel32.cpp
+    src/kernel32_file.cpp
+    src/kernel32_object.cpp
     src/resource.cpp
     src/printf.cpp
     src/debug.cpp

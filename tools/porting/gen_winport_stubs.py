@@ -27,7 +27,25 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 STUB_DLLS = {"kernel32", "user32", "gdi32", "comctl32", "comdlg32", "shell32", "shlwapi", "ole32",
              "oleaut32", "imm32", "advapi32", "uxtheme", "winspool", "version", "msimg32", "dwmapi",
              "mpr", "winmm", "htmlhelp", "shcore", "ntdll"}
-RE_EXISTING = re.compile(r"^WINPORT_STUB\((\w+), (\w+)\)$", re.M)
+RE_EXISTING = re.compile(r"^WINPORT_STUB(?:_HR)?\((\w+), (\w+)\)$", re.M)
+MINGW_INC = "/opt/homebrew/opt/mingw-w64/toolchain-x86_64/x86_64-w64-mingw32/include"
+# HRESULT を返す宣言（STDAPI / WINOLEAPI / SHSTDAPI / LWSTDAPI はいずれも HRESULT）
+RE_HRESULT_DECL = re.compile(
+    r"^\s*(?:(?:WINOLEAPI|WINOLEAUTAPI|THEMEAPI|DWMAPI|STDAPI|SHSTDAPI|SHFOLDERAPI|LWSTDAPI)\s+"
+    r"|(?:[A-Z_]+API\s+|EXTERN_C\s+|DECLSPEC_IMPORT\s+)*HRESULT\s+(?:WINAPI|STDAPICALLTYPE|STDAPIVCALLTYPE)\s+)"
+    r"(\w+)\s*\(", re.M)
+
+
+def hresult_functions():
+    """mingw-w64 ヘッダから HRESULT を返す関数名を集める。0（= S_OK）を返すスタブは危険なため。"""
+    names = set()
+    for f in os.listdir(MINGW_INC):
+        if f.endswith(".h"):
+            try:
+                names.update(RE_HRESULT_DECL.findall(open(os.path.join(MINGW_INC, f), errors="replace").read()))
+            except OSError:
+                pass
+    return names
 
 
 def main():
@@ -67,9 +85,18 @@ def main():
 		return 0; \\
 	}
 
+// HRESULT を返す関数は E_NOTIMPL（0 を返すと S_OK = 成功と解釈されてしまう）
+#define WINPORT_STUB_HR(dll, name) \\
+	extern "C" __attribute__((weak)) long long name(void) { \\
+		winport::ReportUnimplemented(#dll, #name); \\
+		return static_cast<int>(0x80004001); \\
+	}
+
 """)
+        hr = hresult_functions()
         for name, dll in sorted(stubs.items(), key=lambda kv: (kv[1], kv[0])):
-            f.write(f"WINPORT_STUB({dll}, {name})\n")
+            macro = "WINPORT_STUB_HR" if name in hr else "WINPORT_STUB"
+            f.write(f"{macro}({dll}, {name})\n")
     print(f"{len(stubs)} stubs -> {a.out}")
 
 

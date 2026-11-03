@@ -33,8 +33,8 @@ DWORD CopyOut(const std::wstring& s, LPWSTR buf, DWORD n)
 	return static_cast<DWORD>(s.size());
 }
 
-std::mutex g_vmMutex;
-std::map<void*, size_t> g_vmSizes;
+std::mutex& VmMutex() { static std::mutex m; return m; }
+std::map<void*, size_t>& VmSizes() { static std::map<void*, size_t> m; return m; }
 
 }  // namespace
 
@@ -136,27 +136,67 @@ int WINAPI GetLocaleInfoEx(LPCWSTR, LCTYPE LCType, LPWSTR lpLCData, int cchData)
 }
 
 /* ---- 仮想メモリ ---- */
-LPVOID WINAPI VirtualAlloc(LPVOID lpAddress, SIZE_T dwSize, DWORD flAllocationType, DWORD)
+namespace {
+int ToProt(DWORD protect)
 {
-	if (lpAddress || !(flAllocationType & (MEM_RESERVE | MEM_COMMIT))) {
-		winport::ReportUnimplemented("kernel32", "VirtualAlloc(address / commit only)");
-		return nullptr;
+	switch (protect & 0xFF) {
+	case PAGE_NOACCESS: return PROT_NONE;
+	case PAGE_READONLY: return PROT_READ;
+	case PAGE_EXECUTE: return PROT_EXEC;
+	case PAGE_EXECUTE_READ: return PROT_READ | PROT_EXEC;
+	case PAGE_EXECUTE_READWRITE: return PROT_READ | PROT_WRITE | PROT_EXEC;
+	default: return PROT_READ | PROT_WRITE;
 	}
-	void* p = mmap(nullptr, dwSize, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+}
+}  // namespace
+
+void WINAPI GetSystemInfo(LPSYSTEM_INFO lpSystemInfo)
+{
+	*lpSystemInfo = {};
+	lpSystemInfo->wProcessorArchitecture = PROCESSOR_ARCHITECTURE_ARM64;
+	lpSystemInfo->dwPageSize = static_cast<DWORD>(getpagesize());
+	lpSystemInfo->dwAllocationGranularity = static_cast<DWORD>(getpagesize());
+	lpSystemInfo->dwNumberOfProcessors = static_cast<DWORD>(sysconf(_SC_NPROCESSORS_ONLN));
+	lpSystemInfo->lpMinimumApplicationAddress = reinterpret_cast<LPVOID>(intptr_t{0x10000});
+	lpSystemInfo->lpMaximumApplicationAddress = reinterpret_cast<LPVOID>(intptr_t{0x7FFFFFFEFFFF});
+}
+
+LPVOID WINAPI VirtualAlloc(LPVOID lpAddress, SIZE_T dwSize, DWORD flAllocationType, DWORD flProtect)
+{
+	if (lpAddress) {
+		// 予約済み領域内のコミット
+		if (!(flAllocationType & MEM_COMMIT)) return lpAddress;
+		if (mprotect(lpAddress, dwSize, ToProt(flProtect)) != 0) { SetLastError(ERROR_INVALID_ADDRESS); return nullptr; }
+		return lpAddress;
+	}
+	// MEM_RESERVE のみなら触れない領域として確保する
+	const int prot = (flAllocationType & MEM_COMMIT) ? ToProt(flProtect) : PROT_NONE;
+	void* p = mmap(nullptr, dwSize, prot, MAP_PRIVATE | MAP_ANON, -1, 0);
 	if (p == MAP_FAILED) { SetLastError(ERROR_NOT_ENOUGH_MEMORY); return nullptr; }
-	std::lock_guard lock(g_vmMutex);
-	g_vmSizes[p] = dwSize;
+	std::lock_guard lock(VmMutex());
+	VmSizes()[p] = dwSize;
 	return p;
 }
 
-WINBOOL WINAPI VirtualFree(LPVOID lpAddress, SIZE_T, DWORD dwFreeType)
+WINBOOL WINAPI VirtualProtect(LPVOID lpAddress, SIZE_T dwSize, DWORD flNewProtect, PDWORD lpflOldProtect)
 {
-	if (!(dwFreeType & MEM_RELEASE)) return TRUE;  // MEM_DECOMMIT は何もしない
-	std::lock_guard lock(g_vmMutex);
-	const auto it = g_vmSizes.find(lpAddress);
-	if (it == g_vmSizes.end()) { SetLastError(ERROR_INVALID_ADDRESS); return FALSE; }
+	// 以前の保護属性は追跡していないため READWRITE を返す
+	if (lpflOldProtect) *lpflOldProtect = PAGE_READWRITE;
+	if (mprotect(lpAddress, dwSize, ToProt(flNewProtect)) != 0) { SetLastError(ERROR_INVALID_ADDRESS); return FALSE; }
+	return TRUE;
+}
+
+WINBOOL WINAPI VirtualFree(LPVOID lpAddress, SIZE_T dwSize, DWORD dwFreeType)
+{
+	if (!(dwFreeType & MEM_RELEASE)) {
+		// MEM_DECOMMIT: 触れない状態に戻す
+		return mprotect(lpAddress, dwSize, PROT_NONE) == 0 ? TRUE : FALSE;
+	}
+	std::lock_guard lock(VmMutex());
+	const auto it = VmSizes().find(lpAddress);
+	if (it == VmSizes().end()) { SetLastError(ERROR_INVALID_ADDRESS); return FALSE; }
 	munmap(it->first, it->second);
-	g_vmSizes.erase(it);
+	VmSizes().erase(it);
 	return TRUE;
 }
 

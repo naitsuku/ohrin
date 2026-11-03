@@ -102,6 +102,49 @@ struct DrawScope {
 	}
 };
 
+std::vector<RECT> IntersectAll(const std::vector<RECT>& a, const std::vector<RECT>& b);
+
+bool IsPixelRop(int rop2) { return rop2 == R2_XORPEN || rop2 == R2_NOTXORPEN || rop2 == R2_NOT; }
+
+//! 画素を直接書き換える ROP。CoreGraphics の合成モードでは 2 回描いても元に戻らないので使わない
+void RopRect(DC* dc, const RECT& logical, COLORREF color, int rop2)
+{
+	CGContextRef ctx = dc->Target();
+	if (!ctx) return;
+	RECT r = logical;
+	OffsetRect(&r, dc->origin.x, dc->origin.y);
+	std::vector<RECT> rects{r};
+	const RECT whole{0, 0, dc->TargetWidth(), dc->TargetHeight()};
+	rects = IntersectAll(rects, {whole});
+	if (dc->paintDC) rects = IntersectAll(rects, {dc->paintClip});
+	if (dc->hasClip) rects = IntersectAll(rects, dc->clip);
+	const double scale = dc->surface ? dc->surface->scale : dc->bitmap->scale;
+	auto data = static_cast<unsigned char*>(CGBitmapContextGetData(ctx));
+	const size_t bpr = CGBitmapContextGetBytesPerRow(ctx);
+	const long pw = static_cast<long>(CGBitmapContextGetWidth(ctx)), ph = static_cast<long>(CGBitmapContextGetHeight(ctx));
+	if (!data) return;
+	const uint32_t mask = (static_cast<uint32_t>(GetRValue(color)) << 16) | (static_cast<uint32_t>(GetGValue(color)) << 8) | GetBValue(color);
+	std::unique_lock<std::mutex> lock;
+	if (dc->surface) lock = std::unique_lock(dc->surface->mutex);
+	for (const auto& c : rects) {
+		const long x0 = std::max(0L, std::lround(c.left * scale)), x1 = std::min(pw, std::lround(c.right * scale));
+		const long y0 = std::max(0L, std::lround(c.top * scale)), y1 = std::min(ph, std::lround(c.bottom * scale));
+		for (long y = y0; y < y1; ++y) {
+			auto row = reinterpret_cast<uint32_t*>(data + y * bpr);
+			for (long x = x0; x < x1; ++x) {
+				uint32_t v = row[x];
+				switch (rop2) {
+				case R2_XORPEN: v ^= mask; break;
+				case R2_NOTXORPEN: v = ~(v ^ mask); break;
+				default: v = ~v; break;
+				}
+				row[x] = (row[x] & 0xFF000000u) | (v & 0x00FFFFFFu);
+			}
+		}
+		AddDirty(dc, c);
+	}
+}
+
 void SetFill(CGContextRef ctx, COLORREF c) { CGContextSetRGBFillColor(ctx, R(c), G(c), B(c), 1); }
 void SetStroke(CGContextRef ctx, COLORREF c) { CGContextSetRGBStrokeColor(ctx, R(c), G(c), B(c), 1); }
 
@@ -118,25 +161,12 @@ bool BrushIsNull(HBRUSH h)
 	return !b || b->null();
 }
 
-//! R2_* を CG の合成モードに近似する
-void ApplyRop2(CGContextRef ctx, int rop2)
-{
-	switch (rop2) {
-	case R2_XORPEN: case R2_NOTXORPEN: case R2_NOT:
-		CGContextSetBlendMode(ctx, kCGBlendModeDifference);
-		break;
-	default:
-		break;
-	}
-}
-
 bool PenSetup(DC* dc, CGContextRef ctx, int* widthOut)
 {
 	auto p = static_cast<Pen*>(ObjectOf(dc->pen));
 	if (!p || p->style == PS_NULL) return false;
 	const COLORREF color = dc->pen == GetStockObject(DC_PEN) ? dc->dcPenColor : p->color;
-	const bool xorLike = dc->rop2 == R2_XORPEN || dc->rop2 == R2_NOTXORPEN || dc->rop2 == R2_NOT;
-	SetStroke(ctx, xorLike ? RGB(255, 255, 255) : color);
+	SetStroke(ctx, color);
 	const int w = std::max(p->width, 1);
 	CGContextSetLineWidth(ctx, w);
 	switch (p->style & PS_STYLE_MASK) {
@@ -145,7 +175,6 @@ bool PenSetup(DC* dc, CGContextRef ctx, int* widthOut)
 	case PS_DASHDOT: { const CGFloat d[] = {4, 2, 1, 2}; CGContextSetLineDash(ctx, 0, d, 4); break; }
 	default: break;
 	}
-	ApplyRop2(ctx, dc->rop2);
 	CGContextSetLineCap(ctx, kCGLineCapButt);
 	if (widthOut) *widthOut = w;
 	return true;
@@ -350,6 +379,85 @@ HGDIOBJ Stock(int idx)
 }
 
 }  // namespace
+
+void DrawArgbPixels(HDC hdc, int x, int y, int w, int h, const uint32_t* px, int strideWords, double alpha)
+{
+	auto dc = DCOf(hdc);
+	if (!dc || w <= 0 || h <= 0) return;
+	std::vector<uint32_t> copy(static_cast<size_t>(w) * h);
+	bool anyAlpha = false;
+	for (int j = 0; j < h; ++j) {
+		for (int i = 0; i < w; ++i) {
+			const uint32_t v = px[static_cast<size_t>(j) * strideWords + i];
+			copy[static_cast<size_t>(j) * w + i] = v;
+			anyAlpha = anyAlpha || (v >> 24);
+		}
+	}
+	if (!anyAlpha) for (auto& v : copy) v |= 0xFF000000u;
+	CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
+	CGDataProviderRef prov = CGDataProviderCreateWithData(nullptr, copy.data(), copy.size() * 4, nullptr);
+	CGImageRef img = CGImageCreate(w, h, 8, 32, static_cast<size_t>(w) * 4, cs,
+	                               static_cast<uint32_t>(kCGImageAlphaFirst) | static_cast<uint32_t>(kCGBitmapByteOrder32Little),
+	                               prov, nullptr, false, kCGRenderingIntentDefault);
+	{
+		DrawScope s(dc);
+		if (s && img) {
+			CGContextSetAlpha(s.ctx, alpha);
+			CGContextTranslateCTM(s.ctx, x, y + h);
+			CGContextScaleCTM(s.ctx, 1, -1);
+			CGContextSetInterpolationQuality(s.ctx, kCGInterpolationNone);
+			CGContextDrawImage(s.ctx, CGRectMake(0, 0, w, h), img);
+			AddDirty(dc, RECT{x + dc->origin.x, y + dc->origin.y, x + w + dc->origin.x, y + h + dc->origin.y});
+		}
+	}
+	if (img) CGImageRelease(img);
+	CGDataProviderRelease(prov);
+	CGColorSpaceRelease(cs);
+}
+
+HBITMAP CreateBitmapFromDib(const unsigned char* dib, size_t size)
+{
+	if (size < sizeof(BITMAPINFOHEADER)) return nullptr;
+	BITMAPINFOHEADER bi;
+	std::memcpy(&bi, dib, sizeof(bi));
+	if (bi.biCompression != BI_RGB) {
+		ReportUnimplemented("gdi32", "CreateBitmapFromDib(compressed)");
+		return nullptr;
+	}
+	const int w = bi.biWidth, h = bi.biHeight < 0 ? -bi.biHeight : bi.biHeight, bpp = bi.biBitCount;
+	const bool bottomUp = bi.biHeight > 0;
+	const int colors = bpp <= 8 ? (bi.biClrUsed ? static_cast<int>(bi.biClrUsed) : 1 << bpp) : 0;
+	const unsigned char* palette = dib + bi.biSize;
+	const unsigned char* bits = palette + colors * 4;
+	const size_t stride = ((static_cast<size_t>(w) * bpp + 31) / 32) * 4;
+	if (bits + stride * h > dib + size) return nullptr;
+	auto b = new Bitmap;
+	RegisterObject(b);
+	b->width = w;
+	b->height = h;
+	b->bpp = bpp;
+	b->ctx = CreateFlippedBitmapContext(w, h, 1.0, nullptr);
+	auto dst = static_cast<unsigned char*>(CGBitmapContextGetData(b->ctx));
+	const size_t bpr = CGBitmapContextGetBytesPerRow(b->ctx);
+	for (int y = 0; y < h; ++y) {
+		const unsigned char* row = bits + stride * (bottomUp ? h - 1 - y : y);
+		auto out = reinterpret_cast<uint32_t*>(dst + y * bpr);
+		for (int x = 0; x < w; ++x) {
+			unsigned char c[3];
+			if (bpp == 32 || bpp == 24) {
+				std::memcpy(c, row + x * (bpp / 8), 3);
+			} else {
+				int idx;
+				if (bpp == 8) idx = row[x];
+				else if (bpp == 4) idx = (row[x / 2] >> ((x & 1) ? 0 : 4)) & 0xF;
+				else idx = (row[x / 8] >> (7 - (x & 7))) & 1;
+				std::memcpy(c, palette + idx * 4, 3);
+			}
+			out[x] = 0xFF000000u | (static_cast<uint32_t>(c[2]) << 16) | (static_cast<uint32_t>(c[1]) << 8) | c[0];
+		}
+	}
+	return reinterpret_cast<HBITMAP>(b);
+}
 
 }  // namespace winport::gdi
 
@@ -834,7 +942,14 @@ WINBOOL WINAPI FillRgn(HDC hdc, HRGN hrgn, HBRUSH hbr)
 WINBOOL WINAPI PaintRgn(HDC hdc, HRGN hrgn)
 {
 	auto dc = DCOf(hdc);
-	return dc ? FillRgn(hdc, hrgn, dc->brush) : FALSE;
+	if (!dc) return FALSE;
+	if (IsPixelRop(dc->rop2)) {
+		auto r = static_cast<Region*>(ObjectOf(hrgn));
+		if (!r) return FALSE;
+		for (auto& rc : r->rects) RopRect(dc, rc, BrushColor(dc, dc->brush), dc->rop2);
+		return TRUE;
+	}
+	return FillRgn(hdc, hrgn, dc->brush);
 }
 
 /* ---- 図形 ---- */
@@ -851,6 +966,18 @@ WINBOOL WINAPI LineTo(HDC hdc, int x, int y)
 {
 	auto dc = DCOf(hdc);
 	if (!dc) return FALSE;
+	if (IsPixelRop(dc->rop2)) {
+		// 水平・垂直線（sakura の XOR 線はこれだけ）は幅 w の矩形として反転する。終点は含まない
+		auto p = static_cast<Pen*>(ObjectOf(dc->pen));
+		if (p && p->style != PS_NULL) {
+			const int w = std::max(p->width, 1);
+			const RECT r{std::min<LONG>(dc->pos.x, x), std::min<LONG>(dc->pos.y, y),
+			             std::max<LONG>(dc->pos.x, x) + (dc->pos.x == x ? w : 0), std::max<LONG>(dc->pos.y, y) + (dc->pos.y == y ? w : 0)};
+			RopRect(dc, r, p->color, dc->rop2);
+		}
+		dc->pos = {x, y};
+		return TRUE;
+	}
 	DrawScope s(dc);
 	if (s) {
 		int w;
@@ -922,6 +1049,10 @@ WINBOOL WINAPI Rectangle(HDC hdc, int left, int top, int right, int bottom)
 {
 	auto dc = DCOf(hdc);
 	if (!dc) return FALSE;
+	if (IsPixelRop(dc->rop2)) {
+		if (!BrushIsNull(dc->brush)) RopRect(dc, RECT{left, top, right, bottom}, BrushColor(dc, dc->brush), dc->rop2);
+		return TRUE;
+	}
 	DrawScope s(dc);
 	if (!s) return TRUE;
 	if (!BrushIsNull(dc->brush)) {
@@ -1045,21 +1176,15 @@ namespace {
 //! src の (sx,sy,w,h) を dst の (x,y,w,h) へ描く（拡大縮小あり）
 bool Blit(DC* d, int x, int y, int w, int h, DC* sdc, int sx, int sy, int sw, int sh, DWORD rop)
 {
+	const RECT dst{x, y, x + w, y + h};
+	if (rop == DSTINVERT) { RopRect(d, dst, 0, R2_NOT); return true; }
+	if (rop == PATINVERT) { RopRect(d, dst, BrushColor(d, d->brush), R2_XORPEN); return true; }
 	DrawScope s(d);
 	if (!s) return true;
-	const RECT dst{x, y, x + w, y + h};
 	switch (rop) {
 	case BLACKNESS: FillRectWith(s, dst, RGB(0, 0, 0)); return true;
 	case WHITENESS: FillRectWith(s, dst, RGB(255, 255, 255)); return true;
 	case PATCOPY: FillRectWith(s, dst, BrushColor(d, d->brush)); return true;
-	case DSTINVERT:
-		CGContextSetBlendMode(s.ctx, kCGBlendModeDifference);
-		FillRectWith(s, dst, RGB(255, 255, 255));
-		return true;
-	case PATINVERT:
-		CGContextSetBlendMode(s.ctx, kCGBlendModeDifference);
-		FillRectWith(s, dst, BrushColor(d, d->brush));
-		return true;
 	default: break;
 	}
 	if (!sdc || !sdc->Target()) return false;
@@ -1118,9 +1243,20 @@ WINBOOL WINAPI PatBlt(HDC hdc, int x, int y, int w, int h, DWORD rop)
 }
 
 WINBOOL WINAPI AlphaBlend(HDC hdcDest, int xoriginDest, int yoriginDest, int wDest, int hDest, HDC hdcSrc,
-                          int xoriginSrc, int yoriginSrc, int wSrc, int hSrc, BLENDFUNCTION)
+                          int xoriginSrc, int yoriginSrc, int wSrc, int hSrc, BLENDFUNCTION ftn)
 {
-	return StretchBlt(hdcDest, xoriginDest, yoriginDest, wDest, hDest, hdcSrc, xoriginSrc, yoriginSrc, wSrc, hSrc, SRCCOPY);
+	auto src = DCOf(hdcSrc);
+	if (!src || !src->Target()) return FALSE;
+	CGContextRef ctx = src->Target();
+	auto data = static_cast<unsigned char*>(CGBitmapContextGetData(ctx));
+	const size_t bpr = CGBitmapContextGetBytesPerRow(ctx);
+	const double scale = src->surface ? src->surface->scale : src->bitmap->scale;
+	if (!data || scale != 1.0 || wDest != wSrc || hDest != hSrc) {
+		return StretchBlt(hdcDest, xoriginDest, yoriginDest, wDest, hDest, hdcSrc, xoriginSrc, yoriginSrc, wSrc, hSrc, SRCCOPY);
+	}
+	DrawArgbPixels(hdcDest, xoriginDest, yoriginDest, wDest, hDest,
+	               reinterpret_cast<const uint32_t*>(data + yoriginSrc * bpr) + xoriginSrc, static_cast<int>(bpr / 4), ftn.SourceConstantAlpha / 255.0);
+	return TRUE;
 }
 
 WINBOOL WINAPI TransparentBlt(HDC hdcDest, int xoriginDest, int yoriginDest, int wDest, int hDest, HDC hdcSrc,

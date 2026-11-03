@@ -120,6 +120,11 @@ HDC CreateWindowDC(HWND hwnd, const RECT* paintClip);
 //! ウィンドウ DC を破棄し、描画範囲を画面へ反映する
 void ReleaseWindowDC(HDC hdc);
 
+//! 32bpp の直接アルファ画素（メモリ上 B,G,R,A）を DC へ合成する。全画素のアルファが 0 なら不透明として扱う
+void DrawArgbPixels(HDC hdc, int x, int y, int w, int h, const uint32_t* px, int strideWords, double alpha);
+//! DIB（BITMAPINFOHEADER + パレット + 画素）からビットマップを作る。bmBitsPixel は元の値のまま
+HBITMAP CreateBitmapFromDib(const unsigned char* dib, size_t size);
+
 CGColorRef CopyColor(COLORREF c);
 inline CGFloat R(COLORREF c) { return GetRValue(c) / 255.0; }
 inline CGFloat G(COLORREF c) { return GetGValue(c) / 255.0; }

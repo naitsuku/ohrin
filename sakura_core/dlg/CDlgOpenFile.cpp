@@ -35,7 +35,11 @@ void CDlgOpenFile::Create(
 	const std::vector<LPCWSTR>& vMRU,
 	const std::vector<LPCWSTR>& vOPENFOLDER
 ) {
+#ifdef SAKURA_WINPORT	// IFileDialog is not available; GetOpenFileName maps to the mac panels
+	if( false ){
+#else
 	if( GetDllShareData().m_Common.m_sEdit.m_bVistaStyleFileDialog ){
+#endif
 		m_pImpl = New_CDlgOpenFile_CommonItemDialog();
 	}
 	else {

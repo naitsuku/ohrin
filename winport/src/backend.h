@@ -57,6 +57,37 @@ void ScrollBarsChanged(void* hwnd);
 void Beep();
 //! 全仮想プロセスが終了した
 void Quit();
+// ---- 開く／保存／フォントのパネル ----
+//! パネルの補助ビューに写すコントロール
+struct PanelControl {
+	int id = 0;
+	bool check = false;                //!< false ならポップアップ
+	std::u16string label;
+	std::vector<std::u16string> items;
+	int value = 0;                     //!< 選択の位置、またはチェック状態
+	bool enabled = true;
+};
+struct PanelRequest {
+	bool save = false;
+	bool multiple = false;
+	std::u16string title, directory, name;
+	std::vector<PanelControl> controls;
+};
+struct PanelResult {
+	std::atomic<bool> done{false};
+	bool ok = false;
+	std::vector<std::u16string> paths;
+	std::vector<int> values;           //!< PanelRequest::controls と同じ並び
+};
+struct FontChoice {
+	std::u16string family;
+	int size = 12;
+	bool bold = false, italic = false;
+};
+//! 待たずに戻り、閉じられたら result->done が立つ。request は閉じるまで呼び出し側が保持する
+void ShowFilePanel(const PanelRequest* request, PanelResult* result);
+//! 閉じられたら *result が 1（OK）か -1（キャンセル）になり、OK なら choice を更新する
+void ShowFontPanel(FontChoice* choice, std::atomic<int>* result);
 //! システムのクリップボード。どのスレッドから呼んでもよく、メインスレッドを待たない
 long ClipboardChangeCount();
 void ClipboardWriteText(const std::u16string& text);   //!< 内容を置き換える（空なら消すだけ）

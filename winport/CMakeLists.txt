@@ -41,6 +41,7 @@ add_library(winport STATIC
     src/crt.cpp
     src/gdi.cpp
     src/gdi_text.cpp
+    src/commdlg.cpp
     src/dialog.cpp
     src/dialog_controls.cpp
     src/imm32.cpp

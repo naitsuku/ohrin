@@ -429,6 +429,7 @@ UINT_PTR CALLBACK CDlgOpenFile_CommonFileDialog::OFNHookProc(
 						}
 					}
 
+#ifndef SAKURA_WINPORT	// mac の保存パネルが自分で確認する
 					// ファイルの上書き確認を自前で行う	// 2006.11.10 ryoji
 					if( IsFileExists(pData->m_szPath, true) ){
 						WCHAR szText[_MAX_PATH + 100];
@@ -439,6 +440,7 @@ UINT_PTR CALLBACK CDlgOpenFile_CommonFileDialog::OFNHookProc(
 							return TRUE;
 						}
 					}
+#endif
 				}
 
 				/* 文字コード選択コンボボックス 値を取得 */
@@ -922,7 +924,11 @@ bool CDlgOpenFile_CommonFileDialog::DoModalOpenDlg(
 				pos += wcslen(pos) + 1;
 				while( *pos != L'\0' ){
 					path = pData->m_ofn.lpstrFile;
+#ifdef SAKURA_WINPORT
+					path.append( L"/" );
+#else
 					path.append( L"\\" );
+#endif
 					path.append( pos );
 					pFileNames->push_back( path );
 					pos += wcslen(pos) + 1;

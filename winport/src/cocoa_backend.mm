@@ -658,6 +658,40 @@ void RebuildMenuBar(void* hwnd)
 }
 @end
 
+// 開く／保存パネルの補助ビュー
+@interface WPPanelTarget : NSObject
+@property(nonatomic, weak) NSSavePanel* panel;
+- (void)recentChosen:(NSPopUpButton*)sender;
+@end
+
+@implementation WPPanelTarget
+//! 「最近のファイル／フォルダー」はパネルの場所を移す
+- (void)recentChosen:(NSPopUpButton*)sender
+{
+	NSString* path = sender.titleOfSelectedItem;
+	BOOL dir = NO;
+	if (![NSFileManager.defaultManager fileExistsAtPath:path isDirectory:&dir]) return;
+	self.panel.directoryURL = [NSURL fileURLWithPath:dir ? path : path.stringByDeletingLastPathComponent isDirectory:YES];
+	if (!dir && ![self.panel isKindOfClass:NSOpenPanel.class]) self.panel.nameFieldStringValue = path.lastPathComponent;
+}
+@end
+
+// フォントパネルの OK / キャンセル
+@interface WPFontTarget : NSObject <NSWindowDelegate>
+@property(nonatomic) NSFont* font;
+@property(nonatomic) int result;
+- (void)changeFont:(id)sender;
+- (void)accept:(id)sender;
+- (void)cancel:(id)sender;
+@end
+
+@implementation WPFontTarget
+- (void)changeFont:(id)sender { self.font = [sender convertFont:self.font]; }
+- (void)accept:(id)sender { self.result = 1; [NSApp stopModal]; }
+- (void)cancel:(id)sender { self.result = -1; [NSApp stopModal]; }
+- (void)windowWillClose:(NSNotification*)n { if (!self.result) { self.result = -1; [NSApp stopModal]; } }
+@end
+
 @interface WPAppDelegate : NSObject <NSApplicationDelegate>
 @end
 
@@ -842,6 +876,144 @@ void ScrollBarsChanged(void* hwnd)
 void Beep() { OnMain(^{ NSBeep(); }); }
 
 bool Available() { return g_available; }
+
+namespace {
+
+NSString* NS(const std::u16string& s) { return [NSString stringWithCharacters:reinterpret_cast<const unichar*>(s.data()) length:s.size()]; }
+
+std::u16string U16(NSString* s)
+{
+	std::u16string out(s.length, u'\0');
+	[s getCharacters:reinterpret_cast<unichar*>(out.data()) range:NSMakeRange(0, s.length)];
+	return out;
+}
+
+//! 補助ビューを組み立てる。views は controls と同じ並び
+NSView* BuildAccessory(const std::vector<PanelControl>& controls, WPPanelTarget* target, NSMutableArray* views)
+{
+	constexpr CGFloat rowHeight = 28, labelWidth = 130, fieldWidth = 340, pad = 8;
+	const CGFloat height = controls.size() * rowHeight + pad * 2;
+	NSView* view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, labelWidth + fieldWidth + pad * 3, height)];
+	CGFloat y = height - pad - rowHeight;
+	for (const auto& c : controls) {
+		if (c.check) {
+			NSButton* b = [NSButton checkboxWithTitle:NS(c.label) target:nil action:nil];
+			b.state = c.value ? NSControlStateValueOn : NSControlStateValueOff;
+			b.enabled = c.enabled;
+			b.frame = NSMakeRect(labelWidth + pad * 2, y, fieldWidth, rowHeight - 4);
+			[view addSubview:b];
+			[views addObject:b];
+		} else {
+			NSTextField* label = [NSTextField labelWithString:NS(c.label)];
+			label.alignment = NSTextAlignmentRight;
+			label.frame = NSMakeRect(pad, y + 2, labelWidth, rowHeight - 8);
+			[view addSubview:label];
+			NSPopUpButton* p = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(labelWidth + pad * 2, y, fieldWidth, rowHeight - 2) pullsDown:NO];
+			for (const auto& item : c.items) {
+				// 同じ題名を重ねると addItemWithTitle が 1 つにまとめるので、メニューへ直接足す
+				[p.menu addItem:[[NSMenuItem alloc] initWithTitle:NS(item) action:nil keyEquivalent:@""]];
+			}
+			if (c.value >= 0) [p selectItemAtIndex:c.value];
+			p.enabled = c.enabled;
+			if (!c.items.empty() && c.items[0].rfind(u"/", 0) == 0) {
+				p.target = target;
+				p.action = @selector(recentChosen:);
+			}
+			[view addSubview:p];
+			[views addObject:p];
+		}
+		y -= rowHeight;
+	}
+	return view;
+}
+
+}  // namespace
+
+void ShowFilePanel(const PanelRequest* request, PanelResult* result)
+{
+	// ShowMessageBox と同じ理由でランループへ積む
+	CFRunLoopPerformBlock(CFRunLoopGetMain(), kCFRunLoopCommonModes, ^{
+		NSSavePanel* panel;
+		if (request->save) {
+			panel = [NSSavePanel savePanel];
+		} else {
+			NSOpenPanel* open = [NSOpenPanel openPanel];
+			open.allowsMultipleSelection = request->multiple;
+			open.canChooseFiles = YES;
+			open.canChooseDirectories = NO;
+			panel = open;
+		}
+		panel.canCreateDirectories = YES;
+		if (!request->title.empty()) panel.title = NS(request->title);
+		if (!request->directory.empty()) panel.directoryURL = [NSURL fileURLWithPath:NS(request->directory) isDirectory:YES];
+		if (request->save && !request->name.empty()) panel.nameFieldStringValue = NS(request->name);
+		WPPanelTarget* target = [WPPanelTarget new];
+		target.panel = panel;
+		NSMutableArray* views = [NSMutableArray array];
+		if (!request->controls.empty()) {
+			panel.accessoryView = BuildAccessory(request->controls, target, views);
+			if ([panel isKindOfClass:NSOpenPanel.class]) ((NSOpenPanel*)panel).accessoryViewDisclosed = YES;
+		}
+		[NSApp activateIgnoringOtherApps:YES];
+		result->ok = [panel runModal] == NSModalResponseOK;
+		if (result->ok) {
+			if (request->save) {
+				result->paths.push_back(U16(panel.URL.path));
+			} else {
+				for (NSURL* url in ((NSOpenPanel*)panel).URLs) result->paths.push_back(U16(url.path));
+			}
+			for (id v in views) {
+				if ([v isKindOfClass:NSPopUpButton.class]) result->values.push_back(static_cast<int>(((NSPopUpButton*)v).indexOfSelectedItem));
+				else result->values.push_back(((NSButton*)v).state == NSControlStateValueOn);
+			}
+		}
+		result->done.store(true);
+	});
+	CFRunLoopWakeUp(CFRunLoopGetMain());
+}
+
+void ShowFontPanel(FontChoice* choice, std::atomic<int>* result)
+{
+	CFRunLoopPerformBlock(CFRunLoopGetMain(), kCFRunLoopCommonModes, ^{
+		NSFontManager* manager = NSFontManager.sharedFontManager;
+		NSFont* font = [NSFont fontWithName:NS(choice->family) size:choice->size];
+		if (!font) font = [NSFont userFixedPitchFontOfSize:choice->size];
+		if (choice->bold) font = [manager convertFont:font toHaveTrait:NSBoldFontMask];
+		if (choice->italic) font = [manager convertFont:font toHaveTrait:NSItalicFontMask];
+		WPFontTarget* target = [WPFontTarget new];
+		target.font = font;
+		manager.target = target;
+		manager.action = @selector(changeFont:);
+		[manager setSelectedFont:font isMultiple:NO];
+		NSFontPanel* panel = [manager fontPanel:YES];
+		NSView* buttons = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 240, 40)];
+		NSButton* cancel = [NSButton buttonWithTitle:@"キャンセル" target:target action:@selector(cancel:)];
+		NSButton* ok = [NSButton buttonWithTitle:@"OK" target:target action:@selector(accept:)];
+		ok.keyEquivalent = @"\r";
+		cancel.frame = NSMakeRect(40, 6, 100, 28);
+		ok.frame = NSMakeRect(146, 6, 80, 28);
+		[buttons addSubview:cancel];
+		[buttons addSubview:ok];
+		panel.accessoryView = buttons;
+		panel.delegate = target;
+		[panel setWorksWhenModal:YES];
+		[NSApp activateIgnoringOtherApps:YES];
+		[panel makeKeyAndOrderFront:nil];
+		[NSApp runModalForWindow:panel];
+		panel.delegate = nil;
+		panel.accessoryView = nil;
+		[panel orderOut:nil];
+		if (target.result == 1) {
+			const NSFontTraitMask traits = [manager traitsOfFont:target.font];
+			choice->family = U16(target.font.familyName);
+			choice->size = static_cast<int>(target.font.pointSize + 0.5);
+			choice->bold = (traits & NSBoldFontMask) != 0;
+			choice->italic = (traits & NSItalicFontMask) != 0;
+		}
+		result->store(target.result ? target.result : -1);
+	});
+	CFRunLoopWakeUp(CFRunLoopGetMain());
+}
 
 long ClipboardChangeCount() { return NSPasteboard.generalPasteboard.changeCount; }
 

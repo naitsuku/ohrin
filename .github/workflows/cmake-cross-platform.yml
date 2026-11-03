@@ -41,13 +41,17 @@ jobs:
         run: ctest --test-dir build --output-on-failure
 
   build-macos:
-    name: Build (macOS 14, Apple Silicon)
+    name: Build (macOS 14, Apple Silicon, winport)
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
 
       - name: Install dependencies
-        run: brew install wxwidgets cmake ninja
+        # macOS は winport 版（sakura_core フォーク + Win32 互換層）。Windows ヘッダとして mingw-w64 を使う
+        run: brew install mingw-w64 cmake ninja
+
+      - name: Fetch submodules
+        run: git submodule update --init --depth 1 externals/cmigemo externals/miniz-cpp
 
       - name: Configure (CMake)
         run: |

@@ -1,11 +1,12 @@
 cmake_minimum_required(VERSION 3.16)
 
 # ============================================================
-# wxWidgets 移植プロジェクト分岐（Phase 1 以降で追加）
+# 非 Windows 向け分岐
 #
-# 非 Windows プラットフォーム (macOS / Linux) では本ブロック内で
-# wxWidgets ベースのビルドを構成し、return() で以下の Win32 向け
-# ロジックは一切実行しない。Win32 ビルドの挙動は完全に温存される。
+# macOS: SAKURA_MAC_NATIVE（既定 ON）で sakura_core フォーク + winport 互換層をビルド。
+#        凍結した wxWidgets 版は SAKURA_BUILD_WX=ON のときだけビルドする。
+# Linux: wxWidgets 版のみ。
+# いずれも return() で以下の Win32 向けロジックは一切実行しない。
 # ============================================================
 if(NOT WIN32)
     cmake_minimum_required(VERSION 3.20)
@@ -27,16 +28,12 @@ if(NOT WIN32)
     set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
     if(APPLE)
-        add_compile_definitions(SAKURA_PLATFORM_MACOS SAKURA_PLATFORM_WX)
-        message(STATUS "Platform: macOS (wxWidgets port)")
+        option(SAKURA_MAC_NATIVE "Build sakura_core fork on the winport Win32 layer" ON)
+        option(SAKURA_BUILD_WX "Build the frozen wxWidgets port" OFF)
     else()
-        add_compile_definitions(SAKURA_PLATFORM_LINUX SAKURA_PLATFORM_WX)
-        message(STATUS "Platform: Linux (wxWidgets port)")
+        set(SAKURA_MAC_NATIVE OFF)
+        option(SAKURA_BUILD_WX "Build the frozen wxWidgets port" ON)
     endif()
-
-    find_package(wxWidgets REQUIRED COMPONENTS core base stc aui xml net)
-    include(${wxWidgets_USE_FILE})
-    message(STATUS "wxWidgets found: ${wxWidgets_VERSION}")
 
     # GoogleTest はテスト用。FetchContent で取得して in-tree でビルド。
     include(FetchContent)
@@ -49,14 +46,30 @@ if(NOT WIN32)
     )
     FetchContent_MakeAvailable(googletest)
 
-    add_subdirectory(sakura_core)
+    enable_testing()
 
-    if(EXISTS ${CMAKE_SOURCE_DIR}/sakura_wx/CMakeLists.txt)
-        add_subdirectory(sakura_wx)
+    if(SAKURA_MAC_NATIVE)
+        enable_language(OBJCXX)
+        message(STATUS "Platform: macOS (native, winport)")
+        add_subdirectory(winport)
+        add_subdirectory(sakura_mac)
+        add_subdirectory(tests/mac_tests)
     endif()
 
-    enable_testing()
-    if(EXISTS ${CMAKE_SOURCE_DIR}/tests/wx_tests/CMakeLists.txt)
+    if(SAKURA_BUILD_WX)
+        if(APPLE)
+            add_compile_definitions(SAKURA_PLATFORM_MACOS SAKURA_PLATFORM_WX)
+            message(STATUS "Platform: macOS (wxWidgets port, frozen)")
+        else()
+            add_compile_definitions(SAKURA_PLATFORM_LINUX SAKURA_PLATFORM_WX)
+            message(STATUS "Platform: Linux (wxWidgets port)")
+        endif()
+        find_package(wxWidgets REQUIRED COMPONENTS core base stc aui xml net)
+        include(${wxWidgets_USE_FILE})
+        message(STATUS "wxWidgets found: ${wxWidgets_VERSION}")
+
+        add_subdirectory(sakura_core)
+        add_subdirectory(sakura_wx)
         add_subdirectory(tests/wx_tests)
     endif()
 

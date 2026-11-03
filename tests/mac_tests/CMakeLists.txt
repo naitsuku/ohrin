@@ -54,6 +54,7 @@ list(TRANSFORM TESTS1_ENABLED PREPEND ${TESTS1_DIR}/)
 
 add_executable(sakura_mac_tests
     mac_main.cpp
+    test-winport-gdi.cpp
     ${CMAKE_SOURCE_DIR}/src/test/resources/printECodeType.cpp
     ${CMAKE_SOURCE_DIR}/src/test/resources/printEEolType.cpp
     ${CMAKE_SOURCE_DIR}/src/test/resources/printEFunctionCode.cpp

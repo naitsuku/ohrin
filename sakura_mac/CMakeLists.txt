@@ -46,6 +46,7 @@ add_custom_command(
             -I ${SAKURA_MAC_GEN_DIR}
             --mingw-include ${WINPORT_MINGW_INCLUDE}
     DEPENDS ${CMAKE_SOURCE_DIR}/sakura_core/sakura_rc.rc ${CMAKE_SOURCE_DIR}/sakura_core/sakura_rc.rc2
+            ${CMAKE_SOURCE_DIR}/src/main/resources/MainMenu.ini
             ${_rc_tool} ${SAKURA_MAC_GEN_DIR}/Funccode_define.h
     COMMENT "Converting sakura_rc.rc to winport resources"
     VERBATIM
@@ -78,3 +79,17 @@ target_link_libraries(sakura_core_mac PUBLIC "$<LINK_LIBRARY:WHOLE_ARCHIVE,winpo
 # -Wno-c++11-narrowing: MSVC は定数式由来の縮小変換（CCSIZEOF_STRUCT 等）を許すため合わせる
 target_compile_options(sakura_core_mac PRIVATE -w -Wno-c++11-narrowing)
 target_precompile_headers(sakura_core_mac PRIVATE ${CMAKE_SOURCE_DIR}/sakura_core/StdAfx.h)
+
+# ---- アプリ本体（.app） ----
+add_executable(sakura_mac MACOSX_BUNDLE main.mm)
+set_target_properties(sakura_mac PROPERTIES
+    OUTPUT_NAME "SakuraEditor"
+    MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_SOURCE_DIR}/Info.plist.in
+    MACOSX_BUNDLE_GUI_IDENTIFIER "io.github.sakura-editor.mac"
+    MACOSX_BUNDLE_BUNDLE_NAME "SakuraEditor"
+    MACOSX_BUNDLE_SHORT_VERSION_STRING "2.4.2"
+    MACOSX_BUNDLE_BUNDLE_VERSION "0"
+)
+target_include_directories(sakura_mac PRIVATE ${CMAKE_SOURCE_DIR}/winport/src)
+target_compile_options(sakura_mac PRIVATE -fobjc-arc)
+target_link_libraries(sakura_mac PRIVATE sakura_core_mac)

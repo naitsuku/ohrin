@@ -64,6 +64,9 @@ constexpr const char* kKnownUnsupported[] = {
 	"to_string.test004",
 	"to_wstring.test004",
 
+	// wchar_t = 2 バイト前提（ページサイズ分の wmemset が確保範囲を超える）
+	"MYDEVMODETest.StrategyForSegmentationFault",
+
 	// CP_ACP = CP932 を前提にしたテスト（winport は ACP = UTF-8）
 	"to_achar.test001",
 	"to_string.test101",

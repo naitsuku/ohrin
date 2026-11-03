@@ -291,9 +291,13 @@ ATOM WINAPI RegisterClassExW(const WNDCLASSEXW* wc)
 	std::lock_guard lock(UserMutex());
 	EnsureSystemClasses();
 	const std::wstring key = ClassKey(wc->lpszClassName);
+	const DWORD process = GetCurrentProcessId();
 	if (auto it = Classes().find(key); it != Classes().end() && !it->second->system) {
-		SetLastError(ERROR_CLASS_ALREADY_EXISTS);
-		return 0;
+		if (!it->second->owners.insert(process).second) {
+			SetLastError(ERROR_CLASS_ALREADY_EXISTS);
+			return 0;
+		}
+		return it->second->atom;
 	}
 	auto c = std::make_unique<WindowClass>();
 	c->name = IS_INTRESOURCE(wc->lpszClassName) ? key : wc->lpszClassName;
@@ -306,6 +310,7 @@ ATOM WINAPI RegisterClassExW(const WNDCLASSEXW* wc)
 	c->cursor = wc->hCursor;
 	c->background = wc->hbrBackground;
 	c->atom = g_nextAtom++;
+	c->owners.insert(process);
 	const ATOM atom = c->atom;
 	Classes()[key] = std::move(c);
 	return atom;
@@ -321,7 +326,10 @@ ATOM WINAPI RegisterClassW(const WNDCLASSW* wc)
 WINBOOL WINAPI UnregisterClassW(LPCWSTR lpClassName, HINSTANCE)
 {
 	std::lock_guard lock(UserMutex());
-	return Classes().erase(ClassKey(lpClassName)) ? TRUE : FALSE;
+	const auto it = Classes().find(ClassKey(lpClassName));
+	if (it == Classes().end() || !it->second->owners.erase(GetCurrentProcessId())) return FALSE;
+	if (it->second->owners.empty()) Classes().erase(it);
+	return TRUE;
 }
 
 WINBOOL WINAPI GetClassInfoExW(HINSTANCE, LPCWSTR lpszClass, LPWNDCLASSEXW lpwcx)

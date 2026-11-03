@@ -28,6 +28,7 @@
 #include <condition_variable>
 #include <deque>
 #include <map>
+#include <set>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -63,6 +64,9 @@ struct WindowClass {
 	HBRUSH background = nullptr;
 	ATOM atom = 0;
 	bool system = false;          //!< 組み込みクラス（BUTTON 等の未実装コントロールを含む）
+	//! 登録した仮想プロセス。Win32 ではクラスはプロセスごとだが、ここでは全プロセスが同じ実行ファイルなので
+	//! 実体は 1 つを共有し、同じプロセスからの二重登録だけを失敗させる
+	std::set<DWORD> owners;
 };
 
 struct Subclass {

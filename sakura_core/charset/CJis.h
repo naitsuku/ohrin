@@ -28,7 +28,7 @@ public:
 
 protected:
 	// 2008.11.10  変換ロジックを書き直す
-	static int _JisToUni_block( const unsigned char* pSrc, const int nSrcLen, unsigned short* pDst, const EMyJisEscseq eMyJisesc, bool* pbError );
+	static int _JisToUni_block( const unsigned char* pSrc, const int nSrcLen, wchar_t* pDst, const EMyJisEscseq eMyJisesc, bool* pbError );
 	static int JisToUni( const char* pSrc, const int nSrcLen, wchar_t* pDst, bool* pbError );
 	static int _SjisToJis_char( const unsigned char* pSrc, unsigned char* pDst, ECharSet eCharset, bool* pbError );
 	static int UniToJis( const wchar_t* pSrc, const int nSrcLen, char* pDst, bool* pbError );

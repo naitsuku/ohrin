@@ -44,7 +44,7 @@ int CLatin1::Latin1ToUni( const char *pSrc, const int nSrcLen, wchar_t *pDst, bo
 {
 	int nret;
 	const unsigned char *pr, *pr_end;
-	unsigned short *pw;
+	wchar_t*pw;
 
 	if( pbError ){
 		*pbError = false;
@@ -55,7 +55,7 @@ int CLatin1::Latin1ToUni( const char *pSrc, const int nSrcLen, wchar_t *pDst, bo
 
 	pr = reinterpret_cast<const unsigned char*>( pSrc );
 	pr_end = reinterpret_cast<const unsigned char*>(pSrc + nSrcLen);
-	pw = reinterpret_cast<unsigned short*>(pDst);
+	pw = reinterpret_cast<wchar_t*>(pDst);
 
 	for( ; pr < pr_end; pr++ ){
 		if (*pr >= 0x80 && *pr <=0x9f) {
@@ -71,7 +71,7 @@ int CLatin1::Latin1ToUni( const char *pSrc, const int nSrcLen, wchar_t *pDst, bo
 		}
 	}
 
-	return int(pw - reinterpret_cast<unsigned short*>(pDst));
+	return int(pw - reinterpret_cast<wchar_t*>(pDst));
 }
 
 /* コード変換 Latin1→Unicode */
@@ -112,7 +112,7 @@ EConvertResult CLatin1::Latin1ToUnicode( const CMemory& cSrc, CNativeW* pDstMem 
 int CLatin1::UniToLatin1( const wchar_t* pSrc, const int nSrcLen, char* pDst, bool *pbError )
 {
 	int nclen;
-	const unsigned short *pr, *pr_end;
+	const wchar_t*pr, *pr_end;
 	unsigned char* pw;
 	ECharSet echarset;
 	bool berror=false, berror_tmp;
@@ -124,8 +124,8 @@ int CLatin1::UniToLatin1( const wchar_t* pSrc, const int nSrcLen, char* pDst, bo
 		return 0;
 	}
 
-	pr = reinterpret_cast<const unsigned short*>(pSrc);
-	pr_end = reinterpret_cast<const unsigned short*>(pSrc+nSrcLen);
+	pr = reinterpret_cast<const wchar_t*>(pSrc);
+	pr_end = reinterpret_cast<const wchar_t*>(pSrc+nSrcLen);
 	pw = reinterpret_cast<unsigned char*>(pDst);
 
 	while( (nclen = CheckUtf16leChar(reinterpret_cast<const wchar_t*>(pr), pr_end-pr, &echarset, 0)) > 0 ){

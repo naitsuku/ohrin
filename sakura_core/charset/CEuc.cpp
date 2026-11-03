@@ -14,7 +14,7 @@
 int CEuc::EucjpToUni( const char* pSrc, const int nSrcLen, wchar_t* pDst, bool* pbError )
 {
 	const unsigned char *pr, *pr_end;
-	unsigned short *pw;
+	wchar_t*pw;
 	int nclen;
 	ECharSet echarset;
 	bool berror_tmp, berror=false;
@@ -28,7 +28,7 @@ int CEuc::EucjpToUni( const char* pSrc, const int nSrcLen, wchar_t* pDst, bool* 
 
 	pr = reinterpret_cast<const unsigned char*>(pSrc);
 	pr_end = reinterpret_cast<const unsigned char*>(pSrc + nSrcLen);
-	pw = reinterpret_cast<unsigned short*>(pDst);
+	pw = reinterpret_cast<wchar_t*>(pDst);
 
 	for( ; (nclen = CheckEucjpChar(reinterpret_cast<const char*>(pr), pr_end-pr, &echarset)) != 0; pr += nclen ){
 		switch( echarset ){
@@ -70,7 +70,7 @@ int CEuc::EucjpToUni( const char* pSrc, const int nSrcLen, wchar_t* pDst, bool* 
 		*pbError = berror;
 	}
 
-	return int(pw - reinterpret_cast<unsigned short*>(pDst));
+	return int(pw - reinterpret_cast<wchar_t*>(pDst));
 }
 
 /* EUC→Unicodeコード変換 */
@@ -111,13 +111,13 @@ EConvertResult CEuc::EUCToUnicode(const CMemory& cSrc, CNativeW* pDstMem)
 int CEuc::UniToEucjp( const wchar_t* pSrc, const int nSrcLen, char* pDst, bool* pbError )
 {
 	int nclen;
-	const unsigned short *pr, *pr_end;
+	const wchar_t*pr, *pr_end;
 	unsigned char* pw;
 	bool berror=false, berror_tmp;
 	ECharSet echarset;
 
-	pr = reinterpret_cast<const unsigned short*>(pSrc);
-	pr_end = reinterpret_cast<const unsigned short*>(pSrc + nSrcLen);
+	pr = reinterpret_cast<const wchar_t*>(pSrc);
+	pr_end = reinterpret_cast<const wchar_t*>(pSrc + nSrcLen);
 	pw = reinterpret_cast<unsigned char*>(pDst);
 
 	while( (nclen = CheckUtf16leChar(reinterpret_cast<const wchar_t*>(pr), pr_end-pr, &echarset, 0)) > 0 ){

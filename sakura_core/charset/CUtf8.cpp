@@ -20,7 +20,7 @@
 int CUtf8::Utf8ToUni( const char* pSrc, const int nSrcLen, wchar_t* pDst, bool bCESU8Mode )
 {
 	const unsigned char *pr, *pr_end;
-	unsigned short *pw;
+	wchar_t*pw;
 	int nclen;
 	ECharSet echarset;
 
@@ -30,7 +30,7 @@ int CUtf8::Utf8ToUni( const char* pSrc, const int nSrcLen, wchar_t* pDst, bool b
 
 	pr = reinterpret_cast<const unsigned char*>(pSrc);
 	pr_end = reinterpret_cast<const unsigned char*>(pSrc+nSrcLen);
-	pw = reinterpret_cast<unsigned short*>(pDst);
+	pw = reinterpret_cast<wchar_t*>(pDst);
 
 	for( ; ; ){
 
@@ -57,7 +57,7 @@ int CUtf8::Utf8ToUni( const char* pSrc, const int nSrcLen, wchar_t* pDst, bool b
 		}
 	}
 
-	return int(pw - reinterpret_cast<unsigned short*>(pDst));
+	return int(pw - reinterpret_cast<wchar_t*>(pDst));
 }
 
 //! UTF-8→Unicodeコード変換
@@ -115,8 +115,8 @@ EConvertResult CUtf8::_UTF8ToUnicode( const CMemory& cSrc, CNativeW* pDstMem, bo
 */
 int CUtf8::UniToUtf8( const wchar_t* pSrc, const int nSrcLen, char* pDst, bool* pbError, bool bCESU8Mode )
 {
-	const unsigned short* pr = reinterpret_cast<const unsigned short*>(pSrc);
-	const unsigned short* pr_end = reinterpret_cast<const unsigned short*>(pSrc+nSrcLen);
+	const wchar_t* pr = reinterpret_cast<const wchar_t*>(pSrc);
+	const wchar_t* pr_end = reinterpret_cast<const wchar_t*>(pSrc+nSrcLen);
 	unsigned char* pw = reinterpret_cast<unsigned char*>(pDst);
 	int nclen;
 	bool berror=false;
@@ -207,13 +207,13 @@ EConvertResult CUtf8::_UnicodeToHex(const wchar_t* cSrc, const int iSLen, WCHAR*
 	cBuff.AllocStringBuffer(4);
 	// 1文字データバッファ
 	if (IsUTF16High(cSrc[0]) && iSLen >= 2 && IsUTF16Low(cSrc[1])) {
-		cBuff._GetMemory()->SetRawDataHoldBuffer(cSrc, 4);
+		cBuff._GetMemory()->SetRawDataHoldBuffer(cSrc, sizeof(wchar_t) * 2);
 	}
 	else if (iSLen >= 3 && IsVariationSelector(cSrc + 1)) {
 		cBuff._GetMemory()->SetRawDataHoldBuffer(cSrc, sizeof(wchar_t) * 3);
 	}
 	else {
-		cBuff._GetMemory()->SetRawDataHoldBuffer(cSrc, 2);
+		cBuff._GetMemory()->SetRawDataHoldBuffer(cSrc, sizeof(wchar_t));
 		if( IsBinaryOnSurrogate(cSrc[0]) ){
 			bbinary = true;
 		}

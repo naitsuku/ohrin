@@ -200,7 +200,7 @@ void CESI::GetEncodingInfo_sjis( const char* pS, const int nLen )
 		if( echarset != CHARSET_BINARY ){
 			if( echarset == CHARSET_JIS_ZENKAKU ){
 				num_of_sjis_encoded_bytes += nret;
-				unsigned short sDst[4];
+				wchar_t sDst[4];
 				if( 0 == MyMultiByteToWideChar_JP(reinterpret_cast<const unsigned char*>(pr), nret, sDst) ){
 					nillbytes += nret;
 				}
@@ -310,7 +310,7 @@ void CESI::GetEncodingInfo_eucjp( const char* pS, const int nLen )
 					num_of_euc_zen_hirakata += 2;
 				}else{
 					bool bRet;
-					unsigned short wc[4];
+					wchar_t wc[4];
 					CEuc::_EucjpToUni_char(reinterpret_cast<const unsigned char*>(pr), wc, echarset, nullptr, &bRet);
 					if( bRet ){
 						nillbytes += nret;
@@ -568,17 +568,30 @@ void CESI::GetEncodingInfo_uni( const char* pS, const int nLen )
 	pr1 = pr2 = pS;
 	pr_end = pS + nLen;
 
+#ifdef SAKURA_WINPORT
+	// [winport] wchar_t は 4 バイトなので、バイト列を UTF-16LE 単位に展開してから検査する
+	std::wstring units(size_t(nLen / 2), L'\0');
+	for (int i = 0; i < nLen / 2; ++i) {
+		units[i] = wchar_t(static_cast<unsigned char>(pS[2 * i]) | (static_cast<unsigned char>(pS[2 * i + 1]) << 8));
+	}
+	const auto unitsAt = [&units, pS](const char* p) { return units.data() + (p - pS) / 2; };
+	constexpr ptrdiff_t kUnit = 2;
+#else
+	const auto unitsAt = [](const char* p) { return reinterpret_cast<const wchar_t*>(p); };
+	constexpr ptrdiff_t kUnit = sizeof(wchar_t);
+#endif
+
 	for( ; ; ){
 
-		nret1 = CheckUtf16leChar( reinterpret_cast<const wchar_t*>(pr1), (pr_end - pr1)/sizeof(wchar_t), &echarset1, 0 );
-		nret2 = CheckUtf16beChar( reinterpret_cast<const wchar_t*>(pr2), (pr_end - pr2)/sizeof(wchar_t), &echarset2, 0 );
+		nret1 = CheckUtf16leChar( unitsAt(pr1), (pr_end - pr1)/kUnit, &echarset1, 0 );
+		nret2 = CheckUtf16beChar( unitsAt(pr2), (pr_end - pr2)/kUnit, &echarset2, 0 );
 		if( nret1 == 0 && nret2 == 0 ){
 			// LE BE 両方共のチェックが終了した。
 			break;
 		}
 
 		//
-		// (pr_end - pr1) と (pr_end - pr2) は常に sizeof(wchar_t) で割り切れること。
+		// (pr_end - pr1) と (pr_end - pr2) は常に kUnit で割り切れること。
 		//
 
 		// UTF-16 LE の処理
@@ -590,12 +603,12 @@ void CESI::GetEncodingInfo_uni( const char* pS, const int nLen )
 				}
 			}else{
 				unsigned int n = GuessUtf16Charsz( pr1[0] | static_cast<wchar_t>(pr1[1] << 8) );
-				if( (pr_end-pr1)/sizeof(wchar_t) < n ){
+				if( (pr_end-pr1)/kUnit < n ){
 					break;
 				}
-				nillbytes1 += nret1*sizeof(wchar_t);
+				nillbytes1 += nret1*kUnit;
 			}
-			pr1 += nret1*sizeof(wchar_t);
+			pr1 += nret1*kUnit;
 		}
 
 		// UTF-16 BE の処理
@@ -607,12 +620,12 @@ void CESI::GetEncodingInfo_uni( const char* pS, const int nLen )
 				}
 			}else{
 				unsigned int n = GuessUtf16Charsz((static_cast<wchar_t>(pr2[0] << 8)) | pr2[1]);
-				if( (pr_end-pr2)/sizeof(wchar_t) < n ){
+				if( (pr_end-pr2)/kUnit < n ){
 					break;
 				}
-				nillbytes2 += nret2*sizeof(wchar_t);
+				nillbytes2 += nret2*kUnit;
 			}
-			pr2 += nret2*sizeof(wchar_t);
+			pr2 += nret2*kUnit;
 		}
 	}
 

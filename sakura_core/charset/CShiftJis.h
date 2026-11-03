@@ -34,9 +34,9 @@ public:
 protected:
 	// 実装
 	// 2008.11.10 変換ロジックを書き直す
-	inline static int _SjisToUni_char( const unsigned char *pSrc, unsigned short *pDst, const ECharSet eCharset, bool* pbError );
+	inline static int _SjisToUni_char( const unsigned char *pSrc, wchar_t*pDst, const ECharSet eCharset, bool* pbError );
 	static int SjisToUni( const char *pSrc, const int nSrcLen, wchar_t *pDst, bool* pbError );
-	inline static int _UniToSjis_char( const unsigned short* pSrc, unsigned char* pDst, const ECharSet eCharset, bool* pbError );
+	inline static int _UniToSjis_char( const wchar_t* pSrc, unsigned char* pDst, const ECharSet eCharset, bool* pbError );
 	static int UniToSjis( const wchar_t* pSrc, const int nSrcLen, char* pDst, bool *pbError );
 };
 
@@ -47,7 +47,7 @@ protected:
 
 	高速化のため、インライン化
 */
-inline int CShiftJis::_SjisToUni_char( const unsigned char *pSrc, unsigned short *pDst, const ECharSet eCharset, bool* pbError )
+inline int CShiftJis::_SjisToUni_char( const unsigned char *pSrc, wchar_t*pDst, const ECharSet eCharset, bool* pbError )
 {
 	int nret;
 	bool berror = false;
@@ -90,7 +90,7 @@ inline int CShiftJis::_SjisToUni_char( const unsigned char *pSrc, unsigned short
 
 	高速化のため、インライン化
 */
-inline int CShiftJis::_UniToSjis_char( const unsigned short* pSrc, unsigned char* pDst, const ECharSet eCharset, bool* pbError )
+inline int CShiftJis::_UniToSjis_char( const wchar_t* pSrc, unsigned char* pDst, const ECharSet eCharset, bool* pbError )
 {
 	int nret;
 	bool berror = false;

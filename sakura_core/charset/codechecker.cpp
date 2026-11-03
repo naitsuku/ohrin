@@ -1019,8 +1019,22 @@ int CheckUtf7BPart( const char *pS, size_t nLen, const char **ppNextChar, bool *
 	if( pdata == nullptr ){
 		goto EndFunc;
 	}
+#ifdef SAKURA_WINPORT
+	{
+		// [winport] Base64 の中身は UTF-16BE のバイト列。wchar_t（4 バイト）単位へ展開する
+		std::string be( size_t(nchecklen), '\0' );
+		const int nbytes = _DecodeBase64(pS, nchecklen, be.data());
+		ndatalen = nbytes / 2;
+		cmbuffer.AllocBuffer( size_t(ndatalen + 1) * sizeof(wchar_t) );
+		pdata = reinterpret_cast<wchar_t*>( cmbuffer.GetRawPtr() );
+		for( int i = 0; i < ndatalen; ++i ){
+			pdata[i] = wchar_t( (static_cast<unsigned char>(be[2 * i]) << 8) | static_cast<unsigned char>(be[2 * i + 1]) );
+		}
+	}
+#else
 	ndatalen = _DecodeBase64(pS, nchecklen, reinterpret_cast<char*>(pdata)) / sizeof(wchar_t);
 	CMemory::SwapHLByte( reinterpret_cast<char*>(pdata), ndatalen*sizeof(wchar_t) );
+#endif
 	for( int i = 0; i < ndatalen; i += nret ){
 		nret = CheckUtf16leChar( &pdata[i], ndatalen - i, &echarset, nOption & UC_NONCHARACTER );
 		if( echarset == CHARSET_BINARY ){

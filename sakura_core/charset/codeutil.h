@@ -37,7 +37,7 @@ inline wchar32_t DecodeUtf16Surrog( const unsigned short wc_hi, const unsigned s
 /*!
 	UTF-32 ->  UTF-16
 */
-inline int EncodeUtf16Surrog( wchar32_t wc32, unsigned short* pwc_dest ){
+inline int EncodeUtf16Surrog( wchar32_t wc32, wchar_t* pwc_dest ){
 	unsigned short wc1, wc2;
 	wc32 -= 0x10000;
 	wc2 = static_cast<unsigned short>(wc32 & 0x000003ff) | 0xdc00;
@@ -140,7 +140,7 @@ inline bool IsWctombcNonroundtrip( const unsigned int wc ){
 
 	@param[in] nSrcLen  1 か 2 を渡す
 */
-inline int MyWideCharToMultiByte_JP( const unsigned short* pSrc, const int nSrcLen, unsigned char* pDst ){
+inline int MyWideCharToMultiByte_JP( const wchar_t* pSrc, const int nSrcLen, unsigned char* pDst ){
 	int nret;
 	BOOL blost;
 	int nsrclen;
@@ -170,7 +170,7 @@ inline int MyWideCharToMultiByte_JP( const unsigned short* pSrc, const int nSrcL
 
 	nSrcLen は 1 か 2
 */
-inline int MyMultiByteToWideChar_JP( const unsigned char* pSrc, const int nSrcLen, unsigned short* pDst, bool bKeepRt = true )
+inline int MyMultiByteToWideChar_JP( const unsigned char* pSrc, const int nSrcLen, wchar_t* pDst, bool bKeepRt = true )
 {
 	int nret;
 	unsigned char czenkaku[4];

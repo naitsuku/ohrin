@@ -487,7 +487,7 @@ int CCodePage::S_UTF32LEToUnicode( const char* pSrc, int nSrcLen, wchar_t* pDst,
 	int nDstUseLen = 0;
 	int nDstUseCharLen;
 	int i = 0;
-	unsigned short* pDstShort = reinterpret_cast<unsigned short*>(pDst);
+	wchar_t* pDstShort = reinterpret_cast<wchar_t*>(pDst);
 	for(; i < nSrcLen; ){
 		if( i + 3 < nSrcLen ){
 			if( pSrcByte[i+3] == 0x00 && pSrcByte[i+2] == 0x00 ){
@@ -578,7 +578,7 @@ int CCodePage::S_UTF32BEToUnicode( const char* pSrc, int nSrcLen, wchar_t* pDst,
 	int nDstUseLen = 0;
 	int nDstUseCharLen;
 	int i = 0;
-	unsigned short* pDstShort = reinterpret_cast<unsigned short*>(pDst);
+	wchar_t* pDstShort = reinterpret_cast<wchar_t*>(pDst);
 	for(; i < nSrcLen; ){
 		if( i + 3 < nSrcLen ){
 			if( pSrcByte[i] == 0x00 && pSrcByte[i+1] == 0x00 ){
@@ -635,7 +635,7 @@ int CCodePage::S_UTF32BEToUnicode( const char* pSrc, int nSrcLen, wchar_t* pDst,
 	return nDstUseLen;
 }
 
-static bool BinToUTF32( const unsigned short* pSrc, int Len, char* pDst, int nDstLen )
+static bool BinToUTF32( const wchar_t* pSrc, int Len, char* pDst, int nDstLen )
 {
 	if( 4 <= nDstLen ){
 		for( int i = 0; i < Len; i++ ){
@@ -693,7 +693,7 @@ int CCodePage::S_UnicodeToUTF32LE( const wchar_t* pSrc, int nSrcLen, char* pDst,
 	int nBinaryPos = 0;
 	int nBinaryLen = 0;
 	int i = 0;
-	const unsigned short* pSrcShort = reinterpret_cast<const unsigned short*>(pSrc);
+	const wchar_t* pSrcShort = reinterpret_cast<const wchar_t*>(pSrc);
 	unsigned char* pDstByte = reinterpret_cast<unsigned char*>(pDst);
 	for(; i < nSrcLen; ){
 		if( i + 1 < nSrcLen && IsUtf16SurrogHi( pSrc[i] ) && IsUtf16SurrogLow( pSrc[i+1] ) ){
@@ -807,7 +807,7 @@ int CCodePage::S_UnicodeToUTF32BE( const wchar_t* pSrc, int nSrcLen, char* pDst,
 	int nBinaryPos = 0;
 	int nBinaryLen = 0;
 	int i = 0;
-	const unsigned short* pSrcShort = reinterpret_cast<const unsigned short*>(pSrc);
+	const wchar_t* pSrcShort = reinterpret_cast<const wchar_t*>(pSrc);
 	unsigned char* pDstByte = reinterpret_cast<unsigned char*>(pDst);
 	for(; i < nSrcLen; ){
 		if( i + 1 < nSrcLen && IsUtf16SurrogHi( pSrc[i] ) && IsUtf16SurrogLow( pSrc[i+1] ) ){

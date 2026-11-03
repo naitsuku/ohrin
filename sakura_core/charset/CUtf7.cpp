@@ -27,7 +27,7 @@ int CUtf7::_Utf7SetDToUni_block( const char* pSrc, const int nSrcLen, wchar_t* p
 		if( IsUtf7Direct(*pr) ){
 			*pw = *pr;
 		}else{
-			BinToText(reinterpret_cast<const unsigned char*>(pr), 1, reinterpret_cast<unsigned short*>(pw));
+			BinToText(reinterpret_cast<const unsigned char*>(pr), 1, reinterpret_cast<wchar_t*>(pw));
 		}
 		++pw;
 	}
@@ -47,19 +47,36 @@ int CUtf7::_Utf7SetBToUni_block( const char* pSrc, const int nSrcLen, wchar_t* p
 		return 0;
 	}
 	int ndecoded_len = _DecodeBase64( pSrc, nSrcLen, pbuf );
+#ifdef SAKURA_WINPORT
+	// [winport] デコード結果は UTF-16BE のバイト列。wchar_t（4 バイト）へ 2 バイトずつ展開する
+	const int nUnits = ndecoded_len / 2;
+	for( int i = 0; i < nUnits; ++i ){
+		pDst[i] = wchar_t( (static_cast<unsigned char>(pbuf[2 * i]) << 8) | static_cast<unsigned char>(pbuf[2 * i + 1]) );
+	}
+	int nResult = nUnits;
+	if( ndecoded_len % 2 ){
+		nResult += BinToText( reinterpret_cast<const unsigned char *>(pbuf) + nUnits * 2, 1, &pDst[nUnits] );
+		if( pbError ){
+			*pbError = true;
+		}
+	}
+	delete [] pbuf;
+	return nResult;
+#else
 	int nModLen = ndecoded_len % sizeof(wchar_t);
 	ndecoded_len = ndecoded_len - nModLen;
 	CMemory::SwapHLByte( pbuf, ndecoded_len );  // UTF-16 BE を UTF-16 LE に直す
 	memcpy( reinterpret_cast<char*>(pDst), pbuf, ndecoded_len );
 	if( nModLen ){
 		ndecoded_len += BinToText( reinterpret_cast<const unsigned char *>(pbuf) + ndecoded_len,
-			nModLen, &reinterpret_cast<unsigned short*>(pDst)[ndecoded_len / sizeof(wchar_t)]) * sizeof(wchar_t);
+			nModLen, &reinterpret_cast<wchar_t*>(pDst)[ndecoded_len / sizeof(wchar_t)]) * sizeof(wchar_t);
 		if( pbError ){
 			*pbError = true;
 		}
 	}
 	delete [] pbuf;
 	return ndecoded_len / sizeof(wchar_t);
+#endif
 }
 
 int CUtf7::Utf7ToUni( const char* pSrc, const int nSrcLen, wchar_t* pDst, bool* pbError )
@@ -180,6 +197,18 @@ int CUtf7::_UniToUtf7SetB_block( const wchar_t* pSrc, const int nSrcLen, char* p
 		return 0;
 	}
 
+#ifdef SAKURA_WINPORT
+	// [winport] wchar_t（4 バイト）を UTF-16BE のバイト列に詰めてから Base64 化する
+	std::string be( size_t(nSrcLen) * 2, '\0' );
+	for( int i = 0; i < nSrcLen; ++i ){
+		be[2 * i] = char( (pSrc[i] >> 8) & 0xFF );
+		be[2 * i + 1] = char( pSrc[i] & 0xFF );
+	}
+	pw = pDst;
+	pw[0] = '+';
+	++pw;
+	pw += _EncodeBase64( be.data(), int(be.size()), pw );
+#else
 	// // UTF-16 LE → UTF-16 BE
 	wcsncpy( &psrc[0], pSrc, nSrcLen );
 	CMemory::SwapHLByte( reinterpret_cast<char*>(psrc), nSrcLen*sizeof(wchar_t) );
@@ -189,6 +218,7 @@ int CUtf7::_UniToUtf7SetB_block( const wchar_t* pSrc, const int nSrcLen, char* p
 	pw[0] = '+';
 	++pw;
 	pw += _EncodeBase64( reinterpret_cast<char*>(psrc), nSrcLen*sizeof(wchar_t), pw );
+#endif
 	pw[0] = '-';
 	++pw;
 

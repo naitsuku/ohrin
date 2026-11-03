@@ -56,10 +56,10 @@ const char* CJis::TABLE_JISESCDATA[] = {
 
 	eMyJisesc は、MYJISESC_HANKATA か MYJISESC_ZENKAKU。
 */
-int CJis::_JisToUni_block( const unsigned char* pSrc, const int nSrcLen, unsigned short* pDst, const EMyJisEscseq eMyJisesc, bool* pbError )
+int CJis::_JisToUni_block( const unsigned char* pSrc, const int nSrcLen, wchar_t* pDst, const EMyJisEscseq eMyJisesc, bool* pbError )
 {
 	const unsigned char* pr;
-	unsigned short* pw;
+	wchar_t* pw;
 	unsigned char chankata;
 	unsigned char czenkaku[2];
 	unsigned int ctemp;
@@ -171,7 +171,7 @@ int CJis::JisToUni( const char* pSrc, const int nSrcLen, wchar_t* pDst, bool* pb
 {
 	const unsigned char *pr, *pr_end;
 	const unsigned char *pr_next;
-	unsigned short *pw;
+	wchar_t*pw;
 	bool berror=false, berror_tmp;
 	int nblocklen;
 	EMyJisEscseq esctype, next_esctype;
@@ -185,7 +185,7 @@ int CJis::JisToUni( const char* pSrc, const int nSrcLen, wchar_t* pDst, bool* pb
 
 	pr = reinterpret_cast<const unsigned char*>(pSrc);
 	pr_end = reinterpret_cast<const unsigned char*>(pSrc + nSrcLen);
-	pw = reinterpret_cast<unsigned short*>(pDst);
+	pw = reinterpret_cast<wchar_t*>(pDst);
 	esctype = MYJISESC_ASCII7;
 
 //	enum EMyJisEscseq {
@@ -232,7 +232,7 @@ int CJis::JisToUni( const char* pSrc, const int nSrcLen, wchar_t* pDst, bool* pb
 		*pbError = berror;
 	}
 
-	return int(pw - reinterpret_cast<unsigned short*>(pDst));
+	return int(pw - reinterpret_cast<wchar_t*>(pDst));
 }
 
 // -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- //
@@ -338,7 +338,7 @@ int CJis::_SjisToJis_char( const unsigned char* pSrc, unsigned char* pDst, EChar
 
 int CJis::UniToJis( const wchar_t* pSrc, const int nSrcLen, char* pDst, bool* pbError )
 {
-	const unsigned short *pr, *pr_end;
+	const wchar_t*pr, *pr_end;
 	unsigned char* pw;
 	ECharSet echarset, echarset_cur, echarset_tmp;
 	unsigned char cbuf[4];
@@ -352,8 +352,8 @@ int CJis::UniToJis( const wchar_t* pSrc, const int nSrcLen, char* pDst, bool* pb
 		return 0;
 	}
 
-	pr = reinterpret_cast<const unsigned short*>(pSrc);
-	pr_end = reinterpret_cast<const unsigned short*>(pSrc + nSrcLen);
+	pr = reinterpret_cast<const wchar_t*>(pSrc);
+	pr_end = reinterpret_cast<const wchar_t*>(pSrc + nSrcLen);
 	pw = reinterpret_cast<unsigned char*>(pDst);
 	echarset_cur = CHARSET_ASCII7;
 

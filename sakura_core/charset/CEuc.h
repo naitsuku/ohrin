@@ -29,10 +29,10 @@ public:
 public:
 	// 実装
 	// 2008.11.10 変換ロジックを書き直す
-	inline static int _EucjpToUni_char( const unsigned char* pSrc, unsigned short* pDst, const ECharSet eCharset, bool* pbError, bool* pbHex );
+	inline static int _EucjpToUni_char( const unsigned char* pSrc, wchar_t* pDst, const ECharSet eCharset, bool* pbError, bool* pbHex );
 protected:
 	static int EucjpToUni( const char* pSrc, const int nSrcLen, wchar_t* pDst, bool* pbError );
-	inline static int _UniToEucjp_char( const unsigned short* pSrc, unsigned char* pDst, const ECharSet eCharset, bool* pbError );
+	inline static int _UniToEucjp_char( const wchar_t* pSrc, unsigned char* pDst, const ECharSet eCharset, bool* pbError );
 	static int UniToEucjp( const wchar_t* pSrc, const int nSrcLen, char* pDst, bool* pbError );
 };
 
@@ -43,7 +43,7 @@ protected:
 
 	高速化のため、インライン化
 */
-inline int CEuc::_EucjpToUni_char( const unsigned char* pSrc, unsigned short* pDst, const ECharSet eCharset, bool* pbError, bool* pbHex = nullptr )
+inline int CEuc::_EucjpToUni_char( const unsigned char* pSrc, wchar_t* pDst, const ECharSet eCharset, bool* pbError, bool* pbHex = nullptr )
 {
 	int nret;
 	unsigned char czenkaku[2];
@@ -108,7 +108,7 @@ inline int CEuc::_EucjpToUni_char( const unsigned char* pSrc, unsigned short* pD
 
 	高速化のため、インライン化
 */
-inline int CEuc::_UniToEucjp_char( const unsigned short* pSrc, unsigned char* pDst, const ECharSet eCharset, bool* pbError )
+inline int CEuc::_UniToEucjp_char( const wchar_t* pSrc, unsigned char* pDst, const ECharSet eCharset, bool* pbError )
 {
 	int nret=0, nclen;
 	unsigned char cbuf[4];

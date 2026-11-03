@@ -34,7 +34,7 @@ public:
 protected:
 	// 実装
 	static int Latin1ToUni( const char *pSrc, const int nSrcLen, wchar_t *pDst, bool* pbError );
-	inline static int _UniToLatin1_char( const unsigned short* pSrc, unsigned char* pDst, const ECharSet eCharset, bool* pbError );
+	inline static int _UniToLatin1_char( const wchar_t* pSrc, unsigned char* pDst, const ECharSet eCharset, bool* pbError );
 	static int UniToLatin1( const wchar_t* pSrc, const int nSrcLen, char* pDst, bool *pbError );
 };
 
@@ -45,7 +45,7 @@ protected:
 
 	高速化のため、インライン化
 */
-inline int CLatin1::_UniToLatin1_char( const unsigned short* pSrc, unsigned char* pDst, const ECharSet eCharset, bool* pbError )
+inline int CLatin1::_UniToLatin1_char( const wchar_t* pSrc, unsigned char* pDst, const ECharSet eCharset, bool* pbError )
 {
 	int nret;
 	bool berror = false;

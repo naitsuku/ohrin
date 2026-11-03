@@ -510,7 +510,7 @@ const char* CFileLoad::GetNextLineCharCode(
 			wchar_t c = static_cast<wchar_t>((pUData[i + 1] << 8) | pUData[i]);
 			if( WCODE::IsLineDelimiter(c, bExtEol) ){
 				pcEol->SetTypeByStringForFile_uni( &pData[i], nDataLen - i );
-				neollen = (size_t)pcEol->GetLen() * sizeof(wchar_t);
+				neollen = (size_t)pcEol->GetLen() * sizeof(char16_t);
 				break;
 			}
 		}
@@ -521,7 +521,7 @@ const char* CFileLoad::GetNextLineCharCode(
 			wchar_t c = static_cast<wchar_t>((pUData[i] << 8) | pUData[i + 1]);
 			if( WCODE::IsLineDelimiter(c, bExtEol) ){
 				pcEol->SetTypeByStringForFile_unibe( &pData[i], nDataLen - i );
-				neollen = (size_t)pcEol->GetLen() * sizeof(wchar_t);
+				neollen = (size_t)pcEol->GetLen() * sizeof(char16_t);
 				break;
 			}
 		}
@@ -535,12 +535,12 @@ const char* CFileLoad::GetNextLineCharCode(
 				int eolTempLen;
 				if( i + 4 < nLen && pUData[i+7] == 0x00 && pUData[i+6] == 0x00 ){
 					c2 = static_cast<wchar_t>((pUData[i+5] << 8) | pUData[i+4]);
-					eolTempLen = 2 * sizeof(wchar_t);
+					eolTempLen = 2 * sizeof(char16_t);
 				}else{
 					c2 = 0x0000;
-					eolTempLen = 1 * sizeof(wchar_t);
+					eolTempLen = 1 * sizeof(char16_t);
 				}
-				wchar_t pDataTmp[2] = {c, c2};
+				char16_t pDataTmp[2] = {char16_t(c), char16_t(c2)};  // UTF-16LE のバイト列として渡す
 				pcEol->SetTypeByStringForFile_uni( reinterpret_cast<char *>(pDataTmp), eolTempLen );
 				neollen = (size_t)pcEol->GetLen() * 4U;
 				break;
@@ -556,12 +556,12 @@ const char* CFileLoad::GetNextLineCharCode(
 				int eolTempLen;
 				if( i + 4 < nLen && pUData[i+4] == 0x00 && pUData[i+5] == 0x00 ){
 					c2 = static_cast<wchar_t>((pUData[i+6] << 8) | pUData[i+7]);
-					eolTempLen = 2 * sizeof(wchar_t);
+					eolTempLen = 2 * sizeof(char16_t);
 				}else{
 					c2 = 0x0000;
-					eolTempLen = 1 * sizeof(wchar_t);
+					eolTempLen = 1 * sizeof(char16_t);
 				}
-				wchar_t pDataTmp[2] = {c, c2};
+				char16_t pDataTmp[2] = {char16_t(c), char16_t(c2)};  // UTF-16LE のバイト列として渡す
 				pcEol->SetTypeByStringForFile_uni( reinterpret_cast<char *>(pDataTmp), eolTempLen );
 				neollen = (size_t)pcEol->GetLen() * 4U;
 				break;

@@ -11,6 +11,12 @@
 #include <shellapi.h>
 #include <shlobj.h>
 
+#include <cwchar>
+#include <string>
+#include <vector>
+
+#include "user32_internal.h"
+
 extern "C" {
 
 HRESULT WINAPI OleInitialize(LPVOID) { return S_OK; }
@@ -18,7 +24,40 @@ void WINAPI OleUninitialize(void) {}
 // TODO(winport): NSDraggingDestination と連携する（Week 6）
 HRESULT WINAPI RegisterDragDrop(HWND, LPDROPTARGET) { return S_OK; }
 HRESULT WINAPI RevokeDragDrop(HWND) { return S_OK; }
-void WINAPI DragAcceptFiles(HWND, WINBOOL) {}
+void WINAPI DragAcceptFiles(HWND hWnd, WINBOOL fAccept)
+{
+	if (auto w = winport::GetWindowObject(hWnd)) w->acceptFiles = fAccept != FALSE;
+}
+
+//! Windows と同じ DROPFILES（ヘッダーの後に \0 区切りのパス、空文字列で終わる）
+UINT WINAPI DragQueryFileW(HDROP hDrop, UINT iFile, LPWSTR lpszFile, UINT cch)
+{
+	auto df = static_cast<const DROPFILES*>(GlobalLock(hDrop));
+	auto p = reinterpret_cast<const wchar_t*>(reinterpret_cast<const char*>(df) + df->pFiles);
+	UINT count = 0, result = 0;
+	for (; *p; p += wcslen(p) + 1, ++count) {
+		if (count != iFile) continue;
+		result = static_cast<UINT>(wcslen(p));
+		if (lpszFile && cch) {
+			wcsncpy_s(lpszFile, cch, p, _TRUNCATE);
+			result = static_cast<UINT>(wcslen(lpszFile));
+		}
+		break;
+	}
+	GlobalUnlock(hDrop);
+	return iFile == 0xFFFFFFFF ? count : result;
+}
+
+WINBOOL WINAPI DragQueryPoint(HDROP hDrop, POINT* ppt)
+{
+	auto df = static_cast<const DROPFILES*>(GlobalLock(hDrop));
+	*ppt = df->pt;
+	const bool client = !df->fNC;
+	GlobalUnlock(hDrop);
+	return client;
+}
+
+void WINAPI DragFinish(HDROP hDrop) { GlobalFree(hDrop); }
 
 WINBOOL WINAPI InitCommonControlsEx(const INITCOMMONCONTROLSEX*) { return TRUE; }
 WINBOOL WINAPI Shell_NotifyIconW(DWORD, PNOTIFYICONDATAW) { return TRUE; }
@@ -29,3 +68,25 @@ WINBOOL WINAPI SetSearchPathMode(DWORD) { return TRUE; }
 WINBOOL WINAPI SetProcessShutdownParameters(DWORD, DWORD) { return TRUE; }
 
 }  // extern "C"
+
+namespace winport {
+
+HDROP CreateDropHandle(const std::vector<std::wstring>& files, POINT pt)
+{
+	size_t chars = 1;
+	for (const auto& f : files) chars += f.size() + 1;
+	HGLOBAL h = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, sizeof(DROPFILES) + chars * sizeof(wchar_t));
+	auto df = static_cast<DROPFILES*>(GlobalLock(h));
+	df->pFiles = sizeof(DROPFILES);
+	df->pt = pt;
+	df->fWide = TRUE;
+	auto p = reinterpret_cast<wchar_t*>(df + 1);
+	for (const auto& f : files) {
+		wmemcpy(p, f.c_str(), f.size() + 1);
+		p += f.size() + 1;
+	}
+	GlobalUnlock(h);
+	return static_cast<HDROP>(h);
+}
+
+}  // namespace winport

@@ -15,6 +15,7 @@
 #pragma once
 #include <windows.h>
 #include <commctrl.h>
+#include <shellapi.h>
 
 // Windows ヘッダの `#define interface struct` が Apple のヘッダ（IOKit 等）と衝突するので一時的に外す
 #pragma push_macro("interface")
@@ -95,6 +96,7 @@ struct Window {
 	DWORD threadId = 0;
 	DWORD processId = 0;          //!< 仮想プロセス ID（process.cpp）
 	bool enabled = true;
+	bool acceptFiles = false;     //!< DragAcceptFiles
 	bool destroying = false;
 	std::vector<Subclass> subclasses;  //!< comctl32 SetWindowSubclass（末尾が最後に追加したもの）
 
@@ -113,6 +115,9 @@ struct Window {
 	void* platform = nullptr;     //!< Cocoa 側のオブジェクト（cocoa_backend.mm が管理）
 	std::shared_ptr<Surface> surface;
 };
+
+//! WM_DROPFILES の HDROP を作る（shell_ole.cpp）
+HDROP CreateDropHandle(const std::vector<std::wstring>& files, POINT pt);
 
 std::recursive_mutex& UserMutex();
 

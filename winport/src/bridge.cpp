@@ -372,6 +372,22 @@ void PostKey(void* topLevel, int macKeyCode, bool down, bool repeat, const std::
 	PostKeyMessage(target, msg, k->vk, lp, text);
 }
 
+void PostDropFiles(void* hwnd, const std::vector<std::u16string>& paths, int x, int y)
+{
+	auto w = GetWindowObject(static_cast<HWND>(hwnd));
+	if (!w) return;
+	// DragAcceptFiles しているウィンドウを親へたどる。無ければトップレベルへ
+	Window* target = w;
+	while (target && !target->acceptFiles) target = GetWindowObject(target->parent);
+	if (!target) target = TopLevelOf(w);
+	if (!target->enabled || !TopLevelOf(target)->enabled) return;
+	POINT pt{x, y};
+	ScreenToClient(ToHwnd(target), &pt);
+	std::vector<std::wstring> files;
+	for (const auto& p : paths) files.emplace_back(p.begin(), p.end());
+	Post(ToHwnd(target), WM_DROPFILES, reinterpret_cast<WPARAM>(CreateDropHandle(files, pt)), 0);
+}
+
 void PostImeResult(void* topLevel, const std::u16string& text)
 {
 	const HWND target = KeyTarget(topLevel);

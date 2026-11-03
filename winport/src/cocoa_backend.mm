@@ -164,6 +164,7 @@ WPPlatform* Realize(void* hwnd)
 		[parent.view addSubview:view positioned:NSWindowBelow relativeTo:nil];
 		p.view = view;
 	}
+	[p.view registerForDraggedTypes:@[NSPasteboardTypeFileURL]];
 	bridge::SetPlatform(hwnd, (__bridge_retained void*)p);
 	ApplyFrame(hwnd);
 	for (void* child : bridge::Children(hwnd)) Realize(child);
@@ -257,6 +258,26 @@ void OnMain(dispatch_block_t block) { dispatch_async(dispatch_get_main_queue(), 
 @implementation WPView
 
 - (BOOL)isFlipped { return YES; }
+
+// ファイルのドロップ
+- (NSDragOperation)draggingEntered:(id<NSDraggingInfo>)sender { return NSDragOperationCopy; }
+- (NSDragOperation)draggingUpdated:(id<NSDraggingInfo>)sender { return NSDragOperationCopy; }
+- (BOOL)performDragOperation:(id<NSDraggingInfo>)sender
+{
+	NSArray<NSURL*>* urls = [sender.draggingPasteboard readObjectsForClasses:@[NSURL.class] options:@{NSPasteboardURLReadingFileURLsOnlyKey: @YES}];
+	if (!urls.count) return NO;
+	std::vector<std::u16string> paths;
+	for (NSURL* url in urls) {
+		NSString* path = url.path;
+		std::u16string s(path.length, u'\0');
+		[path getCharacters:reinterpret_cast<unichar*>(s.data()) range:NSMakeRange(0, path.length)];
+		paths.push_back(std::move(s));
+	}
+	const NSPoint at = [self.window convertPointToScreen:sender.draggingLocation];
+	bridge::PostDropFiles(self.hwnd, paths, static_cast<int>(at.x), static_cast<int>(g_primaryHeight - at.y));
+	return YES;
+}
+
 - (BOOL)acceptsFirstResponder { return self.isContentView; }
 - (BOOL)acceptsFirstMouse:(NSEvent*)event { return YES; }
 
@@ -676,22 +697,6 @@ void RebuildMenuBar(void* hwnd)
 }
 @end
 
-// フォントパネルの OK / キャンセル
-@interface WPFontTarget : NSObject <NSWindowDelegate>
-@property(nonatomic) NSFont* font;
-@property(nonatomic) int result;
-- (void)changeFont:(id)sender;
-- (void)accept:(id)sender;
-- (void)cancel:(id)sender;
-@end
-
-@implementation WPFontTarget
-- (void)changeFont:(id)sender { self.font = [sender convertFont:self.font]; }
-- (void)accept:(id)sender { self.result = 1; [NSApp stopModal]; }
-- (void)cancel:(id)sender { self.result = -1; [NSApp stopModal]; }
-- (void)windowWillClose:(NSNotification*)n { if (!self.result) { self.result = -1; [NSApp stopModal]; } }
-@end
-
 @interface WPAppDelegate : NSObject <NSApplicationDelegate>
 @end
 
@@ -974,43 +979,50 @@ void ShowFilePanel(const PanelRequest* request, PanelResult* result)
 
 void ShowFontPanel(FontChoice* choice, std::atomic<int>* result)
 {
+	// NSFontPanel は OK / キャンセルを持てない（補助ビューが表示されず、changeFont: も届かない）ので NSAlert で選ばせる
 	CFRunLoopPerformBlock(CFRunLoopGetMain(), kCFRunLoopCommonModes, ^{
 		NSFontManager* manager = NSFontManager.sharedFontManager;
-		NSFont* font = [NSFont fontWithName:NS(choice->family) size:choice->size];
-		if (!font) font = [NSFont userFixedPitchFontOfSize:choice->size];
-		if (choice->bold) font = [manager convertFont:font toHaveTrait:NSBoldFontMask];
-		if (choice->italic) font = [manager convertFont:font toHaveTrait:NSItalicFontMask];
-		WPFontTarget* target = [WPFontTarget new];
-		target.font = font;
-		manager.target = target;
-		manager.action = @selector(changeFont:);
-		[manager setSelectedFont:font isMultiple:NO];
-		NSFontPanel* panel = [manager fontPanel:YES];
-		NSView* buttons = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 240, 40)];
-		NSButton* cancel = [NSButton buttonWithTitle:@"キャンセル" target:target action:@selector(cancel:)];
-		NSButton* ok = [NSButton buttonWithTitle:@"OK" target:target action:@selector(accept:)];
-		ok.keyEquivalent = @"\r";
-		cancel.frame = NSMakeRect(40, 6, 100, 28);
-		ok.frame = NSMakeRect(146, 6, 80, 28);
-		[buttons addSubview:cancel];
-		[buttons addSubview:ok];
-		panel.accessoryView = buttons;
-		panel.delegate = target;
-		[panel setWorksWhenModal:YES];
-		[NSApp activateIgnoringOtherApps:YES];
-		[panel makeKeyAndOrderFront:nil];
-		[NSApp runModalForWindow:panel];
-		panel.delegate = nil;
-		panel.accessoryView = nil;
-		[panel orderOut:nil];
-		if (target.result == 1) {
-			const NSFontTraitMask traits = [manager traitsOfFont:target.font];
-			choice->family = U16(target.font.familyName);
-			choice->size = static_cast<int>(target.font.pointSize + 0.5);
-			choice->bold = (traits & NSBoldFontMask) != 0;
-			choice->italic = (traits & NSItalicFontMask) != 0;
+		NSArray<NSString*>* families = [manager.availableFontFamilies sortedArrayUsingSelector:@selector(localizedCaseInsensitiveCompare:)];
+		NSView* view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 340, 96)];
+		NSPopUpButton* family = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(0, 66, 340, 26) pullsDown:NO];
+		NSString* current = NS(choice->family);
+		if (![families containsObject:current]) {
+			// sakura.ini の「ＭＳ ゴシック」など mac に無い名前は、そのまま残せるよう先頭に置く
+			NSMenuItem* item = [[NSMenuItem alloc] initWithTitle:current action:nil keyEquivalent:@""];
+			item.representedObject = current;
+			[family.menu addItem:item];
 		}
-		result->store(target.result ? target.result : -1);
+		for (NSString* name in families) {
+			NSMenuItem* item = [[NSMenuItem alloc] initWithTitle:[manager localizedNameForFamily:name face:nil] action:nil keyEquivalent:@""];
+			item.representedObject = name;
+			[family.menu addItem:item];
+			if ([name isEqualToString:current]) [family selectItem:item];
+		}
+		NSTextField* sizeLabel = [NSTextField labelWithString:@"サイズ"];
+		sizeLabel.frame = NSMakeRect(0, 36, 50, 20);
+		NSTextField* size = [NSTextField textFieldWithString:[NSString stringWithFormat:@"%d", choice->size]];
+		size.frame = NSMakeRect(54, 34, 60, 24);
+		NSButton* bold = [NSButton checkboxWithTitle:@"太字" target:nil action:nil];
+		bold.frame = NSMakeRect(130, 34, 80, 24);
+		bold.state = choice->bold ? NSControlStateValueOn : NSControlStateValueOff;
+		NSButton* italic = [NSButton checkboxWithTitle:@"斜体" target:nil action:nil];
+		italic.frame = NSMakeRect(214, 34, 80, 24);
+		italic.state = choice->italic ? NSControlStateValueOn : NSControlStateValueOff;
+		for (NSView* v in @[family, sizeLabel, size, bold, italic]) [view addSubview:v];
+		NSAlert* alert = [NSAlert new];
+		alert.messageText = @"フォント";
+		alert.accessoryView = view;
+		[alert addButtonWithTitle:@"OK"];
+		[alert addButtonWithTitle:@"キャンセル"];
+		[NSApp activateIgnoringOtherApps:YES];
+		const bool ok = [alert runModal] == NSAlertFirstButtonReturn;
+		if (ok) {
+			choice->family = U16(family.selectedItem.representedObject);
+			choice->size = std::max(size.intValue, 1);
+			choice->bold = bold.state == NSControlStateValueOn;
+			choice->italic = italic.state == NSControlStateValueOn;
+		}
+		result->store(ok ? 1 : -1);
 	});
 	CFRunLoopWakeUp(CFRunLoopGetMain());
 }

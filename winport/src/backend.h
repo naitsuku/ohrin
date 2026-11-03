@@ -183,6 +183,8 @@ void PostKey(void* topLevel, int macKeyCode, bool down, bool repeat, const std::
 //! 修飾キーの押下状態の変化
 void ModifiersChanged(void* topLevel, unsigned modifiers);
 //! IME の確定文字列。フォーカスのあるウィンドウへ WM_IME_COMPOSITION(GCS_RESULTSTR) を送る
+//! ファイルのドロップ。hwnd はドロップされたビューのウィンドウ、x / y はスクリーン座標
+void PostDropFiles(void* hwnd, const std::vector<std::u16string>& paths, int x, int y);
 void PostImeResult(void* topLevel, const std::u16string& text);
 //! ユーザー操作でトップレベルが動いた／大きさが変わった（スクリーン座標のウィンドウ矩形）
 void FrameMovedByUser(void* hwnd, const Rect& windowRect);

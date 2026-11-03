@@ -107,6 +107,19 @@ struct FindObject : winport::KernelObject {
 
 FileObject* FileFromHandle(HANDLE h) { return dynamic_cast<FileObject*>(winport::ObjectFromHandle(h)); }
 
+}  // namespace
+
+namespace winport {
+//! ファイルハンドルの fd（ファイルでなければ -1）。CreateFileMappingW が使う
+int FdFromHandle(HANDLE h)
+{
+	auto f = FileFromHandle(h);
+	return f ? f->fd : -1;
+}
+}  // namespace winport
+
+namespace {
+
 DWORD CopyPathOut(const std::wstring& s, LPWSTR buf, DWORD n)
 {
 	if (!buf || n <= s.size()) return static_cast<DWORD>(s.size() + 1);

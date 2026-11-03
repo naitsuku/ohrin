@@ -1,0 +1,227 @@
+/*
+	process.cpp — 仮想プロセス（1 スレッド = 1 sakura プロセス）とスレッド
+
+	sakura は自分自身を -NOWIN 付きで起動してコントロールプロセスを作り、エディタごとに
+	プロセスを分ける。winport では自分自身の起動を「新しいスレッドで wWinMain を走らせる」
+	ことで実現する（user32_internal.h のスレッドモデル参照）。
+	- GetCurrentProcessId は仮想プロセスの ID（その仮想プロセスの最初のスレッドの ID）
+	- 仮想プロセスがすべて終了したらアプリを終了する
+	外部コマンドの起動（タグジャンプ、外部コマンド実行）は TODO（posix_spawn）。
+
+	SPDX-License-Identifier: Zlib
+*/
+#include <windows.h>
+
+#include <atomic>
+#include <condition_variable>
+#include <cwchar>
+#include <functional>
+#include <mutex>
+#include <string>
+#include <thread>
+
+#include "backend.h"
+#include "winport_internal.h"
+
+extern "C" int WINAPI wWinMain(HINSTANCE, HINSTANCE, LPWSTR, int);
+
+namespace winport {
+
+namespace {
+
+thread_local DWORD t_processId = 0;
+thread_local std::wstring t_commandLine;
+std::atomic<int> g_liveProcesses{0};
+
+struct ThreadObject : KernelObject {
+	std::mutex m;
+	std::condition_variable cv;
+	bool finished = false;
+	DWORD exitCode = STILL_ACTIVE;
+	DWORD threadId = 0;
+	bool Wait(unsigned long timeoutMs) override
+	{
+		std::unique_lock lock(m);
+		if (timeoutMs == INFINITE) { cv.wait(lock, [this] { return finished; }); return true; }
+		return cv.wait_for(lock, std::chrono::milliseconds(timeoutMs), [this] { return finished; });
+	}
+	void Finish(DWORD code)
+	{
+		{
+			std::lock_guard lock(m);
+			finished = true;
+			exitCode = code;
+		}
+		cv.notify_all();
+	}
+};
+
+//! スレッドを起動する。obj は 2 参照（呼び出し元とスレッド）
+ThreadObject* Spawn(std::function<DWORD()> body, DWORD processId, const std::wstring& commandLine, bool newProcess)
+{
+	auto obj = new ThreadObject;
+	obj->refs = 2;
+	std::mutex started;
+	std::condition_variable startedCv;
+	bool ready = false;
+	std::thread([=, &started, &startedCv, &ready] {
+		const DWORD tid = GetCurrentThreadId();
+		t_processId = newProcess ? tid : processId;
+		t_commandLine = commandLine;
+		obj->threadId = tid;
+		{
+			std::lock_guard lock(started);
+			ready = true;
+		}
+		startedCv.notify_all();
+		const DWORD code = body();
+		obj->Finish(code);
+		if (--obj->refs == 0) delete obj;
+		if (newProcess && --g_liveProcesses == 0) backend::Quit();
+	}).detach();
+	std::unique_lock lock(started);
+	startedCv.wait(lock, [&] { return ready; });
+	return obj;
+}
+
+std::wstring ExecutablePath()
+{
+	wchar_t buf[MAX_PATH];
+	const DWORD n = GetModuleFileNameW(nullptr, buf, MAX_PATH);
+	return std::wstring(buf, n);
+}
+
+//! コマンドラインの先頭（実行ファイル名）を取り除く
+std::wstring StripProgramName(const std::wstring& cmd)
+{
+	size_t i = 0;
+	while (i < cmd.size() && cmd[i] == L' ') ++i;
+	if (i < cmd.size() && cmd[i] == L'"') {
+		const size_t end = cmd.find(L'"', i + 1);
+		i = end == std::wstring::npos ? cmd.size() : end + 1;
+	} else {
+		while (i < cmd.size() && cmd[i] != L' ') ++i;
+	}
+	while (i < cmd.size() && cmd[i] == L' ') ++i;
+	return cmd.substr(i);
+}
+
+bool IsSelf(LPCWSTR app, const std::wstring& cmd)
+{
+	const std::wstring self = ExecutablePath();
+	if (app && *app) return _wcsicmp(app, self.c_str()) == 0;
+	return cmd.find(self) != std::wstring::npos;
+}
+
+}  // namespace
+
+DWORD CurrentProcessId()
+{
+	if (!t_processId) t_processId = GetCurrentThreadId();  // メインスレッド等
+	return t_processId;
+}
+
+//! 仮想プロセスを起動する（アプリ起動時と CreateProcessW から使う）
+HANDLE StartVirtualProcess(const std::wstring& arguments)
+{
+	++g_liveProcesses;
+	const std::wstring cmdLine = L"\"" + ExecutablePath() + L"\" " + arguments;
+	return Spawn([arguments]() -> DWORD {
+		std::wstring args = arguments;
+		return static_cast<DWORD>(wWinMain(GetModuleHandleW(nullptr), nullptr, args.data(), SW_SHOWDEFAULT));
+	}, 0, cmdLine, true);
+}
+
+void LaunchFirstProcess(int argc, char** argv)
+{
+	std::wstring args;
+	for (int i = 1; i < argc; ++i) {
+		// Finder から起動したときの -psn_ 引数は捨てる
+		if (std::string(argv[i]).rfind("-psn_", 0) == 0) continue;
+		const std::wstring a = Utf8ToWide(argv[i]);
+		if (!args.empty()) args += L' ';
+		args += (a.find(L' ') != std::wstring::npos) ? L"\"" + a + L"\"" : a;
+	}
+	CloseHandle(StartVirtualProcess(args));
+}
+
+}  // namespace winport
+
+using namespace winport;
+
+extern "C" {
+
+LPWSTR WINAPI GetCommandLineW(void)
+{
+	return t_commandLine.empty() ? const_cast<LPWSTR>(L"sakura") : t_commandLine.data();
+}
+
+void WINAPI GetStartupInfoW(LPSTARTUPINFOW lpStartupInfo)
+{
+	*lpStartupInfo = {};
+	lpStartupInfo->cb = sizeof(STARTUPINFOW);
+	lpStartupInfo->wShowWindow = SW_SHOWDEFAULT;
+}
+
+WINBOOL WINAPI CreateProcessW(LPCWSTR lpApplicationName, LPWSTR lpCommandLine, LPSECURITY_ATTRIBUTES, LPSECURITY_ATTRIBUTES,
+                              WINBOOL, DWORD, LPVOID, LPCWSTR, LPSTARTUPINFOW, LPPROCESS_INFORMATION lpProcessInformation)
+{
+	const std::wstring cmd = lpCommandLine ? lpCommandLine : L"";
+	if (!IsSelf(lpApplicationName, cmd)) {
+		// TODO(winport): 外部コマンドは posix_spawn で起動する
+		ReportUnimplemented("kernel32", "CreateProcessW(external)");
+		SetLastError(ERROR_FILE_NOT_FOUND);
+		return FALSE;
+	}
+	HANDLE h = StartVirtualProcess(StripProgramName(cmd));
+	auto obj = static_cast<ThreadObject*>(ObjectFromHandle(h));
+	if (lpProcessInformation) {
+		++obj->refs;  // hProcess と hThread の 2 つを返す
+		lpProcessInformation->hProcess = h;
+		lpProcessInformation->hThread = h;
+		lpProcessInformation->dwProcessId = obj->threadId;
+		lpProcessInformation->dwThreadId = obj->threadId;
+	} else {
+		CloseHandle(h);
+	}
+	return TRUE;
+}
+
+WINBOOL WINAPI GetExitCodeProcess(HANDLE hProcess, LPDWORD lpExitCode)
+{
+	auto obj = dynamic_cast<ThreadObject*>(ObjectFromHandle(hProcess));
+	if (!obj) { SetLastError(ERROR_INVALID_HANDLE); return FALSE; }
+	std::lock_guard lock(obj->m);
+	*lpExitCode = obj->exitCode;
+	return TRUE;
+}
+
+WINBOOL WINAPI GetExitCodeThread(HANDLE hThread, LPDWORD lpExitCode) { return GetExitCodeProcess(hThread, lpExitCode); }
+
+WINBOOL WINAPI TerminateProcess(HANDLE, UINT)
+{
+	ReportUnimplemented("kernel32", "TerminateProcess");
+	return FALSE;
+}
+
+DWORD WINAPI WaitForInputIdle(HANDLE, DWORD) { return 0; }
+
+HANDLE WINAPI CreateThread(LPSECURITY_ATTRIBUTES, SIZE_T, LPTHREAD_START_ROUTINE lpStartAddress, LPVOID lpParameter,
+                           DWORD, LPDWORD lpThreadId)
+{
+	auto obj = Spawn([=]() -> DWORD { return lpStartAddress(lpParameter); }, CurrentProcessId(), GetCommandLineW(), false);
+	if (lpThreadId) *lpThreadId = obj->threadId;
+	return obj;
+}
+
+void WINAPI ExitThread(DWORD) { ReportUnimplemented("kernel32", "ExitThread"); }
+
+}  // extern "C"
+
+// CRT の _beginthreadex（crt.cpp の暫定実装を置き換える）
+extern "C" uintptr_t winport_beginthreadex(void*, unsigned, unsigned (*start)(void*), void* arg, unsigned, unsigned* tid)
+{
+	auto obj = Spawn([=]() -> DWORD { return start(arg); }, CurrentProcessId(), GetCommandLineW(), false);
+	if (tid) *tid = obj->threadId;
+	return reinterpret_cast<uintptr_t>(static_cast<HANDLE>(obj));
+}

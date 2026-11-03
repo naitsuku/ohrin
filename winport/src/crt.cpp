@@ -327,8 +327,8 @@ wchar_t* _wtempnam(const wchar_t* dir, const wchar_t* prefix)
 
 wchar_t* _wgetenv(const wchar_t* name)
 {
-	static std::mutex mtx;
-	static std::map<std::wstring, std::wstring> cache;
+	static auto& mtx = *new std::mutex;
+	static auto& cache = *new std::map<std::wstring, std::wstring>;
 	const char* v = std::getenv(WideToUtf8(name).c_str());
 	if (!v) return nullptr;
 	std::lock_guard lock(mtx);
@@ -383,21 +383,11 @@ long long _time64(long long* t)
 void _tzset(void) { tzset(); }
 
 /* ---- スレッド ---- */
-uintptr_t _beginthreadex(void*, unsigned, unsigned (*start)(void*), void* arg, unsigned, unsigned* tid)
+uintptr_t winport_beginthreadex(void*, unsigned, unsigned (*)(void*), void*, unsigned, unsigned*);  // process.cpp
+uintptr_t _beginthreadex(void* sec, unsigned stack, unsigned (*start)(void*), void* arg, unsigned flags, unsigned* tid)
 {
-	// TODO(winport): kernel32 のハンドル表ができたら、待機可能なスレッドハンドルを返す
-	struct Ctx { unsigned (*start)(void*); void* arg; };
-	auto ctx = new Ctx{start, arg};
-	pthread_t th;
-	const int r = pthread_create(&th, nullptr, [](void* p) -> void* {
-		std::unique_ptr<Ctx> c(static_cast<Ctx*>(p));
-		c->start(c->arg);
-		return nullptr;
-	}, ctx);
-	if (r != 0) { delete ctx; return 0; }
-	pthread_detach(th);
-	if (tid) *tid = static_cast<unsigned>(reinterpret_cast<uintptr_t>(th));
-	return 1;
+	// 待機・CloseHandle できるスレッドハンドルを返す
+	return winport_beginthreadex(sec, stack, start, arg, flags, tid);
 }
 
 /* ---- その他 ---- */

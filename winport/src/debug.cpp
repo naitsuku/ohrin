@@ -14,8 +14,8 @@ namespace winport {
 
 void ReportUnimplemented(const char* dll, const char* name)
 {
-	static std::mutex mtx;
-	static std::set<std::string> reported;
+	static auto& mtx = *new std::mutex;
+	static auto& reported = *new std::set<std::string>;
 	std::lock_guard lock(mtx);
 	if (reported.insert(name).second && !std::getenv("WINPORT_QUIET")) {
 		std::fprintf(stderr, "winport: unimplemented %s!%s\n", dll, name);

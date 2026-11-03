@@ -20,7 +20,12 @@
 #include <mutex>
 #include <thread>
 
+#include <sys/mman.h>
+#include <sys/stat.h>
+
 #include "winport_internal.h"
+
+namespace winport { int FdFromHandle(HANDLE h); }  // kernel32_file.cpp
 
 namespace winport {
 
@@ -62,8 +67,8 @@ namespace {
 using winport::KernelObject;
 
 // 上流のグローバル変数の初期化中にも呼ばれるため、関数内 static で初回使用時に構築する
-std::mutex& WaitMutex() { static std::mutex m; return m; }
-std::condition_variable& WaitCv() { static std::condition_variable cv; return cv; }
+std::mutex& WaitMutex() { static auto* m = new std::mutex; return *m; }
+std::condition_variable& WaitCv() { static auto* cv = new std::condition_variable; return *cv; }
 
 bool WaitUntil(unsigned long timeoutMs, const std::function<bool()>& ready, std::unique_lock<std::mutex>& lock)
 {
@@ -77,12 +82,37 @@ bool WaitUntil(unsigned long timeoutMs, const std::function<bool()>& ready, std:
 struct EventObject : KernelObject {
 	bool manualReset = false;
 	bool signaled = false;
+	std::wstring name;
+	~EventObject() override;
 	bool Wait(unsigned long timeoutMs) override
 	{
 		std::unique_lock lock(WaitMutex());
 		if (!WaitUntil(timeoutMs, [this] { return signaled; }, lock)) return false;
 		if (!manualReset) signaled = false;
 		return true;
+	}
+};
+
+struct EventObject;
+struct MappingObject;
+std::mutex& NamedMutex();
+std::map<std::wstring, EventObject*>& NamedEvents();
+std::map<std::wstring, MappingObject*>& NamedMappings();
+
+struct MappingObject : KernelObject {
+	void* memory = nullptr;
+	size_t size = 0;
+	int views = 0;
+	bool fileBacked = false;  //!< mmap したファイル（munmap で解放）
+	std::wstring name;
+	~MappingObject() override
+	{
+		if (!name.empty()) {
+			std::lock_guard lock(NamedMutex());
+			NamedMappings().erase(name);
+		}
+		if (fileBacked) munmap(memory, size);
+		else if (views == 0) std::free(memory);
 	}
 };
 
@@ -103,8 +133,18 @@ struct MutexObject : KernelObject {
 };
 
 // 名前付きオブジェクト（プロセス内）
-std::mutex& NamedMutex() { static std::mutex m; return m; }
-std::map<std::wstring, MutexObject*>& NamedMutexes() { static std::map<std::wstring, MutexObject*> m; return m; }
+std::mutex& NamedMutex() { static auto* m = new std::mutex; return *m; }
+std::map<std::wstring, MutexObject*>& NamedMutexes() { static auto* m = new std::map<std::wstring, MutexObject*>; return *m; }
+std::map<std::wstring, EventObject*>& NamedEvents() { static auto* m = new std::map<std::wstring, EventObject*>; return *m; }
+std::map<std::wstring, MappingObject*>& NamedMappings() { static auto* m = new std::map<std::wstring, MappingObject*>; return *m; }
+
+EventObject::~EventObject()
+{
+	if (!name.empty()) {
+		std::lock_guard lock(NamedMutex());
+		NamedEvents().erase(name);
+	}
+}
 
 MutexObject::~MutexObject()
 {
@@ -176,15 +216,103 @@ void WINAPI Sleep(DWORD dwMilliseconds)
 	std::this_thread::sleep_for(std::chrono::milliseconds(dwMilliseconds));
 }
 
-/* ---- イベント ---- */
+/* ---- イベント（名前付きはプロセス内で共有） ---- */
 HANDLE WINAPI CreateEventW(LPSECURITY_ATTRIBUTES, WINBOOL bManualReset, WINBOOL bInitialState, LPCWSTR lpName)
 {
-	if (lpName) winport::ReportUnimplemented("kernel32", "CreateEventW(named)");
+	if (lpName && *lpName) {
+		std::lock_guard lock(NamedMutex());
+		if (auto it = NamedEvents().find(lpName); it != NamedEvents().end()) {
+			++it->second->refs;
+			SetLastError(ERROR_ALREADY_EXISTS);
+			return it->second;
+		}
+	}
 	auto e = new EventObject;
 	e->manualReset = bManualReset != FALSE;
 	e->signaled = bInitialState != FALSE;
+	if (lpName && *lpName) {
+		e->name = lpName;
+		std::lock_guard lock(NamedMutex());
+		NamedEvents()[e->name] = e;
+	}
+	SetLastError(ERROR_SUCCESS);
 	return e;
 }
+
+HANDLE WINAPI OpenEventW(DWORD, WINBOOL, LPCWSTR lpName)
+{
+	std::lock_guard lock(NamedMutex());
+	if (auto it = NamedEvents().find(lpName ? lpName : L""); it != NamedEvents().end()) {
+		++it->second->refs;
+		return it->second;
+	}
+	SetLastError(ERROR_FILE_NOT_FOUND);
+	return nullptr;
+}
+
+/* ---- ファイルマッピング（ページファイル裏付けのみ。名前付きはプロセス内で共有） ---- */
+HANDLE WINAPI CreateFileMappingW(HANDLE hFile, LPSECURITY_ATTRIBUTES, DWORD flProtect, DWORD dwMaximumSizeHigh, DWORD dwMaximumSizeLow, LPCWSTR lpName)
+{
+	if (hFile != INVALID_HANDLE_VALUE) {
+		// ファイルの mmap。大きさ 0 のファイルは Windows と同じく失敗させる
+		const int fd = winport::FdFromHandle(hFile);
+		struct stat st {};
+		if (fd < 0 || fstat(fd, &st) != 0) { SetLastError(ERROR_INVALID_HANDLE); return nullptr; }
+		size_t size = (static_cast<size_t>(dwMaximumSizeHigh) << 32) | dwMaximumSizeLow;
+		if (size == 0) size = static_cast<size_t>(st.st_size);
+		if (size == 0) { SetLastError(ERROR_FILE_INVALID); return nullptr; }
+		const bool writable = (flProtect & 0xFF) == PAGE_READWRITE;
+		void* p = mmap(nullptr, size, writable ? (PROT_READ | PROT_WRITE) : PROT_READ, writable ? MAP_SHARED : MAP_PRIVATE, fd, 0);
+		if (p == MAP_FAILED) { winport::SetLastErrorFromErrno(errno); return nullptr; }
+		auto m = new MappingObject;
+		m->memory = p;
+		m->size = size;
+		m->fileBacked = true;
+		SetLastError(ERROR_SUCCESS);
+		return m;
+	}
+	if (lpName && *lpName) {
+		std::lock_guard lock(NamedMutex());
+		if (auto it = NamedMappings().find(lpName); it != NamedMappings().end()) {
+			++it->second->refs;
+			SetLastError(ERROR_ALREADY_EXISTS);
+			return it->second;
+		}
+	}
+	auto m = new MappingObject;
+	m->size = (static_cast<size_t>(dwMaximumSizeHigh) << 32) | dwMaximumSizeLow;
+	m->memory = std::calloc(1, m->size ? m->size : 1);
+	if (lpName && *lpName) {
+		m->name = lpName;
+		std::lock_guard lock(NamedMutex());
+		NamedMappings()[m->name] = m;
+	}
+	SetLastError(ERROR_SUCCESS);
+	return m;
+}
+
+HANDLE WINAPI OpenFileMappingW(DWORD, WINBOOL, LPCWSTR lpName)
+{
+	std::lock_guard lock(NamedMutex());
+	if (auto it = NamedMappings().find(lpName ? lpName : L""); it != NamedMappings().end()) {
+		++it->second->refs;
+		return it->second;
+	}
+	SetLastError(ERROR_FILE_NOT_FOUND);
+	return nullptr;
+}
+
+LPVOID WINAPI MapViewOfFile(HANDLE hFileMappingObject, DWORD, DWORD dwFileOffsetHigh, DWORD dwFileOffsetLow, SIZE_T)
+{
+	auto m = dynamic_cast<MappingObject*>(winport::ObjectFromHandle(hFileMappingObject));
+	if (!m) { SetLastError(ERROR_INVALID_HANDLE); return nullptr; }
+	const size_t off = (static_cast<size_t>(dwFileOffsetHigh) << 32) | dwFileOffsetLow;
+	// ビューがある間は実体を残す（MappingObject の破棄で解放しない）
+	++m->views;
+	return static_cast<char*>(m->memory) + off;
+}
+
+WINBOOL WINAPI UnmapViewOfFile(LPCVOID) { return TRUE; }
 
 WINBOOL WINAPI SetEvent(HANDLE hEvent)
 {

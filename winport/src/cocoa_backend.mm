@@ -1,0 +1,591 @@
+/*
+	cocoa_backend.mm — 表示系（AppKit）。backend.h の backend::* を実装する
+
+	- トップレベルの HWND ごとに NSWindow（WPWindow）とコンテンツビュー、子 HWND ごとに WPView を作る
+	- WPView は y 下向き（isFlipped）。ビューの範囲はトップレベルならコンテンツ領域、子ならウィンドウ矩形で、
+	  その中のクライアント矩形に描画面（Surface）の画像を描く。枠とスクロールバーはクライアントの外側
+	- 入力は bridge::Post* で所有スレッドのキューに積むだけで、Win32 のコードはここでは動かさない
+	- このファイルは Windows ヘッダを含めない（BOOL や interface が Cocoa と衝突するため）
+
+	SPDX-License-Identifier: Zlib
+*/
+#import <Cocoa/Cocoa.h>
+
+#include <cmath>
+#include <functional>
+#include <map>
+#include <mutex>
+
+#include "backend.h"
+
+using BRect = winport::backend::Rect;  // Carbon の Rect と区別する
+namespace bridge = winport::bridge;
+
+namespace {
+
+// Win32 の値（windows.h を含めないのでここで定義する）
+constexpr int SB_PAGEUP = 2, SB_PAGEDOWN = 3, SB_THUMBPOSITION = 4, SB_THUMBTRACK = 5, SB_ENDSCROLL = 8;
+constexpr uintptr_t IDC_ARROW = 32512, IDC_IBEAM = 32513, IDC_WAIT = 32514, IDC_CROSS = 32515, IDC_SIZENWSE = 32642,
+                    IDC_SIZENESW = 32643, IDC_SIZEWE = 32644, IDC_SIZENS = 32645, IDC_SIZEALL = 32646, IDC_NO = 32648,
+                    IDC_HAND = 32649, IDC_APPSTARTING = 32650;
+constexpr int kScrollBarWidth = 15;
+
+double g_scale = 2.0;
+BRect g_screen{0, 0, 1440, 900};
+BRect g_work{0, 25, 1440, 900};
+int g_titleBar = 28;
+CGFloat g_primaryHeight = 900;  // Cocoa ⇔ Win32 のスクリーン座標変換用
+
+// キャレット（全体で 1 つ）
+struct CaretState {
+	void* hwnd = nullptr;
+	BRect rc{};
+	bool visible = false;
+	bool blinkOn = true;
+} g_caret;
+
+NSRect ToCocoaScreen(const BRect& r)
+{
+	return NSMakeRect(r.left, g_primaryHeight - r.bottom, r.Width(), r.Height());
+}
+
+BRect FromCocoaScreen(NSRect r)
+{
+	const int left = static_cast<int>(std::lround(r.origin.x));
+	const int top = static_cast<int>(std::lround(g_primaryHeight - (r.origin.y + r.size.height)));
+	return {left, top, left + static_cast<int>(std::lround(r.size.width)), top + static_cast<int>(std::lround(r.size.height))};
+}
+
+unsigned ModifiersOf(NSEventModifierFlags f)
+{
+	unsigned m = 0;
+	if (f & NSEventModifierFlagShift) m |= bridge::kShift;
+	if (f & NSEventModifierFlagControl) m |= bridge::kControl;
+	if (f & NSEventModifierFlagOption) m |= bridge::kAlt;
+	if (f & NSEventModifierFlagCommand) m |= bridge::kCommand;
+	const NSUInteger buttons = [NSEvent pressedMouseButtons];
+	if (buttons & 1) m |= bridge::kLeft;
+	if (buttons & 2) m |= bridge::kRight;
+	if (buttons & 4) m |= bridge::kMiddle;
+	return m;
+}
+
+std::u16string ToU16(NSString* s)
+{
+	std::u16string out(s.length, u'\0');
+	[s getCharacters:reinterpret_cast<unichar*>(out.data()) range:NSMakeRange(0, s.length)];
+	return out;
+}
+
+}  // namespace
+
+// ---------------------------------------------------------------------------------------------
+@class WPView;
+
+@interface WPWindow : NSWindow
+@property(nonatomic) void* hwnd;
+@property(nonatomic) BOOL applyingFrame;
+@end
+
+@interface WPView : NSView
+@property(nonatomic) void* hwnd;
+@property(nonatomic) BOOL isContentView;
+@property(nonatomic, strong) NSScroller* vScroller;
+@property(nonatomic, strong) NSScroller* hScroller;
+@property(nonatomic) double wheelAccumY;
+@property(nonatomic) double wheelAccumX;
+- (void)syncScrollBars;
+@end
+
+@interface WPPlatform : NSObject
+@property(nonatomic, strong) WPWindow* window;
+@property(nonatomic, strong) WPView* view;
+@end
+
+@implementation WPPlatform
+@end
+
+namespace {
+
+WPPlatform* PlatformOf(void* hwnd)
+{
+	const auto info = bridge::GetInfo(hwnd);
+	return info.platform ? (__bridge WPPlatform*)info.platform : nil;
+}
+
+void ApplyFrame(void* hwnd);
+
+//! hwnd の表示系オブジェクトを用意する（親が未作成なら作らない）
+WPPlatform* Realize(void* hwnd)
+{
+	const auto info = bridge::GetInfo(hwnd);
+	if (!info.valid) return nil;
+	if (info.platform) return (__bridge WPPlatform*)info.platform;
+	WPPlatform* p = [WPPlatform new];
+	if (info.topLevel) {
+		NSWindowStyleMask style = NSWindowStyleMaskBorderless;
+		if (info.captioned) style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable;
+		BRect content = info.windowRect;
+		if (info.captioned) content.top += g_titleBar;
+		WPWindow* win = [[WPWindow alloc] initWithContentRect:ToCocoaScreen(content) styleMask:style backing:NSBackingStoreBuffered defer:NO];
+		win.hwnd = hwnd;
+		win.releasedWhenClosed = NO;
+		win.delegate = (id<NSWindowDelegate>)win;
+		win.title = [NSString stringWithCharacters:reinterpret_cast<const unichar*>(info.title.data()) length:info.title.size()];
+		win.acceptsMouseMovedEvents = YES;
+		WPView* view = [[WPView alloc] initWithFrame:NSMakeRect(0, 0, content.Width(), content.Height())];
+		view.hwnd = hwnd;
+		view.isContentView = YES;
+		view.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+		win.contentView = view;
+		[win makeFirstResponder:view];
+		p.window = win;
+		p.view = view;
+	} else {
+		WPPlatform* parent = Realize(info.parent);
+		if (!parent) return nil;
+		// 親を作る過程で自分も作られていることがある
+		if (void* existing = bridge::GetInfo(hwnd).platform) return (__bridge WPPlatform*)existing;
+		WPView* view = [[WPView alloc] initWithFrame:NSZeroRect];
+		view.hwnd = hwnd;
+		view.clipsToBounds = YES;  // Win32 の子ウィンドウは親の範囲外に描かれない
+		[parent.view addSubview:view positioned:NSWindowBelow relativeTo:nil];
+		p.view = view;
+	}
+	bridge::SetPlatform(hwnd, (__bridge_retained void*)p);
+	ApplyFrame(hwnd);
+	for (void* child : bridge::Children(hwnd)) Realize(child);
+	[p.view syncScrollBars];
+	return p;
+}
+
+void ApplyFrame(void* hwnd)
+{
+	const auto info = bridge::GetInfo(hwnd);
+	if (!info.platform) return;
+	WPPlatform* p = (__bridge WPPlatform*)info.platform;
+	if (info.topLevel) {
+		p.window.applyingFrame = YES;
+		[p.window setFrame:ToCocoaScreen(info.windowRect) display:NO];
+		p.window.applyingFrame = NO;
+	} else {
+		const auto parent = bridge::GetInfo(info.parent);
+		const BRect r = info.windowRect;
+		p.view.frame = NSMakeRect(r.left + parent.clientInView.left, r.top + parent.clientInView.top, r.Width(), r.Height());
+		p.view.hidden = !info.selfVisible;
+	}
+	[p.view syncScrollBars];
+	[p.view setNeedsDisplay:YES];
+}
+
+NSCursor* CursorFor(uintptr_t id)
+{
+	switch (id) {
+	case IDC_IBEAM: return [NSCursor IBeamCursor];
+	case IDC_CROSS: return [NSCursor crosshairCursor];
+	case IDC_SIZEWE: return [NSCursor resizeLeftRightCursor];
+	case IDC_SIZENS: return [NSCursor resizeUpDownCursor];
+	case IDC_HAND: return [NSCursor pointingHandCursor];
+	case IDC_NO: return [NSCursor operationNotAllowedCursor];
+	case IDC_SIZEALL: return [NSCursor openHandCursor];
+	case IDC_SIZENWSE: case IDC_SIZENESW: return [NSCursor crosshairCursor];
+	case IDC_WAIT: case IDC_APPSTARTING: case IDC_ARROW: default: return [NSCursor arrowCursor];
+	}
+}
+
+void OnMain(dispatch_block_t block) { dispatch_async(dispatch_get_main_queue(), block); }
+
+}  // namespace
+
+// ---------------------------------------------------------------------------------------------
+@implementation WPWindow
+
+- (BOOL)canBecomeKeyWindow { return YES; }
+- (BOOL)canBecomeMainWindow { return YES; }
+
+// キー入力は Cocoa のキーボード操作（スペースでボタンを押す等）に渡さず、すべて sakura に送る。
+// 例外は Cmd+Q（アプリの終了）だけ
+- (void)sendEvent:(NSEvent*)e
+{
+	if (e.type == NSEventTypeKeyDown || e.type == NSEventTypeKeyUp) {
+		const BOOL quit = (e.modifierFlags & NSEventModifierFlagCommand) && [e.charactersIgnoringModifiers.lowercaseString isEqualToString:@"q"];
+		if (!quit && [self.contentView isKindOfClass:WPView.class]) {
+			if (e.type == NSEventTypeKeyDown) [(WPView*)self.contentView keyDown:e];
+			else [(WPView*)self.contentView keyUp:e];
+			return;
+		}
+	}
+	[super sendEvent:e];
+}
+
+- (BOOL)windowShouldClose:(NSWindow*)sender
+{
+	bridge::CloseRequested(self.hwnd);
+	return NO;
+}
+
+- (void)reportFrame
+{
+	if (self.applyingFrame) return;
+	bridge::FrameMovedByUser(self.hwnd, FromCocoaScreen(self.frame));
+}
+
+- (void)windowDidResize:(NSNotification*)n { [self reportFrame]; }
+- (void)windowDidMove:(NSNotification*)n { [self reportFrame]; }
+- (void)windowDidBecomeKey:(NSNotification*)n { bridge::Activated(self.hwnd, true); }
+- (void)windowDidResignKey:(NSNotification*)n { bridge::Activated(self.hwnd, false); }
+
+@end
+
+// ---------------------------------------------------------------------------------------------
+@implementation WPView
+
+- (BOOL)isFlipped { return YES; }
+- (BOOL)acceptsFirstResponder { return self.isContentView; }
+- (BOOL)acceptsFirstMouse:(NSEvent*)event { return YES; }
+
+- (void)drawRect:(NSRect)dirty
+{
+	CGContextRef ctx = NSGraphicsContext.currentContext.CGContext;
+	const auto info = bridge::GetInfo(self.hwnd);
+	if (!info.valid) return;
+	const BRect c = info.clientInView;
+	// 枠（非クライアント）。macOS 14 以降は clipsToBounds が既定で NO なので、自分の範囲に限って塗る
+	CGContextSetRGBFillColor(ctx, 0.94, 0.94, 0.94, 1);
+	CGContextFillRect(ctx, NSRectToCGRect(NSIntersectionRect(dirty, self.bounds)));
+	double scale = 1;
+	int w = 0, h = 0;
+	CGImageRef img = bridge::SnapshotSurface(self.hwnd, &scale, &w, &h);
+	if (getenv("WINPORT_TRACE")) fprintf(stderr, "drawRect %p dirty=%s img=%p %dx%d\n", self.hwnd, NSStringFromRect(dirty).UTF8String, (void*)img, w, h);
+	if (img) {
+		CGContextSaveGState(ctx);
+		CGContextClipToRect(ctx, CGRectMake(c.left, c.top, c.Width(), c.Height()));
+		CGContextTranslateCTM(ctx, c.left, c.top + h);
+		CGContextScaleCTM(ctx, 1, -1);
+		CGContextSetInterpolationQuality(ctx, kCGInterpolationNone);
+		CGContextDrawImage(ctx, CGRectMake(0, 0, w, h), img);
+		CGContextRestoreGState(ctx);
+		CGImageRelease(img);
+	}
+	if (g_caret.hwnd == self.hwnd && g_caret.visible && g_caret.blinkOn) {
+		CGContextSaveGState(ctx);
+		CGContextSetBlendMode(ctx, kCGBlendModeDifference);
+		CGContextSetRGBFillColor(ctx, 1, 1, 1, 1);
+		CGContextFillRect(ctx, CGRectMake(c.left + g_caret.rc.left, c.top + g_caret.rc.top, g_caret.rc.Width(), g_caret.rc.Height()));
+		CGContextRestoreGState(ctx);
+	}
+}
+
+// ---- スクロールバー ----
+- (NSScroller*)makeScroller:(BOOL)vertical
+{
+	NSScroller* s = [[NSScroller alloc] initWithFrame:NSMakeRect(0, 0, vertical ? kScrollBarWidth : 100, vertical ? 100 : kScrollBarWidth)];
+	s.scrollerStyle = NSScrollerStyleLegacy;
+	s.target = self;
+	s.action = @selector(scrollerAction:);
+	s.enabled = YES;
+	[self addSubview:s];
+	return s;
+}
+
+- (void)syncScrollBars
+{
+	const auto info = bridge::GetInfo(self.hwnd);
+	if (!info.valid) return;
+	const BRect c = info.clientInView;
+	for (int bar = 0; bar < 2; ++bar) {
+		NSScroller* s = bar ? self.vScroller : self.hScroller;
+		if (!info.scrollVisible[bar]) { s.hidden = YES; continue; }
+		if (!s) {
+			s = [self makeScroller:bar == 1];
+			if (bar) self.vScroller = s; else self.hScroller = s;
+		}
+		s.hidden = NO;
+		s.frame = bar ? NSMakeRect(c.right, c.top, kScrollBarWidth, c.Height()) : NSMakeRect(c.left, c.bottom, c.Width(), kScrollBarWidth);
+		const double range = info.scrollMax[bar] - info.scrollMin[bar] + 1;
+		const double page = info.scrollPage[bar] > 0 ? info.scrollPage[bar] : 1;
+		const double movable = std::max(1.0, range - page);
+		s.knobProportion = std::clamp(page / std::max(range, 1.0), 0.0, 1.0);
+		s.doubleValue = std::clamp((info.scrollPos[bar] - info.scrollMin[bar]) / movable, 0.0, 1.0);
+	}
+}
+
+- (void)scrollerAction:(NSScroller*)sender
+{
+	const int bar = sender == self.vScroller ? 1 : 0;
+	const auto info = bridge::GetInfo(self.hwnd);
+	const double range = info.scrollMax[bar] - info.scrollMin[bar] + 1;
+	const double page = info.scrollPage[bar] > 0 ? info.scrollPage[bar] : 1;
+	switch (sender.hitPart) {
+	case NSScrollerKnob:
+	case NSScrollerKnobSlot: {
+		const int pos = info.scrollMin[bar] + static_cast<int>(std::lround(sender.doubleValue * std::max(0.0, range - page)));
+		bridge::PostScroll(self.hwnd, bar, SB_THUMBTRACK, pos);
+		bridge::PostScroll(self.hwnd, bar, SB_THUMBPOSITION, pos);
+		break;
+	}
+	case NSScrollerDecrementPage: bridge::PostScroll(self.hwnd, bar, SB_PAGEUP, 0); break;
+	case NSScrollerIncrementPage: bridge::PostScroll(self.hwnd, bar, SB_PAGEDOWN, 0); break;
+	default: break;
+	}
+	bridge::PostScroll(self.hwnd, bar, SB_ENDSCROLL, 0);
+}
+
+// ---- マウス ----
+- (void)updateTrackingAreas
+{
+	for (NSTrackingArea* a in self.trackingAreas) [self removeTrackingArea:a];
+	[self addTrackingArea:[[NSTrackingArea alloc] initWithRect:NSZeroRect
+	                                                   options:NSTrackingMouseMoved | NSTrackingActiveInKeyWindow | NSTrackingInVisibleRect
+	                                                     owner:self userInfo:nil]];
+	[super updateTrackingAreas];
+}
+
+- (void)postMouse:(NSEvent*)e kind:(bridge::Mouse)kind button:(int)button
+{
+	const NSPoint p = [self.window convertPointToScreen:e.locationInWindow];
+	const int x = static_cast<int>(std::floor(p.x));
+	const int y = static_cast<int>(std::floor(g_primaryHeight - p.y));
+	bridge::PostMouse(self.hwnd, kind, button, x, y, ModifiersOf(e.modifierFlags));
+}
+
+- (void)mouseDown:(NSEvent*)e { [self postMouse:e kind:(e.clickCount == 2 ? bridge::Mouse::doubleClick : bridge::Mouse::down) button:0]; }
+- (void)mouseUp:(NSEvent*)e { [self postMouse:e kind:bridge::Mouse::up button:0]; }
+- (void)mouseDragged:(NSEvent*)e { [self postMouse:e kind:bridge::Mouse::move button:0]; }
+- (void)mouseMoved:(NSEvent*)e { [self postMouse:e kind:bridge::Mouse::move button:0]; }
+- (void)rightMouseDown:(NSEvent*)e { [self postMouse:e kind:(e.clickCount == 2 ? bridge::Mouse::doubleClick : bridge::Mouse::down) button:1]; }
+- (void)rightMouseUp:(NSEvent*)e { [self postMouse:e kind:bridge::Mouse::up button:1]; }
+- (void)rightMouseDragged:(NSEvent*)e { [self postMouse:e kind:bridge::Mouse::move button:1]; }
+- (void)otherMouseDown:(NSEvent*)e { [self postMouse:e kind:bridge::Mouse::down button:2]; }
+- (void)otherMouseUp:(NSEvent*)e { [self postMouse:e kind:bridge::Mouse::up button:2]; }
+- (void)otherMouseDragged:(NSEvent*)e { [self postMouse:e kind:bridge::Mouse::move button:2]; }
+
+- (void)scrollWheel:(NSEvent*)e
+{
+	const NSPoint p = [self.window convertPointToScreen:e.locationInWindow];
+	const int x = static_cast<int>(std::floor(p.x)), y = static_cast<int>(std::floor(g_primaryHeight - p.y));
+	const unsigned mods = ModifiersOf(e.modifierFlags);
+	// 1 ノッチ = 120 = 3 行。トラックパッドの画素単位は 1 行 ≒ 16pt として換算する
+	const double k = e.hasPreciseScrollingDeltas ? 40.0 / 16.0 : 120.0;
+	self.wheelAccumY += e.scrollingDeltaY * k;
+	self.wheelAccumX += -e.scrollingDeltaX * k;
+	const int dy = static_cast<int>(self.wheelAccumY / 40.0) * 40;
+	const int dx = static_cast<int>(self.wheelAccumX / 40.0) * 40;
+	if (dy) { self.wheelAccumY -= dy; bridge::PostWheel(self.hwnd, dy, false, x, y, mods); }
+	if (dx) { self.wheelAccumX -= dx; bridge::PostWheel(self.hwnd, dx, true, x, y, mods); }
+}
+
+// ---- キーボード ----
+- (void*)topLevelHwnd
+{
+	return ((WPWindow*)self.window).hwnd;
+}
+
+- (void)keyDown:(NSEvent*)e
+{
+	bridge::PostKey([self topLevelHwnd], e.keyCode, true, e.isARepeat, ToU16(e.characters), ModifiersOf(e.modifierFlags));
+}
+
+- (void)keyUp:(NSEvent*)e
+{
+	bridge::PostKey([self topLevelHwnd], e.keyCode, false, false, {}, ModifiersOf(e.modifierFlags));
+}
+
+- (void)flagsChanged:(NSEvent*)e
+{
+	bridge::ModifiersChanged([self topLevelHwnd], ModifiersOf(e.modifierFlags));
+}
+
+- (BOOL)performKeyEquivalent:(NSEvent*)e
+{
+	// Cmd+Q（終了）以外の Cmd 組み合わせはメニューに渡さず、Ctrl として sakura に送る
+	if ((e.modifierFlags & NSEventModifierFlagCommand) && self.isContentView && self.window.isKeyWindow) {
+		NSString* ch = e.charactersIgnoringModifiers.lowercaseString;
+		if ([ch isEqualToString:@"q"]) return NO;
+		[self keyDown:e];
+		return YES;
+	}
+	return NO;
+}
+
+@end
+
+// ---------------------------------------------------------------------------------------------
+@interface WPAppDelegate : NSObject <NSApplicationDelegate>
+@end
+
+@implementation WPAppDelegate
+- (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication*)sender { return NSTerminateNow; }
+@end
+
+namespace winport::backend {
+
+void Initialize()
+{
+	[NSApplication sharedApplication];
+	NSApp.activationPolicy = NSApplicationActivationPolicyRegular;
+	static WPAppDelegate* delegate = [WPAppDelegate new];
+	NSApp.delegate = delegate;
+
+	NSMenu* bar = [NSMenu new];
+	NSMenuItem* appItem = [NSMenuItem new];
+	[bar addItem:appItem];
+	NSMenu* appMenu = [NSMenu new];
+	[appMenu addItemWithTitle:@"サクラエディタを終了" action:@selector(terminate:) keyEquivalent:@"q"];
+	appItem.submenu = appMenu;
+	NSApp.mainMenu = bar;
+
+	NSScreen* primary = NSScreen.screens.firstObject;
+	g_primaryHeight = primary.frame.size.height;
+	g_scale = primary.backingScaleFactor;
+	g_screen = FromCocoaScreen(primary.frame);
+	g_work = FromCocoaScreen(primary.visibleFrame);
+	const NSRect fr = [NSWindow frameRectForContentRect:NSMakeRect(0, 0, 100, 100) styleMask:NSWindowStyleMaskTitled];
+	g_titleBar = static_cast<int>(fr.size.height - 100);
+
+	if (getenv("WINPORT_DUMP")) {
+		[NSTimer scheduledTimerWithTimeInterval:5 repeats:NO block:^(NSTimer*) {
+			bridge::DumpWindows();
+			std::function<void(NSView*, int)> dumpView = [&](NSView* v, int depth) {
+				fprintf(stderr, "%*sview %s hwnd=%p frame=%s hidden=%d\n", depth * 2, "", v.className.UTF8String,
+				        [v isKindOfClass:WPView.class] ? ((WPView*)v).hwnd : nullptr, NSStringFromRect(v.frame).UTF8String, v.hidden);
+				for (NSView* c in v.subviews) dumpView(c, depth + 1);
+			};
+			for (NSWindow* w in NSApp.windows) dumpView(w.contentView, 0);
+		}];
+	}
+	[NSTimer scheduledTimerWithTimeInterval:0.53 repeats:YES block:^(NSTimer*) {
+		g_caret.blinkOn = !g_caret.blinkOn;
+		if (WPPlatform* p = g_caret.hwnd ? PlatformOf(g_caret.hwnd) : nil) {
+			const auto info = bridge::GetInfo(g_caret.hwnd);
+			const BRect c = info.clientInView;
+			[p.view setNeedsDisplayInRect:NSMakeRect(c.left + g_caret.rc.left - 1, c.top + g_caret.rc.top - 1, g_caret.rc.Width() + 2, g_caret.rc.Height() + 2)];
+		}
+	}];
+}
+
+void Run()
+{
+	[NSApp activateIgnoringOtherApps:YES];
+	[NSApp run];
+}
+
+void Quit() { OnMain(^{ [NSApp terminate:nil]; }); }
+
+void WindowVisibilityChanged(void* hwnd)
+{
+	OnMain(^{
+		const auto info = bridge::GetInfo(hwnd);
+		if (!info.valid) return;
+		if (info.topLevel) {
+			if (info.selfVisible) {
+				WPPlatform* p = Realize(hwnd);
+				[p.window orderFront:nil];
+			} else if (WPPlatform* p = PlatformOf(hwnd)) {
+				[p.window orderOut:nil];
+			}
+		} else if (WPPlatform* p = Realize(hwnd)) {
+			p.view.hidden = !info.selfVisible;
+		}
+	});
+}
+
+void WindowDestroyed(void* hwnd, void* platform)
+{
+	if (!platform) return;
+	OnMain(^{
+		WPPlatform* p = (__bridge_transfer WPPlatform*)platform;
+		if (g_caret.hwnd == hwnd) g_caret = CaretState{};
+		[p.view removeFromSuperview];
+		if (p.window) {
+			p.window.delegate = nil;
+			[p.window orderOut:nil];
+			[p.window close];
+		}
+	});
+}
+
+void FrameChanged(void* hwnd) { OnMain(^{ ApplyFrame(hwnd); }); }
+
+void TextChanged(void* hwnd)
+{
+	OnMain(^{
+		const auto info = bridge::GetInfo(hwnd);
+		if (WPPlatform* p = info.platform ? (__bridge WPPlatform*)info.platform : nil) {
+			if (p.window) p.window.title = [NSString stringWithCharacters:reinterpret_cast<const unichar*>(info.title.data()) length:info.title.size()];
+		}
+	});
+}
+
+void Present(void* hwnd, const BRect& dirty)
+{
+	const BRect d = dirty;
+	OnMain(^{
+		const auto info = bridge::GetInfo(hwnd);
+		if (getenv("WINPORT_TRACE")) fprintf(stderr, "Present %p (%d,%d)-(%d,%d) platform=%p\n", hwnd, d.left, d.top, d.right, d.bottom, info.platform);
+		if (WPPlatform* p = info.platform ? (__bridge WPPlatform*)info.platform : nil) {
+			const BRect c = info.clientInView;
+			[p.view setNeedsDisplayInRect:NSMakeRect(c.left + d.left, c.top + d.top, d.Width(), d.Height())];
+		}
+	});
+}
+
+void Activate(void* hwnd)
+{
+	OnMain(^{
+		const auto info = bridge::GetInfo(hwnd);
+		if (!info.valid || !info.topLevel || !info.selfVisible) return;
+		if (WPPlatform* p = Realize(hwnd)) {
+			[NSApp activateIgnoringOtherApps:YES];
+			[p.window makeKeyAndOrderFront:nil];
+		}
+	});
+}
+
+void CaretChanged(void* hwnd, const BRect& rc, bool visible)
+{
+	const BRect r = rc;
+	OnMain(^{
+		void* old = g_caret.hwnd;
+		const BRect oldRc = g_caret.rc;
+		g_caret.hwnd = hwnd;
+		g_caret.rc = r;
+		g_caret.visible = visible;
+		g_caret.blinkOn = true;
+		auto invalidate = [](void* h, const BRect& x) {
+			if (!h) return;
+			const auto info = bridge::GetInfo(h);
+			if (WPPlatform* p = info.platform ? (__bridge WPPlatform*)info.platform : nil) {
+				const BRect c = info.clientInView;
+				[p.view setNeedsDisplayInRect:NSMakeRect(c.left + x.left - 1, c.top + x.top - 1, x.Width() + 2, x.Height() + 2)];
+			}
+		};
+		invalidate(old, oldRc);
+		invalidate(hwnd, r);
+	});
+}
+
+void SetCursorShape(uintptr_t cursorId) { OnMain(^{ [CursorFor(cursorId) set]; }); }
+
+void ScrollBarsChanged(void* hwnd)
+{
+	OnMain(^{
+		if (WPPlatform* p = PlatformOf(hwnd)) [p.view syncScrollBars];
+	});
+}
+
+void Beep() { OnMain(^{ NSBeep(); }); }
+
+double ScaleFactor() { return g_scale; }
+BRect ScreenRect() { return g_screen; }
+BRect WorkArea() { return g_work; }
+int TitleBarHeight() { return g_titleBar; }
+
+void CursorPos(int* x, int* y)
+{
+	const NSPoint p = [NSEvent mouseLocation];
+	*x = static_cast<int>(std::floor(p.x));
+	*y = static_cast<int>(std::floor(g_primaryHeight - p.y));
+}
+
+}  // namespace winport::backend

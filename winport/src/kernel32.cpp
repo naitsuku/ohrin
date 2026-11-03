@@ -33,10 +33,12 @@ DWORD CopyOut(const std::wstring& s, LPWSTR buf, DWORD n)
 	return static_cast<DWORD>(s.size());
 }
 
-std::mutex& VmMutex() { static std::mutex m; return m; }
-std::map<void*, size_t>& VmSizes() { static std::map<void*, size_t> m; return m; }
+std::mutex& VmMutex() { static auto* m = new std::mutex; return *m; }
+std::map<void*, size_t>& VmSizes() { static auto* m = new std::map<void*, size_t>; return *m; }
 
 }  // namespace
+
+namespace winport { DWORD CurrentProcessId(); }  // process.cpp
 
 extern "C" {
 
@@ -234,7 +236,8 @@ WINBOOL WINAPI QueryPerformanceFrequency(LARGE_INTEGER* lpFrequency)
 	return TRUE;
 }
 
-DWORD WINAPI GetCurrentProcessId(void) { return static_cast<DWORD>(getpid()); }
+// 仮想プロセス（スレッド）の ID を返す（process.cpp）
+DWORD WINAPI GetCurrentProcessId(void) { return winport::CurrentProcessId(); }
 DWORD WINAPI GetCurrentThreadId(void)
 {
 	uint64_t tid = 0;

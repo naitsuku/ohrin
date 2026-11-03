@@ -8,6 +8,9 @@ Windows と同じ形式のデータへ変換し、winport の FindResourceW 等�
 対応済みのリソース種別:
     STRINGTABLE … RT_STRING（16 文字列 1 ブロック、各文字列は「長さ + 本体」）
                   ※ 要素は WCHAR（winport では 4 バイト、中身は UTF-16 コード単位）
+    ファイル参照 … `ID 型 "ファイル"`。独自型（数値）と RCDATA はファイルの中身そのまま、
+                  BITMAP は BITMAPFILEHEADER（14 バイト）を除いた DIB（RT_BITMAP の形式）
+                  ICON / CURSOR は未対応（グループ形式への変換が必要）
 
 手順:
     1. .rc（UTF-16LE）と、そこから #include される .rc / .rc2 を UTF-8 に変換して一時ディレクトリへ
@@ -29,6 +32,10 @@ import sys
 import tempfile
 
 RT_STRING = 6
+RT_BITMAP = 2
+RT_RCDATA = 10
+FILE_RESOURCE_TYPES = {"BITMAP": RT_BITMAP, "RCDATA": RT_RCDATA}
+SKIPPED_TYPES = {"ICON", "CURSOR", "RT_MANIFEST", "24"}
 
 
 def read_text(path):
@@ -138,6 +145,38 @@ def parse_stringtables(text):
     return strings
 
 
+RE_FILE_RES = re.compile(
+    r'^\s*([0-9xXa-fA-F()+\-*| ]+?|[A-Za-z_]\w*)\s+([A-Za-z_]\w*|[0-9]+)\s+'
+    r'(?:(?:DISCARDABLE|MOVEABLE|PURE|LOADONCALL|PRELOAD|FIXED|IMPURE)\s+)*"([^"]+)"\s*$', re.M)
+
+
+def parse_file_resources(text, rc_dir):
+    """`ID 型 "ファイル"` 形式のリソースを [(型, ID, データ)] にする。"""
+    out = []
+    skipped = []
+    for m in RE_FILE_RES.finditer(text):
+        ident, rtype, path = m.group(1).strip(), m.group(2), m.group(3)
+        if rtype in SKIPPED_TYPES:
+            skipped.append(f"{rtype} {path}")
+            continue
+        if rtype in FILE_RESOURCE_TYPES:
+            type_id = FILE_RESOURCE_TYPES[rtype]
+        elif rtype.isdigit():
+            type_id = int(rtype)
+        else:
+            continue  # 文字列表やダイアログ内の行（リソース文ではない）
+        try:
+            res_id = eval_id(ident)
+        except ValueError:
+            continue
+        full = os.path.normpath(os.path.join(rc_dir, path.replace("\\\\", "/").replace("\\", "/")))
+        data = open(full, "rb").read()
+        if type_id == RT_BITMAP and data[:2] == b"BM":
+            data = data[14:]
+        out.append((type_id, res_id, data))
+    return out, skipped
+
+
 def utf16_units(s):
     b = s.encode("utf-16-le")
     return [int.from_bytes(b[i:i + 2], "little") for i in range(0, len(b), 2)]
@@ -158,7 +197,7 @@ def build_string_blocks(strings):
     return out
 
 
-def emit(out_path, symbol, string_blocks, rc_name):
+def emit(out_path, symbol, string_blocks, file_resources, rc_name):
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(f"// {os.path.basename(out_path)} — {rc_name} から rc2winport.py が生成。編集しないこと。\n")
         f.write('#include "winport_resource.h"\n\n')
@@ -166,9 +205,16 @@ def emit(out_path, symbol, string_blocks, rc_name):
         for block, data in sorted(string_blocks.items()):
             vals = ",".join(f"0x{v:X}" for v in data)
             f.write(f"const wchar_t s_str{block}[] = {{{vals}}};\n")
+        for i, (_, _, data) in enumerate(file_resources):
+            f.write(f"alignas(8) const unsigned char s_bin{i}[] = {{")
+            for j in range(0, len(data), 32):
+                f.write("\n\t" + ",".join(str(b) for b in data[j:j + 32]) + ",")
+            f.write("0};\n")  # 末尾の 0 は終端用（サイズには含めない）
         f.write("const winport::ResourceEntry s_entries[] = {\n")
         for block in sorted(string_blocks):
             f.write(f"\t{{ {RT_STRING}, {block}, s_str{block}, sizeof(s_str{block}) }},\n")
+        for i, (type_id, res_id, data) in enumerate(file_resources):
+            f.write(f"\t{{ {type_id}, {res_id}, s_bin{i}, {len(data)} }},\n")
         f.write("};\n}  // namespace\n\n")
         f.write(f"extern const winport::ResourceTable {symbol} = {{ s_entries, sizeof(s_entries) / sizeof(s_entries[0]) }};\n")
 
@@ -191,8 +237,10 @@ def main():
 
     strings = parse_stringtables(text)
     blocks = build_string_blocks(strings)
-    emit(a.out, a.symbol, blocks, os.path.basename(a.rc))
-    print(f"{a.rc}: {len(strings)} strings / {len(blocks)} RT_STRING blocks -> {a.out}")
+    files, skipped = parse_file_resources(text, os.path.dirname(os.path.abspath(a.rc)))
+    emit(a.out, a.symbol, blocks, files, os.path.basename(a.rc))
+    print(f"{a.rc}: {len(strings)} strings / {len(blocks)} RT_STRING blocks / {len(files)} file resources "
+          f"({len(skipped)} skipped) -> {a.out}")
 
 
 if __name__ == "__main__":

@@ -20,11 +20,13 @@ message(STATUS "winport: mingw-w64 headers = ${WINPORT_MINGW_INCLUDE}")
 add_library(winport_headers INTERFACE)
 target_compile_definitions(winport_headers INTERFACE SAKURA_WINPORT=1)
 target_include_directories(winport_headers INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+# Windows ヘッダ環境は C++ だけに適用する。Objective-C++（cocoa_backend.mm）は Cocoa と
+# windows.h が衝突するため Windows ヘッダを使わない（backend.h 参照）
 target_compile_options(winport_headers INTERFACE
-    "SHELL:-include ${CMAKE_CURRENT_SOURCE_DIR}/include/winport_prelude.h"
-    "SHELL:-idirafter ${WINPORT_MINGW_INCLUDE}"
-    -fdeclspec
-    -Wno-ignored-attributes  # __stdcall 等は arm64 では無視される
+    "$<$<COMPILE_LANGUAGE:CXX>:SHELL:-include ${CMAKE_CURRENT_SOURCE_DIR}/include/winport_prelude.h>"
+    "$<$<COMPILE_LANGUAGE:CXX>:SHELL:-idirafter ${WINPORT_MINGW_INCLUDE}>"
+    $<$<COMPILE_LANGUAGE:CXX>:-fdeclspec>
+    $<$<COMPILE_LANGUAGE:CXX>:-Wno-ignored-attributes>  # __stdcall 等は arm64 では無視される
 )
 
 # 自動生成の未実装スタブ（tools/porting/gen_winport_stubs.py）。
@@ -32,12 +34,20 @@ target_compile_options(winport_headers INTERFACE
 set(WINPORT_STUBS ${CMAKE_CURRENT_SOURCE_DIR}/src/generated_stubs.cpp)
 
 add_library(winport STATIC
+    src/bridge.cpp
+    src/cocoa_backend.mm
     src/codepage.cpp
     src/crt.cpp
+    src/gdi.cpp
+    src/gdi_text.cpp
     src/kernel32.cpp
     src/kernel32_file.cpp
     src/kernel32_object.cpp
+    src/process.cpp
     src/resource.cpp
+    src/user32_message.cpp
+    src/user32_misc.cpp
+    src/user32_window.cpp
     src/printf.cpp
     src/debug.cpp
     src/darkmode.cpp
@@ -46,4 +56,5 @@ add_library(winport STATIC
 )
 target_link_libraries(winport PUBLIC winport_headers)
 target_include_directories(winport PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(winport PUBLIC "-framework CoreFoundation")
+set_source_files_properties(src/cocoa_backend.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+target_link_libraries(winport PUBLIC "-framework CoreFoundation" "-framework CoreGraphics" "-framework CoreText" "-framework Cocoa" "-framework ImageIO")

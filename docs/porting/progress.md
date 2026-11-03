@@ -1,5 +1,69 @@
 # 移植作業進捗ログ
 
+## 2026-11-04 — Week 3: 上流の CEditView が mac のウィンドウで動作（判断 2 通過）
+
+![Week 3 の画面](images/week3_editor.png)
+
+上流の sakura（コントロールプロセス + エディタプロセス）が mac 上で起動し、CEditWnd / CEditView が
+日本語ファイルを表示する。行番号・ルーラー・タブ記号・全角空白記号・改行記号・カーソル行下線・[EOF] は
+上流の描画コードそのもの。キー入力（Cmd → Ctrl）、マウスクリックでの移動、Cmd+S での保存を確認した。
+
+- [x] **設計: 仮想プロセス**（詳細は mac_native_plan.md）
+  - 1 スレッド = 1 sakura プロセス。自分自身の `CreateProcess` はスレッド起動に置き換え
+  - `design_template.h`: プロセス単位のシングルトンを thread_local に（上流コードへの変更はこの 1 ファイル）
+  - 名前付きミューテックス／イベント／ファイルマッピングはプロセス内で共有
+- [x] **user32**（`user32_window.cpp` / `user32_message.cpp` / `user32_misc.cpp`）
+  - ウィンドウクラス、生成（WM_NCCREATE → WM_CREATE → WM_SIZE / WM_MOVE）、破棄、木構造、属性、位置と大きさ、
+    表示、フォーカス・アクティブ・キャプチャ、無効領域と WM_PAINT 生成、DefWindowProc、サブクラス化
+  - スレッドごとのメッセージキュー、スレッド間 SendMessage（待機中も自分宛ての送信メッセージを処理）、
+    タイマー、TranslateMessage（WM_KEYDOWN → WM_CHAR）、アクセラレータ
+  - **WH_CBT フック**: sakura の CWnd は HCBT_CREATEWND でウィンドウとオブジェクトを結び付ける。
+    これが無いとメッセージが届かず子ウィンドウが配置されなかった
+  - システムメトリクス・色、矩形関数、キャレット、カーソル、スクロールバー状態、メニュー（データのみ）、
+    クリップボード（プロセス内のみ）
+- [x] **gdi32**（`gdi.cpp` / `gdi_text.cpp`）
+  - DC（ウィンドウ・メモリ）、ブラシ・ペン・ビットマップ（DIB セクション含む）・リージョン、線・矩形・多角形、
+    BitBlt / StretchBlt / PatBlt、クリップ、SaveDC / RestoreDC、BeginPaint / GetDC / ScrollWindowEx
+  - フォント: Windows の書体名を mac の書体へ読み替え（ＭＳ ゴシック → Osaka-Mono 等）。文字幅は 1 文字ずつ整数に
+    丸めて合計（GDI と同じ）。ExtTextOutW は lpDx で 1 文字ずつ配置し、無いグリフはフォールバック書体で描く
+- [x] **Cocoa 表示系**（`cocoa_backend.mm`）: NSWindow / NSView、描画面の転送、マウス、ホイール、キー
+  （全キーを sakura へ。Cmd+Q だけアプリ終了）、NSScroller、キャレットの点滅、カーソル形状
+- [x] **アプリ**（`sakura_mac/`）: `SakuraEditor.app`。main は Cocoa を準備して最初の仮想プロセスを起動するだけ
+- [x] **リソース**: rc2winport.py がファイル参照のリソース（独自型・RCDATA・BITMAP）も埋め込む
+  （MainMenu.ini が無いとコントロールプロセスが落ちた）
+- [x] kernel32: ファイルのメモリマッピング（ファイル読み込みに使われる）
+- [x] テスト: winport GDI のテスト 3 件を追加（文字が実際に描かれるか）。上流テストと合わせて 708 件パス
+
+### 途中で見つけて直した問題
+
+| 症状 | 原因 |
+|---|---|
+| 子ウィンドウが 0x0 のまま | CWnd が CBT フックでオブジェクトを結び付けている（フック未実装だった） |
+| 描いたのに画面が灰色 | macOS 14 以降 `NSView.clipsToBounds` が既定 NO。子ビューの背景塗りが範囲外にはみ出していた |
+| 文字だけ描かれない | `CTFontDrawGlyphs` の位置はテキスト空間。テキスト行列で y を反転していたので位置も反転が要る |
+| "DLLSHAREDATA is not initialized" | 上流の std::thread ワーカーに thread_local の文脈が無い → 最後のインスタンスへフォールバック |
+| 終了時に abort | 上流のグローバル変数の破棄中に winport の mutex が先に破棄されていた → winport 内部は破棄しない |
+| HRESULT 関数のスタブ | 0 を返すと成功扱い（Week 2 で対応済み） |
+
+### 未対応（Week 4 以降）
+
+- スクロールバー: sakura は `SCROLLBAR` クラスの子ウィンドウを使う（未実装のため表示されない）
+- ツールバー・ステータスバー（コモンコントロール）、ツールバーのアイコン（LoadImage の BITMAP）
+- メニューバー（Week 5）、IME（Week 5）、ダイアログ（Week 6）、NSPasteboard、ドラッグ＆ドロップ
+- ルーラーのキャレット位置表示が幅広く反転したまま残る（XOR 描画の近似。issues.md I-108）
+- 外部コマンドの起動（CreateProcess の posix_spawn 化）
+
+### 動かし方
+
+```bash
+cmake -S . -B build -G Ninja && cmake --build build
+./build/bin/SakuraEditor.app/Contents/MacOS/SakuraEditor <ファイル>
+```
+
+診断用の環境変数: `WINPORT_TRACE=1`（SetWindowPos・キー・マウス・描画の記録）、
+`WINPORT_DUMP=1`（5 秒後にウィンドウ木と各描画面の PNG を出力。出力先は `WINPORT_DUMP_DIR`）、
+`WINPORT_QUIET=1`（未実装 API の報告を止める）
+
 ## 2026-11-04 — Week 2: winport 基盤 + 上流テストが mac で動作
 
 **上流 GoogleTest（src/test/cpp/tests1）: 757 件中 706 件パス、失敗 0**。

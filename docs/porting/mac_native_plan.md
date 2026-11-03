@@ -20,6 +20,28 @@ wxWidgets 版（Phase 0〜15b）は、sakura_core のうち PAL と `basis/` の
 - マクロ: キーマクロ（本体そのまま）+ JavaScriptCore に `CSMacroMgr::m_MacroFuncInfoArr`
   を公開して WSH JScript 互換の JS マクロ
 
+## 仮想プロセス（1 スレッド = 1 sakura プロセス）— Week 3 で決定
+
+上流はコントロールプロセス（`-NOWIN`、常駐）とエディタプロセスに分かれ、自分自身を
+`CreateProcess` で起動し、プロセス間でウィンドウメッセージ・名前付きミューテックス／イベント・
+共有メモリをやり取りする。winport ではこれを 1 つの mac プロセスの中で再現する。
+
+- 各 sakura プロセスは**スレッド**として動かす（`winport/src/process.cpp`）。自分自身を起動する
+  `CreateProcessW` は新しいスレッドで `wWinMain` を呼ぶ
+- プロセス単位のシングルトン（`TSingleton` / `TSingleInstance` / `TInstanceHolder`）は
+  `thread_local` にする（`sakura_core/util/design_template.h`）。上流が `std::thread` で作る
+  ワーカースレッドには文脈が無いので、`TSingleInstance` は最後に作られたインスタンスを返す
+- Win32 のメッセージキューはスレッドごと。別スレッドのウィンドウへの `SendMessage` は相手スレッドで
+  処理されるまで待つ（Win32 と同じ）。名前付きオブジェクトと共有メモリはプロセス内で共有する
+- **macOS のメインスレッドは Cocoa のイベントループ専用**（表示サーバ役）。Win32 のコードは動かさない。
+  入力は所有スレッドのキューへ投函し、描画は各ウィンドウの描画面（CGBitmapContext）に行って
+  メインスレッドが画面へ転送する（Wine の macdrv と同じ発想）
+- Cocoa と windows.h は同じ翻訳単位に入れられないため、表示系（`cocoa_backend.mm`）は
+  Windows 型を使わない `backend.h` だけを見る。Win32 側との受け渡しは `bridge.cpp`
+
+結果として、1 プロセス・複数ウィンドウ（mac 流）と、上流のプロセス構成・タブのグループ化の
+仕組みを両立できる。
+
 ## wchar_t の扱い
 
 macOS の wchar_t は 4 バイト。sakura_core は WCHAR を UTF-16 単位として扱う。
@@ -62,3 +84,7 @@ Python マクロ、見た目合わせ。対象外: PPA マクロ、VBScript マ�
 - Week 2（2026-11-04）: CMake 化、CRT・printf・コードページ・kernel32・リソースを実装。
   上流 GoogleTest 757 件中 707 件が mac でパス。残りは非 BMP リテラル・GDI 未実装・ACP 差で原因判明。
   ACP は UTF-8 に決定。
+- Week 3（2026-11-04）: **判断 2 通過**。user32（ウィンドウ・メッセージ・タイマー・キャレット・
+  スクロールバー状態・メニューのデータ・アクセラレータ・CBT フック）、gdi32（DC・描画・CoreText の文字描画）、
+  Cocoa 表示系、仮想プロセスを実装。上流の CEditWnd / CEditView が mac のウィンドウで
+  日本語ファイルを表示し、キー入力・マウスでの移動・保存（Cmd+S）ができる。

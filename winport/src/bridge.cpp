@@ -294,6 +294,7 @@ void PostKey(void* topLevel, int macKeyCode, bool down, bool repeat, const std::
 	if (!target) return;
 	const KeyMap* k = FindKey(macKeyCode);
 	if (!k) return;
+	ModifiersChanged(topLevel, modifiers);  // flagsChanged が先に来ない場合でも TranslateAccelerator が正しく判定できるように
 	SetKeyDown(k->vk, down);
 	const bool ctrl = (modifiers & (kControl | kCommand)) != 0;
 	const bool alt = (modifiers & kAlt) != 0;

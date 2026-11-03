@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstdio>
 #include <cwchar>
 #include <cwctype>
 
@@ -297,6 +298,30 @@ WINBOOL WINAPI EnumDisplayMonitors(HDC, LPCRECT, MONITORENUMPROC lpfnEnum, LPARA
 {
 	RECT r = ToRECT(backend::ScreenRect());
 	return lpfnEnum(reinterpret_cast<HMONITOR>(intptr_t{1}), nullptr, &r, dwData);
+}
+
+int WINAPI MessageBoxExW(HWND, LPCWSTR lpText, LPCWSTR lpCaption, UINT uType, WORD)
+{
+	const std::wstring text = lpText ? lpText : L"", caption = lpCaption ? lpCaption : L"";
+	if (!backend::Available()) {
+		// テスト等、表示系が無いとき
+		std::fprintf(stderr, "[MessageBox] %s: %s\n", WideToUtf8(caption).c_str(), WideToUtf8(text).c_str());
+		return IDOK;
+	}
+	std::atomic<int> result{0};
+	backend::ShowMessageBox(std::u16string(text.begin(), text.end()), std::u16string(caption.begin(), caption.end()), uType, &result);
+	// Win32 のメッセージボックスと同じく、閉じるまでの間も送信メッセージと再描画は処理する
+	while (!result.load()) {
+		MSG m;
+		while (PeekMessageW(&m, nullptr, WM_PAINT, WM_PAINT, PM_REMOVE)) DispatchMessageW(&m);
+		Sleep(10);
+	}
+	return result.load();
+}
+
+int WINAPI MessageBoxW(HWND hWnd, LPCWSTR lpText, LPCWSTR lpCaption, UINT uType)
+{
+	return MessageBoxExW(hWnd, lpText, lpCaption, uType, 0);
 }
 
 UINT WINAPI GetDoubleClickTime(void) { return 500; }

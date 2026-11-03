@@ -45,6 +45,7 @@ add_library(winport STATIC
     src/kernel32_object.cpp
     src/process.cpp
     src/resource.cpp
+    src/shell_ole.cpp
     src/user32_message.cpp
     src/user32_misc.cpp
     src/user32_window.cpp

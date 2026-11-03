@@ -1215,7 +1215,7 @@ LRESULT WINAPI DefWindowProcW(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam)
 		default: return 0;
 		}
 	case WM_SYSKEYDOWN:
-		if (wParam == VK_F4 && (HIWORD(lParam) & KF_ALTDOWN)) SendMessageW(hWnd, WM_SYSCOMMAND, SC_CLOSE, 0);
+		if (wParam == VK_F4 && (HIWORD(lParam) & KF_ALTDOWN)) SendMessageW(ToHwnd(TopLevelOf(w)), WM_SYSCOMMAND, SC_CLOSE, 0);
 		return 0;
 	case WM_NCHITTEST:
 		return HTCLIENT;

@@ -18,6 +18,7 @@
 #include <mutex>
 #include <string>
 
+#include "backend.h"
 #include "winport_internal.h"
 
 namespace {
@@ -205,6 +206,9 @@ WINBOOL WINAPI VirtualFree(LPVOID lpAddress, SIZE_T dwSize, DWORD dwFreeType)
 /* ---- 標準ハンドル（擬似値） ---- */
 HANDLE WINAPI GetStdHandle(DWORD nStdHandle)
 {
+	// GUI アプリには標準ハンドルが無い（上流の Wrap_MessageBox は、標準エラーがあると
+	// ダイアログを出さずにそこへ書くので、アプリ動作時は Windows の GUI アプリと同じ null を返す）
+	if (winport::backend::Available()) return nullptr;
 	switch (nStdHandle) {
 	case STD_INPUT_HANDLE: return reinterpret_cast<HANDLE>(intptr_t{0x10});
 	case STD_OUTPUT_HANDLE: return reinterpret_cast<HANDLE>(intptr_t{0x11});
@@ -243,19 +247,6 @@ DWORD WINAPI GetCurrentThreadId(void)
 	uint64_t tid = 0;
 	pthread_threadid_np(nullptr, &tid);
 	return static_cast<DWORD>(tid);
-}
-
-/* ---- user32: メッセージボックス（GUI 実装までは stderr に出して IDOK） ---- */
-int WINAPI MessageBoxExW(HWND, LPCWSTR lpText, LPCWSTR lpCaption, UINT, WORD)
-{
-	std::fprintf(stderr, "[MessageBox] %s: %s\n", winport::WideToUtf8(lpCaption ? lpCaption : L"").c_str(),
-	             winport::WideToUtf8(lpText ? lpText : L"").c_str());
-	return IDOK;
-}
-
-int WINAPI MessageBoxW(HWND hWnd, LPCWSTR lpText, LPCWSTR lpCaption, UINT uType)
-{
-	return MessageBoxExW(hWnd, lpText, lpCaption, uType, 0);
 }
 
 }  // extern "C"

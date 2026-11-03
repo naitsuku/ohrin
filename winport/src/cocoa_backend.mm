@@ -30,6 +30,7 @@ constexpr uintptr_t IDC_ARROW = 32512, IDC_IBEAM = 32513, IDC_WAIT = 32514, IDC_
                     IDC_HAND = 32649, IDC_APPSTARTING = 32650;
 constexpr int kScrollBarWidth = 15;
 
+bool g_available = false;
 double g_scale = 2.0;
 BRect g_screen{0, 0, 1440, 900};
 BRect g_work{0, 25, 1440, 900};
@@ -422,6 +423,7 @@ namespace winport::backend {
 
 void Initialize()
 {
+	g_available = true;
 	[NSApplication sharedApplication];
 	NSApp.activationPolicy = NSApplicationActivationPolicyRegular;
 	static WPAppDelegate* delegate = [WPAppDelegate new];
@@ -575,6 +577,46 @@ void ScrollBarsChanged(void* hwnd)
 }
 
 void Beep() { OnMain(^{ NSBeep(); }); }
+
+bool Available() { return g_available; }
+
+void ShowMessageBox(const std::u16string& text, const std::u16string& caption, unsigned type, std::atomic<int>* result)
+{
+	NSString* message = [NSString stringWithCharacters:reinterpret_cast<const unichar*>(text.data()) length:text.size()];
+	NSString* title = [NSString stringWithCharacters:reinterpret_cast<const unichar*>(caption.data()) length:caption.size()];
+	// main queue のブロック内で runModal すると、閉じるまで他の OnMain が止まる（main queue は直列）。
+	// 描画を止めないよう、ランループに直接積む
+	CFRunLoopPerformBlock(CFRunLoopGetMain(), kCFRunLoopCommonModes, ^{
+		struct Button { NSString* label; int id; NSString* key; };
+		constexpr int IDOK = 1, IDCANCEL = 2, IDABORT = 3, IDRETRY = 4, IDIGNORE = 5, IDYES = 6, IDNO = 7;
+		std::vector<Button> buttons;
+		switch (type & 0xF) {
+		case 1: buttons = {{@"OK", IDOK, @"\r"}, {@"キャンセル", IDCANCEL, @"\033"}}; break;
+		case 2: buttons = {{@"中止", IDABORT, @"a"}, {@"再試行", IDRETRY, @"r"}, {@"無視", IDIGNORE, @"i"}}; break;
+		case 3: buttons = {{@"はい", IDYES, @"y"}, {@"いいえ", IDNO, @"n"}, {@"キャンセル", IDCANCEL, @"\033"}}; break;
+		case 4: buttons = {{@"はい", IDYES, @"y"}, {@"いいえ", IDNO, @"n"}}; break;
+		case 5: buttons = {{@"再試行", IDRETRY, @"r"}, {@"キャンセル", IDCANCEL, @"\033"}}; break;
+		default: buttons = {{@"OK", IDOK, @"\r"}}; break;
+		}
+		NSAlert* alert = [NSAlert new];
+		alert.messageText = title;
+		alert.informativeText = message;
+		switch (type & 0xF0) {
+		case 0x10: alert.alertStyle = NSAlertStyleCritical; break;   // MB_ICONSTOP
+		case 0x30: alert.alertStyle = NSAlertStyleWarning; break;    // MB_ICONEXCLAMATION
+		default: alert.alertStyle = NSAlertStyleInformational; break;
+		}
+		const size_t def = std::min<size_t>((type >> 8) & 0xF, buttons.size() - 1);  // MB_DEFBUTTON2/3
+		for (size_t i = 0; i < buttons.size(); ++i) {
+			NSButton* b = [alert addButtonWithTitle:buttons[i].label];
+			b.keyEquivalent = i == def ? @"\r" : buttons[i].key;
+		}
+		[NSApp activateIgnoringOtherApps:YES];
+		const NSInteger r = [alert runModal] - NSAlertFirstButtonReturn;
+		result->store(buttons[std::clamp<NSInteger>(r, 0, buttons.size() - 1)].id);
+	});
+	CFRunLoopWakeUp(CFRunLoopGetMain());
+}
 
 double ScaleFactor() { return g_scale; }
 BRect ScreenRect() { return g_screen; }

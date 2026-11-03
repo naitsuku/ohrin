@@ -17,6 +17,7 @@
 #include <CoreGraphics/CoreGraphics.h>
 #pragma pop_macro("interface")
 
+#include <atomic>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -56,6 +57,10 @@ void ScrollBarsChanged(void* hwnd);
 void Beep();
 //! 全仮想プロセスが終了した
 void Quit();
+//! 表示系が動いているか（テストでは Initialize を呼ばないので false）
+bool Available();
+//! メッセージボックスを出す。待たずに戻り、閉じられたら *result に IDOK 等が入る（type は MB_* の値）
+void ShowMessageBox(const std::u16string& text, const std::u16string& caption, unsigned type, std::atomic<int>* result);
 
 //! 画面情報（Initialize で確定。Win32 のスクリーン座標 = 主画面左上原点・y 下向き）
 double ScaleFactor();

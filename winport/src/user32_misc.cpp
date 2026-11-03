@@ -115,10 +115,45 @@ void UpdateCaret()
 std::atomic<HCURSOR> g_cursor{nullptr};
 
 // ---- クリップボード（プロセス内） ----
-std::mutex& ClipMutex() { static auto* m = new std::mutex; return *m; }
+std::recursive_mutex& ClipMutex() { static auto* m = new std::recursive_mutex; return *m; }
 std::map<UINT, HANDLE>& ClipData() { static auto* m = new std::map<UINT, HANDLE>; return *m; }
 std::map<std::wstring, UINT>& ClipFormats() { static auto* m = new std::map<std::wstring, UINT>; return *m; }
 DWORD g_clipOwnerThread = 0;
+long g_clipSeenChange = -1;   //!< ClipData がどのシステムクリップボードの内容に対応するか
+bool g_clipDirty = false;     //!< CloseClipboard でシステムへ書き出す
+
+//! 他のアプリがコピーしていたら、その内容で置き換える。
+//! 自分がコピーした内容なら、独自形式（サクラの矩形情報など）も含めて ClipData のまま使う
+void SyncClipboardFromSystem()
+{
+	if (!backend::Available() || g_clipDirty) return;
+	const long change = backend::ClipboardChangeCount();
+	if (change == g_clipSeenChange) return;
+	g_clipSeenChange = change;
+	for (auto& [fmt, h] : ClipData()) GlobalFree(h);
+	ClipData().clear();
+	std::u16string text;
+	if (!backend::ClipboardReadText(&text)) return;
+	HGLOBAL h = GlobalAlloc(GMEM_MOVEABLE, (text.size() + 1) * sizeof(wchar_t));
+	auto p = static_cast<wchar_t*>(GlobalLock(h));
+	std::copy(text.begin(), text.end(), p);
+	p[text.size()] = 0;
+	GlobalUnlock(h);
+	ClipData()[CF_UNICODETEXT] = h;
+}
+
+void WriteClipboardToSystem()
+{
+	if (!backend::Available() || !g_clipDirty) return;
+	g_clipDirty = false;
+	std::u16string text;
+	if (auto it = ClipData().find(CF_UNICODETEXT); it != ClipData().end()) {
+		for (auto p = static_cast<const wchar_t*>(GlobalLock(it->second)); *p; ++p) text += static_cast<char16_t>(*p);
+		GlobalUnlock(it->second);
+	}
+	backend::ClipboardWriteText(text);
+	g_clipSeenChange = backend::ClipboardChangeCount();
+}
 
 }  // namespace
 
@@ -916,13 +951,27 @@ WINBOOL WINAPI RegisterHotKey(HWND, int, UINT, UINT) { return TRUE; }
 WINBOOL WINAPI UnregisterHotKey(HWND, int) { return TRUE; }
 
 /* ---- クリップボード（プロセス内。HANDLE は GlobalAlloc のもの） ---- */
-WINBOOL WINAPI OpenClipboard(HWND) { ClipMutex().lock(); g_clipOwnerThread = GetCurrentThreadId(); return TRUE; }
-WINBOOL WINAPI CloseClipboard(void) { g_clipOwnerThread = 0; ClipMutex().unlock(); return TRUE; }
+WINBOOL WINAPI OpenClipboard(HWND)
+{
+	ClipMutex().lock();
+	g_clipOwnerThread = GetCurrentThreadId();
+	SyncClipboardFromSystem();
+	return TRUE;
+}
+
+WINBOOL WINAPI CloseClipboard(void)
+{
+	WriteClipboardToSystem();
+	g_clipOwnerThread = 0;
+	ClipMutex().unlock();
+	return TRUE;
+}
 
 WINBOOL WINAPI EmptyClipboard(void)
 {
 	for (auto& [fmt, h] : ClipData()) GlobalFree(h);
 	ClipData().clear();
+	g_clipDirty = true;
 	return TRUE;
 }
 
@@ -931,6 +980,7 @@ HANDLE WINAPI SetClipboardData(UINT uFormat, HANDLE hMem)
 	auto& d = ClipData();
 	if (auto it = d.find(uFormat); it != d.end()) GlobalFree(it->second);
 	d[uFormat] = hMem;
+	g_clipDirty = true;
 	return hMem;
 }
 
@@ -944,11 +994,13 @@ HANDLE WINAPI GetClipboardData(UINT uFormat)
 WINBOOL WINAPI IsClipboardFormatAvailable(UINT format)
 {
 	std::lock_guard lock(ClipMutex());
+	SyncClipboardFromSystem();
 	return ClipData().count(format) != 0;
 }
 
 UINT WINAPI EnumClipboardFormats(UINT format)
 {
+	std::lock_guard lock(ClipMutex());
 	auto& d = ClipData();
 	auto it = format ? d.upper_bound(format) : d.begin();
 	return it == d.end() ? 0 : it->first;

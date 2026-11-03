@@ -15,8 +15,10 @@
 #include <fnmatch.h>
 #include <sys/stat.h>
 #include <sys/time.h>
+#include <strings.h>
 #include <unistd.h>
 
+#include <cctype>
 #include <cerrno>
 #include <cstdio>
 #include <cstring>
@@ -130,6 +132,25 @@ DWORD CopyPathOut(const std::wstring& s, LPWSTR buf, DWORD n)
 }  // namespace
 
 extern "C" {
+
+//! sakura.exe.ini（マルチユーザー設定）の読み取りにだけ使われる。sakura.ini 本体は CProfile が読む
+UINT WINAPI GetPrivateProfileIntW(LPCWSTR lpAppName, LPCWSTR lpKeyName, INT nDefault, LPCWSTR lpFileName)
+{
+	FILE* f = std::fopen(winport::WideToUtf8(lpFileName).c_str(), "r");
+	if (!f) return nDefault;
+	const std::string section = "[" + winport::WideToUtf8(lpAppName) + "]", key = winport::WideToUtf8(lpKeyName) + "=";
+	char line[1024];
+	bool inSection = false;
+	UINT result = nDefault;
+	while (std::fgets(line, sizeof(line), f)) {
+		std::string l(line);
+		while (!l.empty() && std::isspace(static_cast<unsigned char>(l.back()))) l.pop_back();
+		if (!l.empty() && l[0] == '[') inSection = strcasecmp(l.c_str(), section.c_str()) == 0;
+		else if (inSection && strncasecmp(l.c_str(), key.c_str(), key.size()) == 0) { result = static_cast<UINT>(std::atoi(l.c_str() + key.size())); break; }
+	}
+	std::fclose(f);
+	return result;
+}
 
 /* ---- ファイルハンドル ---- */
 HANDLE WINAPI CreateFileW(LPCWSTR lpFileName, DWORD dwDesiredAccess, DWORD, LPSECURITY_ATTRIBUTES,

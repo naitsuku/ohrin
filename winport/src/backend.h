@@ -57,6 +57,10 @@ void ScrollBarsChanged(void* hwnd);
 void Beep();
 //! 全仮想プロセスが終了した
 void Quit();
+//! システムのクリップボード。どのスレッドから呼んでもよく、メインスレッドを待たない
+long ClipboardChangeCount();
+void ClipboardWriteText(const std::u16string& text);   //!< 内容を置き換える（空なら消すだけ）
+bool ClipboardReadText(std::u16string* text);
 //! ウィンドウのメニューが変わった（アクティブなウィンドウなら mac のメニューバーを作り直す）
 void MenuBarChanged(void* hwnd);
 //! ポップアップメニューを出す。待たずに戻り、閉じられたら *result に項目 ID（選択なしは -1）が入る

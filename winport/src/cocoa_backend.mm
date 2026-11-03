@@ -834,6 +834,29 @@ void Beep() { OnMain(^{ NSBeep(); }); }
 
 bool Available() { return g_available; }
 
+long ClipboardChangeCount() { return NSPasteboard.generalPasteboard.changeCount; }
+
+void ClipboardWriteText(const std::u16string& text)
+{
+	@autoreleasepool {
+		NSPasteboard* pb = NSPasteboard.generalPasteboard;
+		[pb clearContents];
+		if (text.empty()) return;
+		[pb setString:[NSString stringWithCharacters:reinterpret_cast<const unichar*>(text.data()) length:text.size()] forType:NSPasteboardTypeString];
+	}
+}
+
+bool ClipboardReadText(std::u16string* text)
+{
+	@autoreleasepool {
+		NSString* s = [NSPasteboard.generalPasteboard stringForType:NSPasteboardTypeString];
+		if (!s) return false;
+		text->resize(s.length);
+		[s getCharacters:reinterpret_cast<unichar*>(text->data()) range:NSMakeRange(0, s.length)];
+		return true;
+	}
+}
+
 void MenuBarChanged(void* hwnd)
 {
 	OnMain(^{

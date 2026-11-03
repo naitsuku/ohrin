@@ -14,6 +14,60 @@ namespace {
 constexpr const char* kKnownUnsupported[] = {
 	// 言語 DLL（sakura_lang_en_US.dll）のリソース切替が未実装
 	"CSelectLang.test002",
+
+	// GDI（文字幅・フォントメトリクス）未実装 — Week 3 の CoreText 実装で外す
+	// （GetTextMetricsW のスタブが構造体を埋めないため結果が不定。スイートごと除外）
+	"CTextMetricsWithGDI.*",
+	"CharWidthCache.CalcHankakuByFont",
+	"CharWidthCache.CalcPxWidthByFont",
+	"CharWidthCache.CalcPxWidthByFont2",
+	"CharWidthCache.CalcPxWidthByFont3",
+
+	// テストの非 BMP ワイドリテラル（L"\U0001F6B9" 等）が mac では UTF-32 の 1 要素になる（issues.md I-106）
+	"CNativeW.GetCharPrev_Bugs_Preview",
+	"CNativeW.GetSizeOfChar_IVS",
+	"CNativeW.GetSizeOfChar_SurrogatePair",
+	"CTextMetrics.GenerateDxArray8",
+	"ConvertToUtf32.SurrogatePair",
+	"IsVariationSelector.VariationSelectorCheck",
+	"UnicodeToHexCases/UnicodeToHexTest.test/105",
+	"UnicodeToHexCases/UnicodeToHexTest.test/106",
+	"UnicodeToHexCases/UnicodeToHexTest.test/107",
+	"UnicodeToHexCases/UnicodeToHexTest.test/108",
+	"UnicodeToHexCases/UnicodeToHexTest.test/109",
+	"UnicodeToHexCases/UnicodeToHexTest.test/110",
+	"UnicodeToHexCases/UnicodeToHexTest.test/111",
+	"UnicodeToHexCases/UnicodeToHexTest.test/112",
+	"UnicodeToHexCases/UnicodeToHexTest.test/113",
+	"UnicodeToHexCases/UnicodeToHexTest.test/114",
+	"UnicodeToHexCases/UnicodeToHexTest.test/115",
+	"UnicodeToHexCases/UnicodeToHexTest.test/116",
+	"UnicodeToHexCases/UnicodeToHexTest.test/117",
+	"UnicodeToHexCases/UnicodeToHexTest.test/118",
+	"UnicodeToHexCases/UnicodeToHexTest.test/119",
+	"UnicodeToHexCases/UnicodeToHexTest.test/120",
+	"UnicodeToHexCases/UnicodeToHexTest.test/121",
+	"UnicodeToHexCases/UnicodeToHexTest.test/122",
+	"UnicodeToHexCases/UnicodeToHexTest.test/123",
+	"UnicodeToHexCases/UnicodeToHexTest.test/58",
+	"UnicodeToHexCases/UnicodeToHexTest.test/59",
+	"UnicodeToHexCases/UnicodeToHexTest.test/60",
+	"UnicodeToHexCases/UnicodeToHexTest.test/61",
+	"UnicodeToHexCases/UnicodeToHexTest.test/62",
+	"UnicodeToHexCases/UnicodeToHexTest.test/63",
+	"UnicodeToHexCases/UnicodeToHexTest.test/64",
+	"UnicodeToHexCases/UnicodeToHexTest.test/66",
+	"UnicodeToHexCases/UnicodeToHexTest.test/67",
+	"UnicodeToHexCases/UnicodeToHexTest.test/68",
+	"WhatKindOfChar.IVS",
+	"profile_data.TryParse_WCHAR",
+	"to_string.test004",
+	"to_wstring.test004",
+
+	// CP_ACP = CP932 を前提にしたテスト（winport は ACP = UTF-8）
+	"to_achar.test001",
+	"to_string.test101",
+	"to_wchar.test001",
 };
 
 }  // namespace

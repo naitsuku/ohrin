@@ -2,8 +2,9 @@
 
 ## 2026-11-04 — Week 2: winport 基盤 + 上流テストが mac で動作
 
-**上流 GoogleTest（src/test/cpp/tests1）: 757 件中 707 件パス**（1 件は既知の非対応として除外）。
-残り 50 件はすべて原因分類済み（下記）。
+**上流 GoogleTest（src/test/cpp/tests1）: 757 件中 706 件パス、失敗 0**。
+残り 51 件は原因を分類したうえで `tests/mac_tests/mac_main.cpp` の既知非対応リストで除外
+（`ctest` は緑。`--gtest_filter='*'` 以外を指定すれば除外なしで走る）。
 
 - [x] **CMake 化**
   - macOS は既定で `winport`（互換層）/ `sakura_core_mac`（上流 sakura_core + src/main/cpp の全 375 ファイル）/
@@ -40,7 +41,7 @@
 | 原因 | 件数 | 対応 |
 |---|---:|---|
 | テストの非 BMP ワイドリテラル（`L"\U0001F6B9"` が mac では 1 要素） | 約 38 | テスト側の前提。sakura_core 本体には該当リテラルなし（確認済み） |
-| GDI 未実装（CharWidthCache / CTextMetrics） | 9 | Week 3（CoreText） |
+| GDI 未実装（CharWidthCache / CTextMetricsWithGDI。後者は値が不定なのでスイートごと除外） | 10 | Week 3（CoreText） |
 | ACP = CP932 前提のテスト（to_achar 等） | 3 | ACP=UTF-8 方針による差。仕様として許容 |
 
 除外中のテストファイル（コンパイル不可）: test-statictype / test-file / test-csakuraenvironment

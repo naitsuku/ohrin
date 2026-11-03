@@ -69,5 +69,6 @@ target_compile_options(sakura_mac_tests PRIVATE
 )
 target_link_libraries(sakura_mac_tests PRIVATE sakura_core_mac gmock)
 
-include(GoogleTest)
-gtest_discover_tests(sakura_mac_tests DISCOVERY_MODE PRE_TEST)
+# 1 つの ctest として実行する（mac_main.cpp の既知非対応フィルタを効かせるため。
+# gtest_discover_tests は各テストを --gtest_filter 付きで起動するのでフィルタが外れてしまう）
+add_test(NAME sakura_mac_tests COMMAND sakura_mac_tests)

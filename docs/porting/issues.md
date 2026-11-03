@@ -108,3 +108,53 @@ StdAfx.h ガード追加後に着手する。
 シンボリックリンクを生成するステップを Phase 2 で追加する予定。
 
 **ステータス**: Phase 2 で対応
+
+---
+
+## mac ネイティブ方針（2026-11-04〜）で発生した Issue
+
+### I-101: std::filesystem::path が mac では narrow（UTF-8）
+
+**症状**: 上流は `path::c_str()` / `native()` を `const wchar_t*` / `std::wstring` として使う（Windows 前提）。
+**対処**: コンパイルエラー箇所は `.wstring()` に置換済み（Week 1）。
+**残課題**: libc++ の path ⇔ wstring 変換は wchar_t を UTF-32 とみなすため、
+UTF-16 単位を格納する本プロジェクトでは**非 BMP 文字を含むファイル名が化ける**。
+winport に UTF-16 対応の変換ヘルパーを用意し、ファイル系 API の境界で使う。
+
+**ステータス**: 一部対応（Week 2 で残課題）
+
+### I-102: MSVC 書式の wide printf（`%s` がワイド文字列）
+
+**症状**: sakura_core は wide 版 printf 系で `%s`（33 箇所）と `%ls`（68 箇所）を混用。
+MSVC では wide 版の `%s` はワイド文字列だが、macOS libc では char* と解釈されクラッシュする。
+**対処方針**: winport CRT に MSVC 書式解釈の実装を置き、`swprintf` / `vswprintf` /
+`_swprintf` 等をマクロで差し替える。
+
+**ステータス**: Week 2 で対応
+
+### I-103: `-fexec-charset=cp932` 前提の narrow 文字列リテラル
+
+**症状**: 上流 MinGW ビルドは narrow リテラルを Shift_JIS で埋め込む。clang は UTF-8 のみ。
+`CPropComFormat.cpp` の日付書式など、非 ASCII の narrow リテラルが少数ある。
+**対処方針**: 実害のある箇所を洗い出し、L"" 化するか UTF-8 前提に直す。
+
+**ステータス**: 未着手（優先度低）
+
+### I-104: リソース（sakura_rc.rc）の扱い
+
+**症状**: 文字列テーブル・メニュー・アクセラレータ・ビットマップ・ダイアログテンプレートは
+`LoadString` / `LoadMenu` / `FindResource` 等で実行時に読まれる。mac にはリソース機構がない。
+**対処方針**: ビルド時に .rc を解析してデータ化するツールを `tools/porting/` に作り、
+winport の Load* / FindResource がそれを引く。ダイアログテンプレートは mac 版ダイアログを
+作るまでの暫定表示にのみ使う。
+
+**ステータス**: Week 3〜4 で対応
+
+### I-105: コモンコントロールはリンク表に出ない
+
+**症状**: ListView / TreeView / UpDown / Toolbar / StatusBar / Tab 等はウィンドウクラス名と
+`SendMessage(LVM_* 等)` で操作されるため、`winport_api_inventory.md` の件数に含まれない。
+**対処方針**: エディタ本体が使うもの（ツールバー、ステータスバー、タブ、ファンクションキー）を
+優先して winport のウィンドウクラスとして実装。ダイアログ内のものは mac 版ダイアログで置換。
+
+**ステータス**: Week 3 以降

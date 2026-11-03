@@ -1,5 +1,59 @@
 # 移植作業進捗ログ
 
+## 2026-11-04 — 方針転換 + Week 1（判断 1）
+
+方針を wxWidgets 版から「sakura_core フォーク + Win32 互換層 `winport/`」へ転換
+（経緯と 8 週計画は `mac_native_plan.md`）。`sakura_wx/` は凍結。
+
+- [x] **wchar_t 方式の決定**
+  - `-fshort-wchar` は不可: システム libc++.dylib の `basic_string<wchar_t>` が 4 バイト前提で、
+    append / compare が壊れる（`_LIBCPP_DISABLE_EXTERN_TEMPLATE` でも改善せず）
+  - UTF-32 案も不可: `IsUtf16SurrogHi` が下位 16 ビットで判定するため非 BMP 文字を誤判定
+  - **採用: wchar_t 4 バイトに UTF-16 コード単位を格納**。境界（UTF-16 コーデック、
+    クリップボード、D&D）だけ幅変換する
+- [x] **winport ヘッダ基盤**（`winport/include/`）
+  - Homebrew `mingw-w64` の Windows ヘッダを `-idirafter` で使用
+  - `winport_prelude.h`（`-include` で強制挿入）: 標準ヘッダを先に読み、その後で
+    `_WIN32` / `_WIN64` / `__MINGW32__` を定義。libc++ や SDK に Windows 分岐を選ばせない
+  - LP64 でも `DWORD` / `LONG` は 4 バイト（mingw の `__LONG32` が `__LP64__` で int になる）
+  - 代替ヘッダ: `comdef.h`（mingw 版 comutil.h が LONG==int で衝突）、`winstring.h`
+    （mingw の ULONG / unsigned long 不一致を修正したコピー）、`DarkModeSubclass.h`、
+    `mbstring.h`、`io.h`、`process.h`、`winport_crt.h`（MSVC CRT 拡張の宣言）
+- [x] **sakura_core 全 375 ファイル（src/main/cpp 含む）のコンパイル成功**
+  - `tools/porting/winport_probe.py` で全ファイルを個別コンパイル・集計
+  - 推移: 0 → 199 → 290 → 346 → 371 → 375
+  - sakura_core 側の修正（すべて Windows でもそのまま動く書き方）:
+    - `std::filesystem::path` の `c_str()` / `native()` / wstring への暗黙変換（mac では char）
+      → `.wstring()` に（約 20 箇所: CProfile, file, os, CControlProcess, CSelectLang,
+      CDlgProfileMgr, CSakuraEnvironment, CShareData_IO, shell, CEditDoc, CMyString）
+    - `static_assert`/`constexpr` で `std::size(メンバ配列)` → `std::extent_v<decltype(...)>`
+      （Apple clang 16 は P2280 未対応。CDlg* 6 箇所、CType_Erlang、CShareData_IO、CDlgTypeList）
+    - `convert_util2.h`: `sizeof(CHAR_TYPE) == 2` を「ワイド文字か」の判定に使っていた
+      → `== sizeof(wchar_t)`（13 箇所。放置するとワイド版が narrow 経路に入る潜在バグ）
+    - `CStrictInteger.h`: LONG 版演算子は winport では int 版と重複するため除外
+    - `CZipFile.cpp`: Shell COM による ZIP 展開を winport ではスタブ化（miniz-cpp で置換予定）
+- [x] **リンクして Win32 API 棚卸し**（`docs/porting/winport_api_inventory.md`）
+  - 未解決シンボル **528**。sakura 内部の未解決はゼロ（すべて Win32 / CRT）
+  - user32 177 / kernel32 108 / gdi32 58 / CRT 48 / darkmodelib 28 / uuid 15 /
+    shell32 15 / comctl32 15 / imm32 11 / oleaut32 10 / ole32 9 / advapi32 9 / その他 25
+  - 注意: コモンコントロールは `SendMessage(LVM_*)` 等のメッセージで操作されるため
+    リンク表に出ない。ListView 系マクロ API 85 種、WM_* 103 種、.rc の
+    コントロール定義 1,162 行（SysListView32 20 / msctls_updown32 36 / SysTreeView32 3 など）
+
+### 判断 1 の評価
+
+- コンパイル・リンク面は想定以上に良好（全ファイルがビルド可能、未解決は Win32 / CRT のみ）。
+  互換層方式の続行を判断する。
+- 上流 GoogleTest の実行は未着手（CRT と kernel32 の実装が要る）→ Week 2 冒頭で実施。
+
+### Week 2 への申し送り
+
+1. probe スクリプトを CMake ターゲット化（sakura_core を winport でビルドする正式ターゲット）
+2. `winport/src/`: CRT（MSVC 書式の printf 含む）、kernel32 の非 GUI 部分を実装
+3. `src/test/cpp/tests1` の文字コード・メモリ・文書系テストを mac で通す
+4. CUnicode 等の UTF-16 境界の幅変換
+5. issues.md の I-101〜I-105 を参照
+
 ## 2026-05-05 — Phase 14a/b + 15a/b 完了（メタ 5 タブ追加 + 反映 6 点 + DarkMode + ミニマップ）
 
 ### Phase 14a: 易タブ 5 個メタ化

@@ -27,9 +27,17 @@ macOS の wchar_t は 4 バイト。sakura_core は WCHAR を UTF-16 単位と�
 - `-fshort-wchar` 単独は**不可**（実験済み）: システム libc++.dylib の
   `basic_string<wchar_t>` 実体が 4 バイト前提で、append / compare 等が壊れる。
   `_LIBCPP_DISABLE_EXTERN_TEMPLATE` でも dylib 側シンボルに解決されて改善しない。
-- 採用案: **wchar_t 4 バイトのまま、内部 UTF-32** として扱い、
-  UTF-16 前提のコード（バイト列との相互変換、サロゲート処理）を個別に修正する。
-  詳細な調査結果は Week 1 の記録（progress.md）参照。
+- UTF-32 案（1 要素 = 1 コードポイント）は不採用: サロゲート判定
+  `IsUtf16SurrogHi` が `static_cast<unsigned short>(wc)` で下位 16 ビットだけを見るため
+  U+2D834 などを誤判定する。列数・インデックスも Windows とずれる。
+- 採用案: **wchar_t 4 バイトのまま、各要素に UTF-16 コード単位を格納**する
+  （サロゲートペアは 2 要素）。sakura_core のサロゲート処理・列計算・インデックスが
+  Windows と同一になり、NSString（unichar = 16 bit）との変換も単純なコピーで済む。
+- 修正が要るのは「CNativeW のメモリを UTF-16LE のバイト列として直接扱う」境界だけ:
+  `charset/CUnicode.cpp`（UTF-16LE/BE の入出力。現状 `SetRawDataHoldBuffer` で
+  バイト列をそのまま CNativeW に入れている）、`_os/CClipboard.cpp`、`_os/CDropTarget.cpp`、
+  `charset/` の各コーデックの一部（reinterpret_cast 箇所、計 15 ファイル程度）。
+  `sizeof(wchar_t)` を使った長さ計算はそのまま 4 バイトで正しく動く。
 
 ## 8 週間計画（MVP）
 
@@ -45,3 +53,9 @@ macOS の wchar_t は 4 バイト。sakura_core は WCHAR を UTF-16 単位と�
 
 MVP 後（+2〜4 ヶ月）: 共通設定・タイプ別設定画面、印刷、残りのダイアログ、プラグイン、
 Python マクロ、見た目合わせ。対象外: PPA マクロ、VBScript マクロ。
+
+## 進捗
+
+- Week 1（2026-11-04）: 判断 1 通過。sakura_core 全 375 ファイルが winport ヘッダで
+  コンパイルでき、リンク未解決は Win32 / CRT の 528 シンボルのみ。
+  詳細は progress.md と `winport_api_inventory.md`。上流テスト実行は Week 2 冒頭に繰り越し。

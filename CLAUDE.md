@@ -38,7 +38,9 @@ dialogs (mac) … ダイアログの mac ネイティブ実装（Week 6 以降�
 ```
 
 - 非 Windows ビルドでは `SAKURA_WINPORT` を定義する。
-- 文字型: **wchar_t は 4 バイトのまま（内部 UTF-32）**。決定経緯は `mac_native_plan.md`。
+- 文字型: **wchar_t は 4 バイトのまま、中身は UTF-16 コード単位**（サロゲートペアは 2 要素）。
+  Windows と同じ単位で数えるので編集挙動が一致する。バイト列⇔CNativeW の境界
+  （UTF-16 コーデック、クリップボード、D&D）だけ幅変換が要る。決定経緯は `mac_native_plan.md`。
 
 ## 守るルール
 

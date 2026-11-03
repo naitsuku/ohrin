@@ -8,7 +8,8 @@ zlib ライセンスのオープンソース。開発者 1 名 + Claude。
 - **元リポジトリ**: https://github.com/sakura-editor/sakura（`upstream` リモート登録済み）
 - **方針（2026-11-04 転換）**: `sakura_core/` を**フォーク**し、upstream の編集エンジンを
   そのまま動かす。下に **Win32 互換層 `winport/`**（AppKit / CoreText 実装）を敷く。
-  ダイアログは互換層で再現せず、mac ネイティブで作り直す。
+  ダイアログも互換層で動かす（2026-11-04 Week 6 で変更。Win32 のダイアログ機構とコントロールを
+  winport に実装し、上流の CDlg* をそのまま使う）。開く／保存／フォントは mac 標準パネルを使う。
 - **目標プラットフォーム**: macOS 13+（Apple Silicon 優先）。Linux は当面対象外。
 - **旧方針の wxWidgets 版 `sakura_wx/` は凍結**（参照・流用のみ。新機能を足さない）。
 
@@ -34,7 +35,6 @@ sakura_core/  … upstream フォーク。エディタ本体（CEditWnd/CEditVie
 winport/      … Win32 互換層
   include/    … Windows.h 等のヘッダ（mingw-w64 ヘッダ + 上書き）
   src/        … kernel32 / user32 / gdi32 / imm32 … の実装（Objective-C++ 可）
-dialogs (mac) … ダイアログの mac ネイティブ実装（Week 6 以降、場所は着手時に決定）
 ```
 
 - 非 Windows ビルドでは `SAKURA_WINPORT` を定義する。

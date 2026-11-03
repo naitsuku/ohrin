@@ -14,7 +14,10 @@ wxWidgets 版（Phase 0〜15b）は、sakura_core のうち PAL と `basis/` の
 
 - `winport/`: エディタ本体が使う Win32 API（概算 280 種、sakura_core 全体で約 400 種）を
   AppKit / CoreText 上に実装する互換層
-- ダイアログ（51 個）は互換層で再現しない。mac ネイティブで必要なものから作り直す
+- ダイアログ（61 個）は互換層で動かす。当初は mac ネイティブで作り直す計画だったが、Week 6 の調査で
+  ほぼ 6 種類のコントロールで構成されていると分かり、ユーザー確認のうえ変更した。上流の CDlg*（約 3.2 万行）を
+  そのまま使えるので挙動差が出ない。コントロールは Win32 のウィンドウプロシージャとして実装する
+  （上流がサブクラス化するため、NSControl には置き換えない）。開く／保存／フォントは mac 標準パネル
 - プロセス: 1 プロセス複数ウィンドウを第一候補（`TSingleInstance<CEditWnd>` を
   互換層のメッセージ配送時にコンテキスト切替で扱う案）。不成立なら 1 プロセス 1 ウィンドウ
 - マクロ: キーマクロ（本体そのまま）+ JavaScriptCore に `CSMacroMgr::m_MacroFuncInfoArr`
@@ -69,7 +72,7 @@ macOS の wchar_t は 4 バイト。sakura_core は WCHAR を UTF-16 単位と�
 | 2 | kernel32 系（ファイル、文字コード変換、ini、共有メモリ、時刻）。文書／レイアウト系を取り込み上流 GoogleTest を通す | 1 プロセス複数ウィンドウの成立可否 |
 | 3–4 | user32 / gdi32 の中核（HWND⇔NSView、メッセージ、WM_PAINT、ExtTextOut→CoreText、キャレット、スクロール、マウス、タイマー） | 判断 2: 本物の CEditView で日本語ファイルを開いて編集できる |
 | 5 | IME（NSTextInputClient → WM_IME_* / Imm*）、Cmd→Ctrl 変換、MainMenu.ini → mac メニューバー | |
-| 6 | mac ネイティブダイアログ（検索・置換・Grep・ジャンプ・開く/保存・フォント）、クリップボード、ドロップ | |
+| 6 | Win32 ダイアログ機構とコントロール（検索・置換・Grep・ジャンプ）、開く/保存/フォントの mac パネル、クリップボード、ドロップ | |
 | 7 | キーマクロ、JS マクロ（JavaScriptCore） | |
 | 8 | タブ・複数ウィンドウ、.app / DMG、Windows 版との挙動比較、安定化 | |
 

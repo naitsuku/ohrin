@@ -1,5 +1,35 @@
 # 移植作業進捗ログ
 
+## 2026-11-04 — Week 6: ダイアログ・開く/保存/フォント・クリップボード・ドロップ
+
+- [x] **方針変更**（ユーザー確認済み）: ダイアログは作り直さず互換層で動かす。上流の 61 ダイアログがほぼ 6 種類の
+  コントロールでできていると分かったため。CLAUDE.md と mac_native_plan.md を更新
+- [x] **ダイアログ機構**（`winport/src/dialog.cpp`）: DialogBox / CreateDialog / DefDlgProc / IsDialogMessage
+  - rc2winport.py が RT_DIALOG を Windows と同じ形式で出力する（62 個）。CDlgFuncList はテンプレートを書き換えるので形式を合わせた
+  - rc.exe はスタイル指定があると COMBOBOX の既定 CBS_SIMPLE を使わない。OR すると CBS_DROPDOWNLIST になり入力欄が消える
+  - ダイアログ単位は 7x13。Hiragino は ＭＳ Ｐゴシックより幅が広いので 6 だと文字が切れた
+  - Tab / 矢印 / Enter / Esc / Option+ニーモニック、モーダル中の所有者の無効化、ダイアログを所有者の前に保つ処理
+- [x] **コントロール**（`winport/src/dialog_controls.cpp`）: BUTTON / STATIC / EDIT / LISTBOX / COMBOBOX / UpDown
+  - 上流がサブクラス化するので Win32 のウィンドウプロシージャとして実装。ドロップダウンの一覧だけ NSMenu
+- [x] **開く／保存**（`winport/src/commdlg.cpp`）: NSOpenPanel / NSSavePanel
+  - 上流のフックのテンプレートを非表示で動かし、コンボとチェックを補助ビューへ写す。OK で値を書き戻して CDN_FILEOK を送る
+  - sakura_core の変更: IFileDialog 版を使わない、上書き確認はパネルに任せる、複数選択の区切りを `/` に（いずれも `SAKURA_WINPORT`）
+- [x] **フォント**: NSFontPanel は補助ビューが表示されず changeFont: も届かなかったので、NSAlert にファミリー・サイズ・太字・斜体を載せた
+- [x] **クリップボード**: CloseClipboard で NSPasteboard へ書き、他のアプリのコピーは changeCount で検知して取り込む
+  - 自分のコピーは ClipData のままなので、サクラの独自形式が残る。開いたまま IsClipboardFormatAvailable を呼ぶと止まる不具合も修正
+- [x] **ドロップ**: NSDraggingDestination → WM_DROPFILES（本物の DROPFILES 形式）。DragAcceptFiles したウィンドウを優先
+- [x] **GetPrivateProfileIntW**: sakura.exe.ini のマルチユーザー設定の読み取り
+- [x] 確認（実機）
+  - 検索（ヒット箇所のハイライト）、見つからないときのメッセージ、すべて置換（2 箇所、保存内容も一致）
+  - ジャンプ（3 行 1 桁へ移動）、Grep（実ファイルを走査して結果ウインドウが開く）
+  - 開く（別ウインドウで開く）、名前を付けて保存（SJIS + CRLF を指定して `82a0...0d0a` を確認）
+  - フォント変更の反映、実際のドラッグでのドロップ、クリップボード（絵文字を含む往復）
+  - バージョン情報、ファイルのプロパティも追加作業なしで表示できた。検索を開いたままの Cmd+Q も終了する
+  - ctest 緑
+- 申し送り
+  - 未確認: ダイアログの入力欄での日本語入力、Grep ダイアログのフォルダー欄へのドロップ、複数ファイルの選択
+  - 未実装のコントロールと設定画面は I-114。Finder からファイルを開く処理は Week 8
+
 ## 2026-11-04 — Week 5: IME・メニューバー・コンテキストメニュー・Cmd+Q
 
 - [x] **IME**（`winport/src/imm32.cpp`、`cocoa_backend.mm` の WPView）: NSTextInputClient を実装

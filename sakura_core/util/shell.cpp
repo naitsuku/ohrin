@@ -70,7 +70,7 @@ BOOL SelectDir(
 
 	// 初期フォルダーを設定
 	cxx::com_pointer<IShellItem> psiFolder;
-	hres = SHCreateItemFromParsingName(initialDirectory.c_str(), nullptr, IID_PPV_ARGS(&psiFolder));
+	hres = SHCreateItemFromParsingName(initialDirectory.wstring().c_str(), nullptr, IID_PPV_ARGS(&psiFolder));
 	if ( SUCCEEDED(hres) ) {
 		pDialog->SetFolder(psiFolder);
 	}

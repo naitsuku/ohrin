@@ -450,7 +450,7 @@ void CSakuraEnvironment::ExpandParameter(const wchar_t* pszSource, wchar_t* pszB
 			//	サクラエディタのフルパス
 			{
 				auto exePath = GetExeFileName();
-				q = wcs_pushW( q, q_max - q, exePath.c_str() );
+				q = wcs_pushW( q, q_max - q, exePath.wstring().c_str() );
 				++p;
 			}
 			break;
@@ -458,7 +458,7 @@ void CSakuraEnvironment::ExpandParameter(const wchar_t* pszSource, wchar_t* pszB
 			//	iniファイルのフルパス
 			{
 				auto privateIniPath = GetIniFileName();
-				q = wcs_pushW( q, q_max - q, privateIniPath.c_str() );
+				q = wcs_pushW( q, q_max - q, privateIniPath.wstring().c_str() );
 				++p;
 			}
 			break;

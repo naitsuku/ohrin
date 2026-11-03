@@ -28,7 +28,7 @@ public:
 	[[nodiscard]] std::wstring GetDirPath() const
 	{
 		std::filesystem::path path{ *this };
-		return path.remove_filename();
+		return path.remove_filename().wstring();  // [winport] mac の path::string_type は char
 	}
 
 	//拡張子を取得する

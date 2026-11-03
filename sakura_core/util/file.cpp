@@ -36,7 +36,7 @@ bool fexist(LPCWSTR pszPath)
 bool fexist(const std::filesystem::path& path) noexcept
 {
 	std::error_code ec;
-	return std::filesystem::exists(path, ec) && 0 == _waccess_s(path.c_str(), 0);
+	return std::filesystem::exists(path, ec) && 0 == _waccess_s(path.wstring().c_str(), 0);
 }
 
 /*!
@@ -510,7 +510,7 @@ void GetExedir(
 
 	// exeフォルダーのフルパス、またはexe基準のファイルパスを取得
 	auto path = GetExeFileName().parent_path().concat(partialPath);
-	::wcsncpy_s(pDir, decltype(DLLSHAREDATA::m_szIniFile)::BUFFER_COUNT, path.c_str(), _TRUNCATE);
+	::wcsncpy_s(pDir, decltype(DLLSHAREDATA::m_szIniFile)::BUFFER_COUNT, path.wstring().c_str(), _TRUNCATE);
 }
 
 /*!
@@ -548,7 +548,7 @@ void GetInidir(
 
 	// 設定フォルダーのフルパス、またはini基準のファイルパスを取得
 	auto path = GetIniFileName().parent_path().concat(partialPath);
-	::wcsncpy_s(pDir, decltype(DLLSHAREDATA::m_szPrivateIniFile)::BUFFER_COUNT, path.c_str(), _TRUNCATE);
+	::wcsncpy_s(pDir, decltype(DLLSHAREDATA::m_szPrivateIniFile)::BUFFER_COUNT, path.wstring().c_str(), _TRUNCATE);
 }
 
 /*!
@@ -647,7 +647,7 @@ std::filesystem::path GetTempFilePath(
 	// Windows API関数を呼び出す。
 	// （オーバーフローしないので、エラーチェック省略）
 	constexpr uint16_t uUnique = 0;
-	::GetTempFileNameW(tempDir.c_str(), std::data(prefix), uUnique, std::data(buf));
+	::GetTempFileNameW(tempDir.wstring().c_str(), std::data(prefix), uUnique, std::data(buf));
 
 	return buf.c_str();
 }
@@ -664,7 +664,8 @@ bool IsValidPathAvailableChar(const std::filesystem::path& path) noexcept
 		return true;
 	}
 	constexpr auto& dos_device_path = LR"(\\?\)";
-	std::wstring_view pathStr{ path.native() };
+	const auto pathW = path.wstring();
+	std::wstring_view pathStr{ pathW };
 	size_t pos = 0;
 	if (pathStr.starts_with(dos_device_path)) {
 		pos = std::size(dos_device_path) - 1;
@@ -1017,12 +1018,12 @@ static void FileNameSepExt(const std::filesystem::path& path, std::wstring& outF
 {
 	if (path.has_filename()) {
 		if (path.has_extension()) {
-			outExt = path.extension();
-			outFile = path.filename();
+			outExt = path.extension().wstring();
+			outFile = path.filename().wstring();
 			outFile = outFile.substr(0, outFile.length() - outExt.length());
 		} else {
 			outExt.clear();
-			outFile = path.filename();
+			outFile = path.filename().wstring();
 		}
 	} else {
 		outFile.clear();

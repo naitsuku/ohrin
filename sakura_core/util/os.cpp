@@ -353,7 +353,7 @@ GlobalDropFiles MakeDropFiles(std::span<const std::filesystem::path> files)
 {
 	assert(!files.empty());
 
-	auto strFiles = std::accumulate(files.begin() + 1, files.end(), std::wstring(files.front()), [](const std::wstring& a, const std::filesystem::path& b) { return a + L'\0' + b.native(); }) + L'\0' + L'\0';
+	auto strFiles = std::accumulate(files.begin() + 1, files.end(), files.front().wstring(), [](const std::wstring& a, const std::filesystem::path& b) { return a + L'\0' + b.wstring(); }) + L'\0' + L'\0';
 
 	const size_t allocSize = sizeof(DROPFILES) + std::size(strFiles) * sizeof(WCHAR);
 	GlobalDropFiles drop(allocSize);

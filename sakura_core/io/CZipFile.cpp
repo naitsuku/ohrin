@@ -11,6 +11,16 @@
 #include "StdAfx.h"
 #include "io/CZipFile.h"
 
+#ifdef SAKURA_WINPORT
+// [winport] Shell.Application（COM）による ZIP 展開は mac で使えない。
+// TODO(winport): externals/miniz-cpp で置き換える（プラグイン ZIP インストール用）。
+CZipFile::CZipFile() = default;
+CZipFile::~CZipFile() = default;
+bool CZipFile::SetZip(const std::filesystem::path&) { return false; }
+bool CZipFile::ChkPluginDef(std::wstring_view, std::wstring&) { return false; }
+bool CZipFile::Unzip(const std::filesystem::path&) { return false; }
+#else
+
 // コンストラクタ
 CZipFile::CZipFile() {
 	if (const auto hr = m_pShellDispatch.CreateInstance(CLSID_Shell, nullptr, CLSCTX_INPROC_SERVER); FAILED(hr)) {
@@ -128,3 +138,4 @@ bool CZipFile::Unzip(const std::filesystem::path& outDir)
 	// 展開
 	return SUCCEEDED(pOutFolder->CopyHere(var, varOpt));
 }
+#endif  // SAKURA_WINPORT

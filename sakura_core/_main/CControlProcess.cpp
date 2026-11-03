@@ -45,8 +45,8 @@ std::filesystem::path CControlProcess::GetIniFileName() const
 	//		exeと同じフォルダーに置かれたマルチユーザー構成設定ファイル（sakura.exe.ini）の内容
 	//		に従ってマルチユーザー用のiniファイルパスを決める
 	auto exeIniPath = GetExeFileName().concat(L".ini");
-	if (bool isMultiUserSeggings = ::GetPrivateProfileInt(L"Settings", L"MultiUser", 0, exeIniPath.c_str()); isMultiUserSeggings) {
-		return GetPrivateIniFileName(exeIniPath, iniPath.filename());
+	if (bool isMultiUserSeggings = ::GetPrivateProfileInt(L"Settings", L"MultiUser", 0, exeIniPath.wstring().c_str()); isMultiUserSeggings) {
+		return GetPrivateIniFileName(exeIniPath.wstring(), iniPath.filename().wstring());
 	}
 
 	const auto filename = iniPath.filename();

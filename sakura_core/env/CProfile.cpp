@@ -85,7 +85,7 @@ bool CProfile::ReadProfile(
 		m_ProfilePath = optProfilePath.value();
 	}
 
-	CTextInputStream in(m_ProfilePath.c_str());
+	CTextInputStream in(m_ProfilePath.wstring().c_str());
 	if(!in){
 		return false;
 	}
@@ -223,7 +223,7 @@ bool CProfile::WriteProfile(
 	SFilePath szMirrorFile;
 	SFilePath szPath;
 	LPWSTR lpszName = nullptr;
-	if (const auto nLen = ::GetFullPathNameW(m_ProfilePath.c_str(), int(std::size(szPath)), szPath, &lpszName);
+	if (const auto nLen = ::GetFullPathNameW(m_ProfilePath.wstring().c_str(), int(std::size(szPath)), szPath, &lpszName);
 		nLen < std::size(szPath) &&
 		lpszName - szPath + 11 < std::ssize(szMirrorFile)	// path\preuuuu.TMP
 	)
@@ -236,13 +236,13 @@ bool CProfile::WriteProfile(
 		return false;
 
 	if( szMirrorFile[0] ){
-		if (!::ReplaceFile(m_ProfilePath.c_str(), szMirrorFile, nullptr, 0, nullptr, nullptr)) {
+		if (!::ReplaceFile(m_ProfilePath.wstring().c_str(), szMirrorFile, nullptr, 0, nullptr, nullptr)) {
 			if (fexist(m_ProfilePath.c_str())) {
-				if (!::DeleteFile(m_ProfilePath.c_str())) {
+				if (!::DeleteFile(m_ProfilePath.wstring().c_str())) {
 					return false;
 				}
 			}
-			if (!::MoveFile(szMirrorFile, m_ProfilePath.c_str())) {
+			if (!::MoveFile(szMirrorFile, m_ProfilePath.wstring().c_str())) {
 				return false;
 			}
 		}
@@ -264,7 +264,7 @@ bool CProfile::_WriteFile(
 	std::span<const std::wstring>	lines			//!< [out] 文字列格納先
 )
 {
-	CTextOutputStream out(path.c_str());
+	CTextOutputStream out(path.wstring().c_str());
 	if(!out){
 		return false;
 	}

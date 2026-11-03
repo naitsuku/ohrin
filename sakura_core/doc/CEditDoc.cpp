@@ -1038,7 +1038,7 @@ HRESULT MakeDataObject(_Outptr_ LPDATAOBJECT *ppDataObject, const std::filesyste
 	cxx::com_pointer<IShellFolder> pDesktop;
 	if (const auto hr = ::SHGetDesktopFolder(&pDesktop); FAILED(hr)) return hr;
 
-	std::wstring directory{ path.parent_path() };
+	std::wstring directory{ path.parent_path().wstring() };
 
 	const auto unusedArg1 = nullptr;
 
@@ -1050,7 +1050,7 @@ HRESULT MakeDataObject(_Outptr_ LPDATAOBJECT *ppDataObject, const std::filesyste
 	if (const auto hr = pDesktop->BindToObject(PathID, nullptr, IID_PPV_ARGS(&pFolder)); FAILED(hr)) return hr;
 	::CoTaskMemFree(PathID);
 
-	std::wstring title = path.filename();
+	std::wstring title = path.filename().wstring();
 	LPITEMIDLIST ItemID = nullptr;
 	if (const auto hr = pFolder->ParseDisplayName(nullptr, nullptr, std::data(title), unusedArg1, &ItemID, &Attribs); FAILED(hr)) return hr;
 
@@ -1088,7 +1088,7 @@ HRESULT CEditDoc::GetDataObject(LPDATAOBJECT *ppDataObject) const
 	if (const auto hr = cxx::MakeDataObject(ppDataObject, path); FAILED(hr)) return hr;
 
 	// UNICODETEXT 形式のデータを作って追加する
-	cxx::GlobalWString hGlobal{ path.native() };
+	cxx::GlobalWString hGlobal{ path.wstring() };
 
 	FORMATETC format{};
 	format.cfFormat = CF_UNICODETEXT;

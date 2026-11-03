@@ -110,7 +110,7 @@ std::filesystem::path GetProfileDirectory(std::wstring_view name)
  */
 [[nodiscard]] std::wstring GetProfileMgrFileName(std::wstring_view name)
 {
-	return GetProfileDirectory(name);
+	return GetProfileDirectory(name).wstring();
 }
 
 /*! ダイアログデータの設定 */
@@ -477,7 +477,7 @@ static bool IOProfSettings( SProfileSettings& settings, bool bWrite )
 	}else{
 		cProf.SetReadingMode();
 	}
-	std::wstring strIniName = GetProfileMgrFileName();
+	std::wstring strIniName = GetProfileMgrFileName().wstring();
 	if( !bWrite ){
 		if( !cProf.ReadProfile( strIniName.c_str() ) ){
 			return false;

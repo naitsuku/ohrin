@@ -39,7 +39,11 @@ public:
 	struct SSelLangInfo {
 		using Me = SSelLangInfo;
 
+#ifdef SAKURA_WINPORT
+		std::wstring	m_Path;				//!< [winport] mac の path::c_str() は char* のため wstring で保持
+#else
 		std::filesystem::path	m_Path;				//!< メッセージリソースDLLのファイル名
+#endif
 		ResourceDllHolder		m_Module = nullptr;	//!< 読み込んだリソースのインスタンスハンドル
 		WORD					m_LangId = 0;		//!< 言語ID
 		std::wstring			m_LangName;			//!< 言語名

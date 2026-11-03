@@ -19,7 +19,7 @@
 
 //! メッセージリソース用コンストラクタ
 CSelectLang::SSelLangInfo::SSelLangInfo(const std::filesystem::path& path)
-	: m_Path(path)
+	: m_Path(path.wstring())
 {
 }
 
@@ -130,7 +130,7 @@ void CSelectLang::SSelLangInfo::Unload() noexcept
 
 	// 言語DLLの検索を開始する
 	WIN32_FIND_DATA w32fd{};
-	HANDLE hFindFile = ::FindFirstFileW(searchPattern.c_str(), &w32fd);
+	HANDLE hFindFile = ::FindFirstFileW(searchPattern.wstring().c_str(), &w32fd);
 
 	// 検索を開始できなかった場合
 	if (INVALID_HANDLE_VALUE == hFindFile) {

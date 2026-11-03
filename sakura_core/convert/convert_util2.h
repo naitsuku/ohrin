@@ -79,7 +79,7 @@ size_t _DecodeQP( const CHAR_TYPE* pS, size_t nLen, char* pDst )
 
 	while( pr < pS + nLen ){
 		/* =XX の形式でない部分をデコード */
-		if constexpr ( sizeof(CHAR_TYPE) == 2 ){
+		if constexpr ( sizeof(CHAR_TYPE) == sizeof(wchar_t) ){
 			if( *pr != L'=' ){
 				*pw = static_cast<char>( *pr );
 				pw += 1;
@@ -203,7 +203,7 @@ int _DecodeBase64( const CHAR_TYPE *pSrc, size_t nSrcLen, char *pDest )
 		int i = 0;
 		bool bret;
 		for( ; i < nsrclen; i++ ){
-			if constexpr ( sizeof(CHAR_TYPE) == 2 ){
+			if constexpr ( sizeof(CHAR_TYPE) == sizeof(wchar_t) ){
 				bret = ( pSrc[nsrclen-1-i] == L'=' );
 			}else{
 				bret = ( pSrc[nsrclen-1-i] == '=' );
@@ -397,7 +397,7 @@ bool CheckUUHeader( const CHAR_TYPE *pSrc, const int nLen, WCHAR *pszFilename )
 	// 先頭の空白・改行文字をスキップ
 	for( nstartidx = 0; nstartidx < nLen; ++nstartidx ){
 		CHAR_TYPE c = pSrc[nstartidx];
-		if constexpr ( sizeof(CHAR_TYPE) == 2 ){
+		if constexpr ( sizeof(CHAR_TYPE) == sizeof(wchar_t) ){
 			if( c != L'\r' && c != L'\n' && c != L' ' && c != L'\t' ){
 				break;
 			}
@@ -421,7 +421,7 @@ bool CheckUUHeader( const CHAR_TYPE *pSrc, const int nLen, WCHAR *pszFilename )
 		// error.
 		return false;
 	}
-	if constexpr ( sizeof(CHAR_TYPE) == 2 ){
+	if constexpr ( sizeof(CHAR_TYPE) == sizeof(wchar_t) ){
 		if( wcsncmp_literal(pwstart, L"begin") != 0 ){
 			// error.
 			return false;
@@ -441,7 +441,7 @@ bool CheckUUHeader( const CHAR_TYPE *pSrc, const int nLen, WCHAR *pszFilename )
 		return false;
 	}
 	for( int i = 0; i < nwlen; i++ ){
-		if constexpr ( sizeof(CHAR_TYPE) == 2 ){
+		if constexpr ( sizeof(CHAR_TYPE) == sizeof(wchar_t) ){
 			// WCHAR の場合の処理
 			if( !iswdigit(pwstart[i]) || (pwstart[i] == L'8' || pwstart[i] == L'9') ){
 				// error.
@@ -462,7 +462,7 @@ bool CheckUUHeader( const CHAR_TYPE *pSrc, const int nLen, WCHAR *pszFilename )
 	// 末尾の空白・改行文字をスキップ
 	for( ; nwlen > 0; --nwlen ){
 		CHAR_TYPE c = pwstart[nwlen-1];
-		if constexpr ( sizeof(CHAR_TYPE) == 2 ){
+		if constexpr ( sizeof(CHAR_TYPE) == sizeof(wchar_t) ){
 			if( !WCODE::IsLineDelimiterBasic(c) && c != L' ' && c != L'\t' ){
 				break;
 			}
@@ -503,7 +503,7 @@ bool CheckUUFooter( const CHAR_TYPE *pS, const int nLen )
 	// 先頭の改行・空白文字をスキップ
 	for( nstartidx = 0; nstartidx < nLen; ++nstartidx ){
 		CHAR_TYPE c = pS[nstartidx];
-		if constexpr ( sizeof(CHAR_TYPE) == 2 ){
+		if constexpr ( sizeof(CHAR_TYPE) == sizeof(wchar_t) ){
 			// WCHAR の場合の処理
 			if( c != L'\r' && c != L'\n' && c != L' ' && c != L'\t' ){
 				break;
@@ -523,7 +523,7 @@ bool CheckUUFooter( const CHAR_TYPE *pS, const int nLen )
 	if( nsrclen < 3 ){
 		return false;
 	}
-	if constexpr ( sizeof(CHAR_TYPE) == 2 ){
+	if constexpr ( sizeof(CHAR_TYPE) == sizeof(wchar_t) ){
 		if( wcsncmp_literal(&pS[nstartidx], L"end") != 0 ){
 			// error.
 			return false;
@@ -539,7 +539,7 @@ bool CheckUUFooter( const CHAR_TYPE *pS, const int nLen )
 	// end の後が空白文字ばかりであることを確認
 	for( ; i < nsrclen; ++i ){
 		CHAR_TYPE c = psrc[i];
-		if constexpr ( sizeof(CHAR_TYPE) == 2 ){
+		if constexpr ( sizeof(CHAR_TYPE) == sizeof(wchar_t) ){
 			// WCHAR の場合の処理
 			if( !WCODE::IsLineDelimiterBasic(c) && c != L' ' && c != L'\t' ){
 				return false;
@@ -595,7 +595,7 @@ int _DecodeMimeHeader( const CHAR_TYPE* pSrc, size_t nSrcLen, CMemory* pcMem_alt
 
 	if( pSrc+14 < pSrc+nSrcLen ){
 		// JIS の場合
-		if constexpr ( sizeof(CHAR_TYPE) == 2 ){
+		if constexpr ( sizeof(CHAR_TYPE) == sizeof(wchar_t) ){
 			ncmpresult = wcsnicmp_literal( &pSrc[0], L"=?ISO-2022-JP?" );
 		}else{
 			ncmpresult = strnicmp_literal( &pSrc[0], "=?ISO-2022-JP?" );
@@ -608,7 +608,7 @@ int _DecodeMimeHeader( const CHAR_TYPE* pSrc, size_t nSrcLen, CMemory* pcMem_alt
 	}
 	if( pSrc+8 < pSrc+nSrcLen ){
 		// UTF-8 の場合
-		if constexpr ( sizeof(CHAR_TYPE) == 2 ){
+		if constexpr ( sizeof(CHAR_TYPE) == sizeof(wchar_t) ){
 			ncmpresult = wcsnicmp_literal( &pSrc[0], L"=?UTF-8?" );
 		}else{
 			ncmpresult = strnicmp_literal( &pSrc[0], "=?UTF-8?" );
@@ -642,7 +642,7 @@ finish_first_detect:;
 		pcMem_alt->SetRawData( "", 0 );
 		return 0;
 	}
-	if constexpr ( sizeof(CHAR_TYPE) == 2 ){
+	if constexpr ( sizeof(CHAR_TYPE) == sizeof(wchar_t) ){
 		ncmpresult1 = wcsnicmp_literal( &pSrc[nLen_part1], L"B?" );
 		ncmpresult2 = wcsnicmp_literal( &pSrc[nLen_part1], L"Q?" );
 	}else{
@@ -666,7 +666,7 @@ finish_first_detect:;
 	pr_base = pSrc + nLen_part1 + nLen_part2;
 	pr = pSrc + nLen_part1 + nLen_part2;
 	for( ; pr < pSrc+nSrcLen-1; ++pr ){
-		if constexpr ( sizeof(CHAR_TYPE) == 2 ){
+		if constexpr ( sizeof(CHAR_TYPE) == sizeof(wchar_t) ){
 			ncmpresult = wcsncmp_literal( pr, L"?=" );
 		}else{
 			ncmpresult = strncmp_literal( pr, "?=" );

@@ -59,3 +59,6 @@ Python マクロ、見た目合わせ。対象外: PPA マクロ、VBScript マ�
 - Week 1（2026-11-04）: 判断 1 通過。sakura_core 全 375 ファイルが winport ヘッダで
   コンパイルでき、リンク未解決は Win32 / CRT の 528 シンボルのみ。
   詳細は progress.md と `winport_api_inventory.md`。上流テスト実行は Week 2 冒頭に繰り越し。
+- Week 2（2026-11-04）: CMake 化、CRT・printf・コードページ・kernel32・リソースを実装。
+  上流 GoogleTest 757 件中 707 件が mac でパス。残りは非 BMP リテラル・GDI 未実装・ACP 差で原因判明。
+  ACP は UTF-8 に決定。

@@ -1,5 +1,66 @@
 # 移植作業進捗ログ
 
+## 2026-11-04 — Week 2: winport 基盤 + 上流テストが mac で動作
+
+**上流 GoogleTest（src/test/cpp/tests1）: 757 件中 707 件パス**（1 件は既知の非対応として除外）。
+残り 50 件はすべて原因分類済み（下記）。
+
+- [x] **CMake 化**
+  - macOS は既定で `winport`（互換層）/ `sakura_core_mac`（上流 sakura_core + src/main/cpp の全 375 ファイル）/
+    `sakura_mac_tests` をビルド。凍結した wx 版は `-DSAKURA_BUILD_WX=ON` のときのみ
+  - `sakura_core_mac` は StdAfx.h をプリコンパイルヘッダにして約 16 秒でフルビルド
+  - CI（macOS ジョブ）を mingw-w64 ヘッダ利用に変更
+- [x] **未実装 API の自動スタブ**（`tools/porting/gen_winport_stubs.py` → `winport/src/generated_stubs.cpp`）
+  - 440 個の弱シンボル。呼ばれると `winport: unimplemented dll!Name` を 1 回だけ出す
+  - HRESULT を返す関数は mingw ヘッダの宣言から判別して `E_NOTIMPL` を返す
+    （0 = S_OK を返すと成功扱いになり、上流が null ポインタを使ってクラッシュした）
+  - winport は WHOLE_ARCHIVE でリンクし、実装（強シンボル）が必ずスタブに勝つようにした
+- [x] **CRT**（`crt.cpp`）: セキュア CRT、ワイドパスのファイル関数、_wsplitpath_s、JIS⇔SJIS 等
+- [x] **printf**（`printf.cpp`）: **自前の書式化エンジン**。macOS の vswprintf は C ロケールで
+  日本語を含む書式に失敗し、UTF-16 単位も通らないため。MSVC の %s/%S/%hs/%ls/I64 等に対応
+- [x] **コードページ**（`codepage.cpp`）
+  - CP932 は CoreFoundation から変換表を作成。逆変換の重複定義は Windows と同じ優先順位
+    （JIS X 0208 → NEC 特殊 → IBM 拡張 → NEC 選定 IBM 拡張）。sakura の往復チェックが一致する
+  - **CP_ACP = UTF-8（65001）**: clang は narrow リテラルを UTF-8 で埋め込むので
+    「narrow リテラル = ACP」が保たれる。SJIS が必要な箇所は上流が CP 932 を明示している
+  - cp1252 の未定義 5 バイトも Windows と同じく同値の制御文字に写す
+- [x] **リソース**（`tools/porting/rc2winport.py`、`resource.cpp`）: sakura_rc.rc の STRINGTABLE
+  1,353 件を Windows と同じ RT_STRING 形式に変換。FindResource/LoadResource/LockResource/LoadStringW
+- [x] **kernel32**（`kernel32.cpp` / `kernel32_file.cpp` / `kernel32_object.cpp`）
+  - エラーコード、モジュール・カレントディレクトリ、UI 言語・ロケール、仮想メモリ（予約・コミット・保護）
+  - ハンドル表（参照カウント）、ファイル I/O、属性、列挙（FindFirstFile）、パス、一時ファイル、時刻
+  - イベント・ミューテックス（プロセス内）、WaitForSingleObject、Global/Local/Heap、lstr*、FormatMessage
+  - 上流のグローバル初期化中にも呼ばれるため、内部状態は関数内 static で遅延構築
+- [x] **sakura_core の UTF-16 境界修正**
+  - 文字コード変換器が `unsigned short*` 経由で wchar_t バッファに書いていた（14 ファイル）→ `wchar_t*`
+  - CUnicode（UTF-16LE/BE ⇔ CNativeW）、CESI（UTF-16 判定）、UTF-7、CFileLoad の改行長、CUtf8::UnicodeToHex
+
+### 残り 50 件の内訳（すべて原因判明）
+
+| 原因 | 件数 | 対応 |
+|---|---:|---|
+| テストの非 BMP ワイドリテラル（`L"\U0001F6B9"` が mac では 1 要素） | 約 38 | テスト側の前提。sakura_core 本体には該当リテラルなし（確認済み） |
+| GDI 未実装（CharWidthCache / CTextMetrics） | 9 | Week 3（CoreText） |
+| ACP = CP932 前提のテスト（to_achar 等） | 3 | ACP=UTF-8 方針による差。仕様として許容 |
+
+除外中のテストファイル（コンパイル不可）: test-statictype / test-file / test-csakuraenvironment
+（path を wstring 扱い）、test-csharedata（std::jthread）、test-cerrorinfo（COM）。
+実行除外: CSelectLang.test002（言語 DLL）。
+
+### 1 プロセス複数ウィンドウの見通し（判断は Week 3）
+
+ウィンドウ単位の状態を持つシングルトンは CEditApp / CEditWnd / CAppMode / CColorStrategyPool /
+CFigureManager / CModifyManager / CDiffManager の 7 つ程度。ファイルスコープの static 変数 44 個は要監査。
+「メッセージ配送時に現在のウィンドウ文脈へ切り替える」方式が有力。1 プロセス 1 ウィンドウは
+mac では Dock アイコンが並ぶため避けたい。Week 3 でウィンドウ層を作る際に試作して決める。
+
+### Week 3 への申し送り
+
+1. user32 のウィンドウ・メッセージ核（HWND ⇔ NSView、メッセージループ、タイマー、キャレット）
+2. gdi32 の文字描画（CoreText）→ CharWidthCache / CTextMetrics のテストを通す
+3. アプリ本体ターゲット（.app）を sakura_mac に追加し、上流 WinMain から起動
+4. 1 プロセス複数ウィンドウの文脈切替の試作
+
 ## 2026-11-04 — 方針転換 + Week 1（判断 1）
 
 方針を wxWidgets 版から「sakura_core フォーク + Win32 互換層 `winport/`」へ転換

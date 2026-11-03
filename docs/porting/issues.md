@@ -130,15 +130,17 @@ MSVC では wide 版の `%s` はワイド文字列だが、macOS libc では cha
 **対処方針**: winport CRT に MSVC 書式解釈の実装を置き、`swprintf` / `vswprintf` /
 `_swprintf` 等をマクロで差し替える。
 
-**ステータス**: Week 2 で対応
+**ステータス**: ✅ Week 2 で対応（printf.cpp の自前書式化エンジン。標準名の swprintf / vswprintf も
+winport_crt.h のマクロで差し替え）
 
 ### I-103: `-fexec-charset=cp932` 前提の narrow 文字列リテラル
 
 **症状**: 上流 MinGW ビルドは narrow リテラルを Shift_JIS で埋め込む。clang は UTF-8 のみ。
 `CPropComFormat.cpp` の日付書式など、非 ASCII の narrow リテラルが少数ある。
-**対処方針**: 実害のある箇所を洗い出し、L"" 化するか UTF-8 前提に直す。
+**対処方針**: CP_ACP を UTF-8 にしたことで「narrow リテラル = ACP」の関係は保たれる（Week 2）。
+SJIS を前提にバイト数を数えている箇所が残っていないかは引き続き確認する。
 
-**ステータス**: 未着手（優先度低）
+**ステータス**: 方針決定済み（個別確認は継続）
 
 ### I-104: リソース（sakura_rc.rc）の扱い
 
@@ -158,3 +160,20 @@ winport の Load* / FindResource がそれを引く。ダイアログテンプ�
 優先して winport のウィンドウクラスとして実装。ダイアログ内のものは mac 版ダイアログで置換。
 
 **ステータス**: Week 3 以降
+
+### I-106: 非 BMP 文字のワイド文字列リテラル
+
+**症状**: mac の clang は `L"\U0001F6B9"` を 1 要素（UTF-32）で埋め込む。Windows はサロゲートペア 2 要素。
+**影響**: 上流テストのうち約 38 件がこの差で失敗する。sakura_core 本体には該当リテラルはない（Week 2 確認）。
+**対処方針**: 本体側で非 BMP リテラルを使わない（必要なら `\xD83D\xDEB9` のようにサロゲートで書く）。
+
+**ステータス**: 記録のみ
+
+### I-107: 自動スタブの戻り値
+
+**症状**: 未実装 API の自動スタブが 0 を返すと、HRESULT 関数では S_OK（成功）になり、上流が
+出力ポインタ（null）を使ってクラッシュした（ResolveShortcutLink の CoCreateInstance）。
+**対処**: gen_winport_stubs.py が mingw ヘッダから HRESULT 関数を判別し E_NOTIMPL を返す。
+BOOL / ハンドルを返す関数は 0 = 失敗なので問題ない。
+
+**ステータス**: ✅ 対応済み

@@ -21,6 +21,8 @@ using namespace winport;
 
 namespace {
 
+std::string ToNativeFilePath(LPCWSTR p) { return ToNativePath(p); }
+
 // ---- メニュー ----
 struct MenuItem {
 	UINT type = MFT_STRING;
@@ -427,12 +429,27 @@ HICON WINAPI LoadIconW(HINSTANCE, LPCWSTR lpIconName) { return reinterpret_cast<
 WINBOOL WINAPI DestroyIcon(HICON) { return TRUE; }
 WINBOOL WINAPI DestroyCursor(HCURSOR) { return TRUE; }
 
-HANDLE WINAPI LoadImageW(HINSTANCE, LPCWSTR name, UINT type, int, int, UINT)
+HBITMAP WINAPI LoadBitmapW(HINSTANCE hInstance, LPCWSTR lpBitmapName)
+{
+	HRSRC res = FindResourceW(hInstance, lpBitmapName, RT_BITMAP);
+	if (!res) return nullptr;
+	return gdi::CreateBitmapFromDib(static_cast<const unsigned char*>(LockResource(LoadResource(hInstance, res))), SizeofResource(hInstance, res));
+}
+
+HANDLE WINAPI LoadImageW(HINSTANCE hInst, LPCWSTR name, UINT type, int, int, UINT fuLoad)
 {
 	if (type == IMAGE_CURSOR || type == IMAGE_ICON) return const_cast<LPWSTR>(name);
-	// TODO(winport): IMAGE_BITMAP（ツールバーのアイコン等）。リソース変換に BITMAP を足してから
-	ReportUnimplemented("user32", "LoadImageW(IMAGE_BITMAP)");
-	return nullptr;
+	if (fuLoad & LR_LOADFROMFILE) {
+		FILE* fp = std::fopen(ToNativeFilePath(name).c_str(), "rb");
+		if (!fp) return nullptr;
+		std::vector<unsigned char> data;
+		unsigned char buf[8192];
+		for (size_t n; (n = std::fread(buf, 1, sizeof(buf), fp)) > 0;) data.insert(data.end(), buf, buf + n);
+		std::fclose(fp);
+		if (data.size() < 14 || data[0] != 'B' || data[1] != 'M') return nullptr;
+		return gdi::CreateBitmapFromDib(data.data() + 14, data.size() - 14);
+	}
+	return LoadBitmapW(hInst, name);
 }
 
 HCURSOR WINAPI SetCursor(HCURSOR hCursor)
@@ -461,7 +478,7 @@ WINBOOL WINAPI ClipCursor(const RECT*) { return TRUE; }
 int WINAPI SetScrollInfo(HWND hwnd, int nBar, LPCSCROLLINFO lpsi, WINBOOL)
 {
 	auto w = GetWindowObject(hwnd);
-	if (!w || (nBar != SB_HORZ && nBar != SB_VERT)) return 0;
+	if (!w || (nBar != SB_HORZ && nBar != SB_VERT && nBar != SB_CTL)) return 0;
 	bool visibilityChanged = false;
 	int pos;
 	{
@@ -474,6 +491,11 @@ int WINAPI SetScrollInfo(HWND hwnd, int nBar, LPCSCROLLINFO lpsi, WINBOOL)
 		const int maxPos = std::max(si.nMin, si.nMax - std::max<int>(static_cast<int>(si.nPage) - 1, 0));
 		si.nPos = std::clamp(si.nPos, si.nMin, maxPos);
 		pos = si.nPos;
+		if (nBar == SB_CTL) {
+			// SCROLLBAR コントロール自身の状態（controls.cpp が描く）
+			AddUpdateRect(w, nullptr, false);
+			return pos;
+		}
 		const DWORD styleBit = nBar == SB_VERT ? WS_VSCROLL : WS_HSCROLL;
 		const bool needed = (si.nMax > si.nMin) && (si.nPage == 0 || static_cast<int>(si.nPage) <= si.nMax - si.nMin);
 		const bool show = (w->style & styleBit) && (needed || (lpsi->fMask & SIF_DISABLENOSCROLL));
@@ -487,7 +509,7 @@ int WINAPI SetScrollInfo(HWND hwnd, int nBar, LPCSCROLLINFO lpsi, WINBOOL)
 WINBOOL WINAPI GetScrollInfo(HWND hwnd, int nBar, LPSCROLLINFO lpsi)
 {
 	auto w = GetWindowObject(hwnd);
-	if (!w || (nBar != SB_HORZ && nBar != SB_VERT)) return FALSE;
+	if (!w || (nBar != SB_HORZ && nBar != SB_VERT && nBar != SB_CTL)) return FALSE;
 	std::lock_guard lock(UserMutex());
 	const auto& si = w->scroll[nBar];
 	if (lpsi->fMask & SIF_RANGE) { lpsi->nMin = si.nMin; lpsi->nMax = si.nMax; }

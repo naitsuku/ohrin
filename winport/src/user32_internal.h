@@ -95,8 +95,10 @@ struct Window {
 	std::vector<Subclass> subclasses;  //!< comctl32 SetWindowSubclass（末尾が最後に追加したもの）
 
 	// スクロールバー（WS_VSCROLL / WS_HSCROLL）
-	SCROLLINFO scroll[2]{};       //!< [SB_HORZ, SB_VERT]
+	SCROLLINFO scroll[3]{};       //!< [SB_HORZ, SB_VERT, SB_CTL]
 	bool scrollVisible[2]{};
+
+	void* control = nullptr;      //!< 組み込みコントロールの状態（controls.cpp）
 
 	// 再描画
 	bool updatePending = false;

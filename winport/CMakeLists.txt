@@ -37,6 +37,7 @@ add_library(winport STATIC
     src/bridge.cpp
     src/cocoa_backend.mm
     src/codepage.cpp
+    src/controls.cpp
     src/crt.cpp
     src/gdi.cpp
     src/gdi_text.cpp

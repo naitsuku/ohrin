@@ -18,6 +18,7 @@
 namespace winport {
 
 LRESULT CallCbtHooks(int code, WPARAM wParam, LPARAM lParam);  // user32_misc.cpp
+WNDPROC BuiltinControlProc(const wchar_t* className);          // controls.cpp
 
 namespace {
 
@@ -72,7 +73,7 @@ void EnsureSystemClasses()
 	for (auto n : kNames) {
 		auto c = std::make_unique<WindowClass>();
 		c->name = n;
-		c->proc = DefWindowProcW;
+		c->proc = BuiltinControlProc(n);
 		c->system = true;
 		c->atom = g_nextAtom++;
 		c->background = reinterpret_cast<HBRUSH>(COLOR_BTNFACE + 1);

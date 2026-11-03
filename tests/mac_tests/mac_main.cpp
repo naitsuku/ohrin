@@ -15,12 +15,7 @@ constexpr const char* kKnownUnsupported[] = {
 	// 言語 DLL（sakura_lang_en_US.dll）のリソース切替が未実装
 	"CSelectLang.test002",
 
-	// GDI（文字幅・フォントメトリクス）未実装 — Week 3 の CoreText 実装で外す
-	// （GetTextMetricsW のスタブが構造体を埋めないため結果が不定。スイートごと除外）
-	"CTextMetricsWithGDI.*",
-	"CharWidthCache.CalcHankakuByFont",
-	"CharWidthCache.CalcPxWidthByFont",
-	"CharWidthCache.CalcPxWidthByFont2",
+	// Windows の MS ゴシックの画素幅（半角 6px / 全角 11px）を決め打ちしている
 	"CharWidthCache.CalcPxWidthByFont3",
 
 	// テストの非 BMP ワイドリテラル（L"\U0001F6B9" 等）が mac では UTF-32 の 1 要素になる（issues.md I-106）

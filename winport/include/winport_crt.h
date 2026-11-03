@@ -26,6 +26,9 @@
 #ifndef __iscsym
 #define __iscsym(c) (isalnum((unsigned char)(c)) || (c) == '_')
 #endif
+#ifndef _HEAP_MAXREQ
+#define _HEAP_MAXREQ 0xFFFFFFFFFFFFFFE0  /* <malloc.h>: 1 回の確保の上限 */
+#endif
 #ifndef _MAX_PATH
 #define _MAX_PATH   260
 #define _MAX_DRIVE  3
@@ -81,6 +84,8 @@ int _vsnprintf_s(char* buf, size_t n, size_t count, const char* fmt, va_list ap)
 int vsprintf_s(char* buf, size_t n, const char* fmt, va_list ap);
 int _vscprintf(const char* fmt, va_list ap);
 int swscanf_s(const wchar_t* buf, const wchar_t* fmt, ...);
+int winport_swprintf_ms(wchar_t* buf, size_t n, const wchar_t* fmt, ...);
+int winport_vswprintf_ms(wchar_t* buf, size_t n, const wchar_t* fmt, va_list ap);
 
 /* ---- 数値変換 ---- */
 int _wtoi(const wchar_t* s);
@@ -147,3 +152,8 @@ inline errno_t _wsplitpath_s(const wchar_t* p, wchar_t (&d)[Nd], wchar_t (&dir)[
 	return _wsplitpath_s(p, d, Nd, dir, Ndir, f, Nf, e, Ne);
 }
 #endif
+
+/* 標準名の swprintf / vswprintf を MSVC 書式（%s = ワイド）の実装へ差し替える。
+   標準ヘッダは winport_prelude.h で先に読み込み済みなので、ここ以降のコードにだけ効く。 */
+#define swprintf winport_swprintf_ms
+#define vswprintf winport_vswprintf_ms

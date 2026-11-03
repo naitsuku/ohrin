@@ -31,6 +31,7 @@ constexpr uintptr_t IDC_ARROW = 32512, IDC_IBEAM = 32513, IDC_WAIT = 32514, IDC_
 constexpr int kScrollBarWidth = 15;
 
 bool g_available = false;
+bool g_quitting = false;
 double g_scale = 2.0;
 BRect g_screen{0, 0, 1440, 900};
 BRect g_work{0, 25, 1440, 900};
@@ -239,7 +240,11 @@ void OnMain(dispatch_block_t block) { dispatch_async(dispatch_get_main_queue(), 
 
 - (void)windowDidResize:(NSNotification*)n { [self reportFrame]; }
 - (void)windowDidMove:(NSNotification*)n { [self reportFrame]; }
-- (void)windowDidBecomeKey:(NSNotification*)n { bridge::Activated(self.hwnd, true); }
+- (void)windowDidBecomeKey:(NSNotification*)n
+{
+	bridge::Activated(self.hwnd, true);
+	winport::backend::MenuBarChanged(self.hwnd);
+}
 - (void)windowDidResignKey:(NSNotification*)n { bridge::Activated(self.hwnd, false); }
 
 @end
@@ -522,11 +527,144 @@ void OnMain(dispatch_block_t block) { dispatch_async(dispatch_get_main_queue(), 
 @end
 
 // ---------------------------------------------------------------------------------------------
+// メニュー: HMENU の内容を読んで NSMenu を組み立てる
+@interface WPMenu : NSMenu <NSMenuDelegate>
+@property(nonatomic) void* hwnd;     //!< WM_COMMAND の送り先（ポップアップでは nullptr）
+@property(nonatomic) void* hmenu;
+@property(nonatomic) int position;   //!< メニューバー上の位置（-1 ならサブメニュー）
+@end
+
+@interface WPMenuTarget : NSObject
+@property(nonatomic) void* hwnd;
+@property(nonatomic) int selected;
+- (void)itemChosen:(NSMenuItem*)item;
+@end
+
+@implementation WPMenuTarget
+- (void)itemChosen:(NSMenuItem*)item
+{
+	self.selected = static_cast<int>(item.tag);
+	if (self.hwnd) bridge::PostMenuCommand(self.hwnd, static_cast<unsigned>(item.tag));
+}
+@end
+
+namespace {
+
+WPMenuTarget* g_menuBarTarget = nil;
+
+//! "開く(&O)..." → "開く..."。& はニーモニック（&& は & 1 文字）
+NSString* MenuTitle(std::u16string text)
+{
+	const size_t paren = text.find(u"(&");
+	if (paren != std::u16string::npos && paren + 3 < text.size() && text[paren + 3] == u')') text.erase(paren, 4);
+	std::u16string out;
+	for (size_t i = 0; i < text.size(); ++i) {
+		if (text[i] == u'&') {
+			if (i + 1 < text.size() && text[i + 1] == u'&') { out += u'&'; ++i; }
+			continue;
+		}
+		out += text[i];
+	}
+	return [NSString stringWithCharacters:reinterpret_cast<const unichar*>(out.data()) length:out.size()];
+}
+
+//! "Ctrl+Shift+S" のようなショートカット表記を mac の表示にする（Ctrl は Cmd に読み替える）。
+//! キー入力は WPWindow.sendEvent が先に受けるので、ここで設定した値は表示にだけ使われる
+void ApplyShortcut(NSMenuItem* item, NSString* keys)
+{
+	NSEventModifierFlags mods = 0;
+	NSArray<NSString*>* parts = [keys componentsSeparatedByString:@"+"];
+	for (NSUInteger i = 0; i + 1 < parts.count; ++i) {
+		if ([parts[i] isEqualToString:@"Ctrl"]) mods |= NSEventModifierFlagCommand;
+		else if ([parts[i] isEqualToString:@"Shift"]) mods |= NSEventModifierFlagShift;
+		else if ([parts[i] isEqualToString:@"Alt"]) mods |= NSEventModifierFlagOption;
+		else return;
+	}
+	NSString* key = parts.lastObject;
+	NSString* equivalent = nil;
+	if (key.length == 1) equivalent = key.lowercaseString;
+	else if ([key hasPrefix:@"F"] && key.length <= 3 && key.integerValue == 0) {
+		const int n = [key substringFromIndex:1].intValue;
+		if (n >= 1 && n <= 12) { const unichar c = static_cast<unichar>(NSF1FunctionKey + n - 1); equivalent = [NSString stringWithCharacters:&c length:1]; }
+	}
+	if (!equivalent) return;
+	item.keyEquivalent = equivalent;
+	item.keyEquivalentModifierMask = mods;
+}
+
+void FillMenu(WPMenu* menu, WPMenuTarget* target)
+{
+	[menu removeAllItems];
+	menu.autoenablesItems = NO;
+	for (const auto& it : bridge::GetMenuItems(menu.hmenu)) {
+		if (it.separator) { [menu addItem:NSMenuItem.separatorItem]; continue; }
+		std::u16string label = it.text, keys;
+		if (const auto tab = label.find(u'\t'); tab != std::u16string::npos) { keys = label.substr(tab + 1); label.resize(tab); }
+		NSMenuItem* item = [[NSMenuItem alloc] initWithTitle:MenuTitle(label) action:nil keyEquivalent:@""];
+		item.enabled = !it.disabled;
+		item.state = it.checked ? NSControlStateValueOn : NSControlStateValueOff;
+		if (!keys.empty()) ApplyShortcut(item, [NSString stringWithCharacters:reinterpret_cast<const unichar*>(keys.data()) length:keys.size()]);
+		if (it.sub) {
+			WPMenu* sub = [[WPMenu alloc] initWithTitle:item.title];
+			sub.hwnd = menu.hwnd;
+			sub.hmenu = it.sub;
+			sub.position = -1;
+			FillMenu(sub, target);
+			item.submenu = sub;
+		} else {
+			item.tag = it.id;
+			item.target = target;
+			item.action = @selector(itemChosen:);
+		}
+		[menu addItem:item];
+	}
+}
+
+void RebuildMenuBar(void* hwnd)
+{
+	NSMenu* bar = NSApp.mainMenu;
+	while (bar.numberOfItems > 1) [bar removeItemAtIndex:1];  // 先頭はアプリケーションメニュー
+	void* hmenu = bridge::MenuOfWindow(hwnd);
+	if (!hmenu) return;
+	if (!g_menuBarTarget) g_menuBarTarget = [WPMenuTarget new];
+	g_menuBarTarget.hwnd = hwnd;
+	int pos = 0;
+	for (const auto& it : bridge::GetMenuItems(hmenu)) {
+		NSMenuItem* item = [[NSMenuItem alloc] initWithTitle:MenuTitle(it.text) action:nil keyEquivalent:@""];
+		if (it.sub) {
+			WPMenu* sub = [[WPMenu alloc] initWithTitle:item.title];
+			sub.hwnd = hwnd;
+			sub.hmenu = it.sub;
+			sub.position = pos;
+			sub.delegate = sub;  // 開く直前に内容を作る
+			item.submenu = sub;
+		}
+		[bar addItem:item];
+		++pos;
+	}
+}
+
+}  // namespace
+
+@implementation WPMenu
+- (void)menuNeedsUpdate:(NSMenu*)menu
+{
+	bridge::InitMenuPopup(self.hwnd, self.hmenu, self.position, 500);
+	FillMenu(self, g_menuBarTarget);
+}
+@end
+
 @interface WPAppDelegate : NSObject <NSApplicationDelegate>
 @end
 
 @implementation WPAppDelegate
-- (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication*)sender { return NSTerminateNow; }
+- (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication*)sender
+{
+	// 保存確認があるので、ここでは終了せずウィンドウを閉じていく。全部閉じると backend::Quit が呼ばれる
+	if (g_quitting) return NSTerminateNow;
+	bridge::CloseAllWindows();
+	return NSTerminateCancel;
+}
 @end
 
 namespace winport::backend {
@@ -582,7 +720,13 @@ void Run()
 	[NSApp run];
 }
 
-void Quit() { OnMain(^{ [NSApp terminate:nil]; }); }
+void Quit()
+{
+	OnMain(^{
+		g_quitting = true;
+		[NSApp terminate:nil];
+	});
+}
 
 void WindowVisibilityChanged(void* hwnd)
 {
@@ -689,6 +833,32 @@ void ScrollBarsChanged(void* hwnd)
 void Beep() { OnMain(^{ NSBeep(); }); }
 
 bool Available() { return g_available; }
+
+void MenuBarChanged(void* hwnd)
+{
+	OnMain(^{
+		const auto info = bridge::GetInfo(hwnd);
+		if (!info.platform) return;
+		WPPlatform* p = (__bridge WPPlatform*)info.platform;
+		if (p.window.isKeyWindow || !NSApp.keyWindow) RebuildMenuBar(hwnd);
+	});
+}
+
+void ShowPopupMenu(void* hmenu, int x, int y, std::atomic<int>* result)
+{
+	// ShowMessageBox と同じ理由でランループへ積む
+	CFRunLoopPerformBlock(CFRunLoopGetMain(), kCFRunLoopCommonModes, ^{
+		WPMenuTarget* target = [WPMenuTarget new];
+		target.selected = -1;
+		WPMenu* menu = [[WPMenu alloc] initWithTitle:@""];
+		menu.hmenu = hmenu;
+		menu.position = -1;
+		FillMenu(menu, target);
+		[menu popUpMenuPositioningItem:nil atLocation:NSMakePoint(x, g_primaryHeight - y) inView:nil];
+		result->store(target.selected);
+	});
+	CFRunLoopWakeUp(CFRunLoopGetMain());
+}
 
 void SetImeFont(const char* postscriptName, double size)
 {

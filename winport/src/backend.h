@@ -57,6 +57,10 @@ void ScrollBarsChanged(void* hwnd);
 void Beep();
 //! 全仮想プロセスが終了した
 void Quit();
+//! ウィンドウのメニューが変わった（アクティブなウィンドウなら mac のメニューバーを作り直す）
+void MenuBarChanged(void* hwnd);
+//! ポップアップメニューを出す。待たずに戻り、閉じられたら *result に項目 ID（選択なしは -1）が入る
+void ShowPopupMenu(void* hmenu, int x, int y, std::atomic<int>* result);
 //! 未確定文字列の描画に使うフォント（PostScript 名、大きさ）
 void SetImeFont(const char* postscriptName, double size);
 //! 表示系が動いているか（テストでは Initialize を呼ばないので false）
@@ -107,6 +111,24 @@ void SetPlatform(void* hwnd, void* platform);
 
 //! 描画面の画像（呼び出し側が CGImageRelease する）。scale は 1 ポイントあたりの画素数
 CGImageRef SnapshotSurface(void* hwnd, double* scale, int* width, int* height);
+
+// ---- メニュー ----
+struct MenuItemInfo {
+	std::u16string text;   //!< "開く(&O)...\tCtrl+O" のような Win32 の表記
+	unsigned id = 0;
+	void* sub = nullptr;   //!< サブメニュー（HMENU）
+	bool separator = false;
+	bool checked = false;
+	bool disabled = false;
+};
+void* MenuOfWindow(void* hwnd);
+std::vector<MenuItemInfo> GetMenuItems(void* hmenu);
+//! 所有スレッドで WM_INITMENUPOPUP を処理させ、完了を待つ（timeoutMs で打ち切り）。
+//! 表示系が Win32 スレッドを待つのはここだけ。Win32 スレッドは表示系を待たないのでデッドロックしない
+void InitMenuPopup(void* hwnd, void* hmenu, int position, int timeoutMs);
+void PostMenuCommand(void* hwnd, unsigned id);
+//! 全トップレベルウィンドウに閉じる要求を出す（Cmd+Q）
+void CloseAllWindows();
 
 //! 診断用: 全ウィンドウの状態を stderr に出す（環境変数 WINPORT_DUMP=1 で起動 5 秒後に呼ばれる）
 void DumpWindows();

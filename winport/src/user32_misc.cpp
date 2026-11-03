@@ -143,6 +143,29 @@ LRESULT CallCbtHooks(int code, WPARAM wParam, LPARAM lParam)
 
 }  // namespace winport
 
+namespace winport::bridge {
+
+std::vector<MenuItemInfo> GetMenuItems(void* hmenu)
+{
+	std::lock_guard lock(MenuMutex());
+	std::vector<MenuItemInfo> out;
+	auto m = MenuOf(static_cast<HMENU>(hmenu));
+	if (!m) return out;
+	for (const auto& it : m->items) {
+		MenuItemInfo info;
+		info.text.assign(it.text.begin(), it.text.end());
+		info.id = it.id;
+		info.sub = it.sub;
+		info.separator = (it.type & MFT_SEPARATOR) != 0;
+		info.checked = (it.state & MFS_CHECKED) != 0;
+		info.disabled = (it.state & MFS_DISABLED) != 0;
+		out.push_back(std::move(info));
+	}
+	return out;
+}
+
+}  // namespace winport::bridge
+
 extern "C" {
 
 /* ---- システム情報 ---- */
@@ -781,7 +804,7 @@ WINBOOL WINAPI SetMenu(HWND hWnd, HMENU hMenu)
 	auto w = GetWindowObject(hWnd);
 	if (!w) return FALSE;
 	w->menu = hMenu;
-	// TODO(winport): mac のメニューバーへ反映する（Week 5）
+	backend::MenuBarChanged(hWnd);
 	return TRUE;
 }
 
@@ -791,14 +814,25 @@ HMENU WINAPI GetMenu(HWND hWnd)
 	return w && !w->parent ? w->menu : nullptr;
 }
 
-WINBOOL WINAPI DrawMenuBar(HWND) { return TRUE; }
+WINBOOL WINAPI DrawMenuBar(HWND hWnd) { backend::MenuBarChanged(hWnd); return TRUE; }
 HMENU WINAPI GetSystemMenu(HWND, WINBOOL) { return nullptr; }
 
-WINBOOL WINAPI TrackPopupMenu(HMENU, UINT, int, int, int, HWND, const RECT*)
+WINBOOL WINAPI TrackPopupMenu(HMENU hMenu, UINT uFlags, int x, int y, int, HWND hWnd, const RECT*)
 {
-	// TODO(winport): NSMenu でポップアップ表示する（Week 5）
-	ReportUnimplemented("user32", "TrackPopupMenu");
-	return 0;
+	if (!backend::Available()) return 0;
+	std::atomic<int> result{0};
+	backend::ShowPopupMenu(hMenu, x, y, &result);
+	// 閉じるまでの間も送信メッセージと再描画は処理する
+	while (!result.load()) {
+		MSG m;
+		while (PeekMessageW(&m, nullptr, WM_PAINT, WM_PAINT, PM_REMOVE)) DispatchMessageW(&m);
+		Sleep(10);
+	}
+	const int id = result.load();
+	if (id <= 0) return 0;
+	if (uFlags & TPM_RETURNCMD) return id;
+	if (!(uFlags & TPM_NONOTIFY)) PostMessageW(hWnd, WM_COMMAND, MAKEWPARAM(id, 0), 0);
+	return TRUE;
 }
 
 WINBOOL WINAPI TrackPopupMenuEx(HMENU hMenu, UINT uFlags, int x, int y, HWND hwnd, LPTPMPARAMS)

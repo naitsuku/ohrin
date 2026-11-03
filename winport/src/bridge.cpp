@@ -13,6 +13,7 @@
 #include <imm.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -34,9 +35,16 @@ constexpr UINT WM_WINPORT_SETCURSOR = 0x7FF2;  //!< lParam = MAKELPARAM(HTCLIENT
 
 constexpr UINT WM_WINPORT_IMERESULT = 0x7FF3;  //!< lParam = new std::wstring（受け側で解放）
 
+constexpr UINT WM_WINPORT_INITMENU = 0x7FF4;   //!< wParam = HMENU, lParam = new InitMenuRequest
+
 extern thread_local std::wstring t_imeResult;  // imm32.cpp
 
-bool IsInternalMessage(UINT msg) { return msg >= WM_WINPORT_FRAME && msg <= WM_WINPORT_IMERESULT; }
+struct InitMenuRequest {
+	int position;
+	std::shared_ptr<std::atomic<bool>> done;
+};
+
+bool IsInternalMessage(UINT msg) { return msg >= WM_WINPORT_FRAME && msg <= WM_WINPORT_INITMENU; }
 
 void HandleInternalMessage(const MSG& m)
 {
@@ -61,6 +69,12 @@ void HandleInternalMessage(const MSG& m)
 		SendMessageW(m.hwnd, WM_IME_COMPOSITION, 0, GCS_RESULTSTR);
 		SendMessageW(m.hwnd, WM_IME_ENDCOMPOSITION, 0, 0);
 		t_imeResult.clear();
+		break;
+	}
+	case WM_WINPORT_INITMENU: {
+		std::unique_ptr<InitMenuRequest> req(reinterpret_cast<InitMenuRequest*>(m.lParam));
+		SendMessageW(m.hwnd, WM_INITMENUPOPUP, m.wParam, MAKELPARAM(req->position, 0));
+		*req->done = true;
 		break;
 	}
 	case WM_WINPORT_SETCURSOR:
@@ -351,6 +365,30 @@ void PostImeResult(void* topLevel, const std::u16string& text)
 	const HWND target = KeyTarget(topLevel);
 	if (!target) return;
 	Post(target, WM_WINPORT_IMERESULT, 0, reinterpret_cast<LPARAM>(new std::wstring(text.begin(), text.end())));
+}
+
+void* MenuOfWindow(void* hwnd) { return GetMenu(static_cast<HWND>(hwnd)); }
+
+void InitMenuPopup(void* hwnd, void* hmenu, int position, int timeoutMs)
+{
+	auto done = std::make_shared<std::atomic<bool>>(false);
+	Post(static_cast<HWND>(hwnd), WM_WINPORT_INITMENU, reinterpret_cast<WPARAM>(hmenu), reinterpret_cast<LPARAM>(new InitMenuRequest{position, done}));
+	for (int i = 0; i < timeoutMs && !*done; ++i) Sleep(1);
+}
+
+void PostMenuCommand(void* hwnd, unsigned id) { Post(static_cast<HWND>(hwnd), WM_COMMAND, MAKEWPARAM(id, 0), 0); }
+
+void CloseAllWindows()
+{
+	std::vector<HWND> tops;
+	{
+		std::lock_guard lock(UserMutex());
+		for (auto h : AllWindows()) {
+			auto w = reinterpret_cast<Window*>(h);
+			if (!w->parent && (w->style & WS_VISIBLE) && (w->style & WS_CAPTION) == WS_CAPTION) tops.push_back(h);
+		}
+	}
+	for (auto h : tops) CloseRequested(h);
 }
 
 void FrameMovedByUser(void* hwnd, const Rect& r)

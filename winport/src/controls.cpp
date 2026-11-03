@@ -12,6 +12,7 @@
 #include <cstring>
 #include <cwchar>
 
+#include "dialog_internal.h"
 #include "winport_internal.h"
 
 using namespace winport;
@@ -578,6 +579,7 @@ WNDPROC BuiltinControlProc(const wchar_t* name)
 	if (!_wcsicmp(name, L"msctls_statusbar32")) return StatusBarProc;
 	if (!_wcsicmp(name, L"ToolbarWindow32")) return ToolbarProc;
 	if (!_wcsicmp(name, L"msctls_progress32")) return ProgressProc;
+	if (WNDPROC proc = DialogControlProc(name)) return proc;
 	return DefWindowProcW;
 }
 

@@ -132,7 +132,11 @@ WPPlatform* Realize(void* hwnd)
 	WPPlatform* p = [WPPlatform new];
 	if (info.topLevel) {
 		NSWindowStyleMask style = NSWindowStyleMaskBorderless;
-		if (info.captioned) style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable;
+		if (info.captioned) {
+			style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable;
+			if (info.minimizable) style |= NSWindowStyleMaskMiniaturizable;
+			if (info.resizable) style |= NSWindowStyleMaskResizable;
+		}
 		BRect content = info.windowRect;
 		if (info.captioned) content.top += g_titleBar;
 		WPWindow* win = [[WPWindow alloc] initWithContentRect:ToCocoaScreen(content) styleMask:style backing:NSBackingStoreBuffered defer:NO];
@@ -622,10 +626,10 @@ void FillMenu(WPMenu* menu, WPMenuTarget* target)
 
 void RebuildMenuBar(void* hwnd)
 {
+	void* hmenu = bridge::MenuOfWindow(hwnd);
+	if (!hmenu) return;  // ダイアログにはメニューが無いので、所有者のメニューのまま
 	NSMenu* bar = NSApp.mainMenu;
 	while (bar.numberOfItems > 1) [bar removeItemAtIndex:1];  // 先頭はアプリケーションメニュー
-	void* hmenu = bridge::MenuOfWindow(hwnd);
-	if (!hmenu) return;
 	if (!g_menuBarTarget) g_menuBarTarget = [WPMenuTarget new];
 	g_menuBarTarget.hwnd = hwnd;
 	int pos = 0;
@@ -737,7 +741,12 @@ void WindowVisibilityChanged(void* hwnd)
 			if (info.selfVisible) {
 				WPPlatform* p = Realize(hwnd);
 				[p.window orderFront:nil];
+				// 所有されたウィンドウ（ダイアログ）は所有者の前に保つ
+				if (WPPlatform* owner = info.owner ? PlatformOf(info.owner) : nil) {
+					if (owner.window.visible) [owner.window addChildWindow:p.window ordered:NSWindowAbove];
+				}
 			} else if (WPPlatform* p = PlatformOf(hwnd)) {
+				[p.window.parentWindow removeChildWindow:p.window];
 				[p.window orderOut:nil];
 			}
 		} else if (WPPlatform* p = Realize(hwnd)) {

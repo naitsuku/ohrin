@@ -79,6 +79,8 @@ void EnsureSystemClasses()
 		c->system = true;
 		c->atom = g_nextAtom++;
 		c->background = reinterpret_cast<HBRUSH>(COLOR_BTNFACE + 1);
+		if (!std::wcscmp(n, L"#32770")) c->cbWndExtra = 3 * sizeof(LONG_PTR);  // DWLP_MSGRESULT / DLGPROC / USER
+		if (!std::wcscmp(n, L"BUTTON") || !std::wcscmp(n, L"EDIT") || !std::wcscmp(n, L"LISTBOX")) c->style = CS_DBLCLKS;
 		Classes()[ClassKey(n)] = std::move(c);
 	}
 }
@@ -390,6 +392,7 @@ HWND WINAPI CreateWindowExW(DWORD dwExStyle, LPCWSTR lpClassName, LPCWSTR lpWind
 		w->proc = cls->proc;
 		w->style = dwStyle;
 		w->exStyle = dwExStyle;
+		w->enabled = !(dwStyle & WS_DISABLED);
 		w->text = lpWindowName ? lpWindowName : L"";
 		w->instance = hInstance;
 		w->extra.assign(cls->cbWndExtra, 0);
@@ -726,6 +729,7 @@ WINBOOL WINAPI ShowWindow(HWND hWnd, int nCmdShow)
 	}
 	if (show && !w->parent && nCmdShow != SW_SHOWNA && nCmdShow != SW_SHOWNOACTIVATE && nCmdShow != SW_SHOWMINNOACTIVE) {
 		SetActiveWindow(hWnd);
+		backend::Activate(hWnd);  // 表示前に WM_INITDIALOG の SetFocus でアクティブになっていても前面へ出す
 	}
 	return wasVisible;
 }
@@ -1237,9 +1241,10 @@ LRESULT WINAPI DefWindowProcW(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam)
 	case WM_GETMINMAXINFO:
 	case WM_QUERYENDSESSION:
 		return Msg == WM_QUERYENDSESSION ? TRUE : 0;
-	case WM_CTLCOLORMSGBOX: case WM_CTLCOLOREDIT: case WM_CTLCOLORLISTBOX: case WM_CTLCOLORBTN:
-	case WM_CTLCOLORDLG: case WM_CTLCOLORSCROLLBAR: case WM_CTLCOLORSTATIC:
+	case WM_CTLCOLOREDIT: case WM_CTLCOLORLISTBOX:
 		return reinterpret_cast<LRESULT>(GetSysColorBrush(COLOR_WINDOW));
+	case WM_CTLCOLORMSGBOX: case WM_CTLCOLORBTN: case WM_CTLCOLORDLG: case WM_CTLCOLORSCROLLBAR: case WM_CTLCOLORSTATIC:
+		return reinterpret_cast<LRESULT>(GetSysColorBrush(COLOR_BTNFACE));
 	case WM_NOTIFYFORMAT:
 		return NFR_UNICODE;
 	case WM_IME_COMPOSITION:

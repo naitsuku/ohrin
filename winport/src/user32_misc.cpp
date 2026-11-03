@@ -436,9 +436,9 @@ WINBOOL WINAPI SubtractRect(LPRECT dst, const RECT* a, const RECT* b)
 
 int WINAPI MapDialogRect(HWND, LPRECT lpRect)
 {
-	// ダイアログ単位: 横 1/4 平均文字幅、縦 1/8 文字高さ。9pt 相当（6x13）で近似
-	lpRect->left = lpRect->left * 6 / 4;
-	lpRect->right = lpRect->right * 6 / 4;
+	// ダイアログ単位: 横 1/4 平均文字幅、縦 1/8 文字高さ（dialog.cpp の kBaseX / kBaseY と同じ）
+	lpRect->left = lpRect->left * 7 / 4;
+	lpRect->right = lpRect->right * 7 / 4;
 	lpRect->top = lpRect->top * 13 / 8;
 	lpRect->bottom = lpRect->bottom * 13 / 8;
 	return TRUE;

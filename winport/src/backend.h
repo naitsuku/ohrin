@@ -99,7 +99,9 @@ struct WindowInfo {
 	bool selfVisible = false;     //!< 自分の WS_VISIBLE
 	bool captioned = false;       //!< タイトルバー付き
 	bool resizable = false;
+	bool minimizable = false;
 	void* parent = nullptr;
+	void* owner = nullptr;        //!< 所有者のトップレベル
 	Rect windowRect{};            //!< トップレベル: スクリーン座標 / 子: 親のクライアント座標
 	Rect clientInView{};          //!< 表示系のビュー（トップレベルはコンテンツ領域、子はウィンドウ矩形）内のクライアント矩形
 	std::u16string title;

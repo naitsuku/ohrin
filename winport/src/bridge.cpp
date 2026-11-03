@@ -56,6 +56,15 @@ void HandleInternalMessage(const MSG& m)
 		break;
 	case WM_WINPORT_ACTIVATE:
 		if (m.wParam) {
+			if (!IsWindowEnabled(m.hwnd)) {
+				// モーダルダイアログの下のウィンドウがクリックされたら、ダイアログを前へ戻す
+				std::lock_guard lock(UserMutex());
+				for (auto h : AllWindows()) {
+					auto o = reinterpret_cast<Window*>(h);
+					if (o->owner == m.hwnd && (o->style & WS_VISIBLE) && o->enabled) backend::Activate(h);
+				}
+				break;
+			}
 			SetActiveWindow(m.hwnd);
 		} else if (CurrentQueue().active == m.hwnd) {
 			SetActiveWindow(nullptr);
@@ -127,7 +136,7 @@ const KeyMap* FindKey(int mac)
 HWND KeyTarget(void* topLevel)
 {
 	auto w = GetWindowObject(static_cast<HWND>(topLevel));
-	if (!w) return nullptr;
+	if (!w || !w->enabled) return nullptr;
 	auto& q = QueueOf(w->threadId);
 	const HWND f = q.focus;
 	if (f && GetWindowObject(f) && TopLevelOf(GetWindowObject(f)) == w) return f;
@@ -163,7 +172,9 @@ WindowInfo GetInfo(void* hwnd)
 	info.selfVisible = (w->style & WS_VISIBLE) != 0;
 	info.captioned = (w->style & WS_CAPTION) == WS_CAPTION && info.topLevel;
 	info.resizable = (w->style & WS_THICKFRAME) != 0 || (w->style & WS_SIZEBOX) != 0 || ((w->style & WS_OVERLAPPEDWINDOW) == WS_OVERLAPPEDWINDOW);
+	info.minimizable = (w->style & WS_MINIMIZEBOX) != 0;
 	info.parent = w->parent;
+	if (auto o = GetWindowObject(w->owner)) info.owner = TopLevelOf(o);
 	if (info.topLevel) {
 		const POINT o = WindowOriginOnScreen(w);
 		info.windowRect = {o.x, o.y, o.x + (w->rect.right - w->rect.left), o.y + (w->rect.bottom - w->rect.top)};
@@ -257,6 +268,7 @@ void PostMouse(void* hwnd, Mouse kind, int button, int x, int y, unsigned modifi
 {
 	auto w = GetWindowObject(static_cast<HWND>(hwnd));
 	if (!w) return;
+	if (!w->enabled || !TopLevelOf(w)->enabled) return;  // Win32 と同じく無効なウィンドウは入力を受けない
 	HWND target = static_cast<HWND>(hwnd);
 	if (const HWND cap = QueueOf(w->threadId).capture; cap && GetWindowObject(cap)) target = cap;
 	POINT pt{x, y};

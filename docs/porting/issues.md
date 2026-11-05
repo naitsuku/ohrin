@@ -262,3 +262,9 @@ CP（コードページの追加）は出していない。「最近のファイ
 
 日本語入力ソースが有効なとき、`osascript -e 'tell application "System Events" to keystroke " "'` の
 スペースはアプリに届かない（入力システム側で消費される）。自動テストでは `key code 49` を使う。
+
+### I-118: ユーザー別設定フォルダーを有効にすると落ちる見込み
+
+`CControlProcess::GetPrivateIniFileName` は SHGetKnownFolderPath の結果を確認せず `std::filesystem::path(pFolderPath)` に
+渡すので、スタブのままだと nullptr で落ちる。`sakura.exe.ini` 相当でマルチユーザー設定を有効にした場合だけ通る経路で、
+既定では到達しない（コードを読んだ判断で、実機では未確認）。GetPrivateProfileStringW も同じ経路で未実装。

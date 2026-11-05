@@ -250,3 +250,164 @@ DWORD WINAPI GetCurrentThreadId(void)
 }
 
 }  // extern "C"
+
+/* ---- 日付・時刻の書式（GetDateFormat / GetTimeFormat）----
+
+	上流は日付挿入・時刻挿入、印刷のヘッダー／フッター、$d $t の展開で使う。戻り値を見ずにバッファを
+	使うので、失敗時も空文字列を入れておく。ロケールは日本語とそれ以外（en-US）の 2 種類だけ持つ。
+*/
+namespace {
+
+bool IsJapanese(LCID locale) { return PRIMARYLANGID(LANGIDFROMLCID(locale)) == LANG_JAPANESE; }
+
+//! 0 = 日曜。SYSTEMTIME の wDayOfWeek は信用せず年月日から求める（Win32 と同じ）
+int DayOfWeek(int y, int m, int d)
+{
+	static const int t[] = {0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4};
+	if (m < 3) --y;
+	return (y + y / 4 - y / 100 + y / 400 + t[m - 1] + d) % 7;
+}
+
+std::wstring Number(int value, int width)
+{
+	std::wstring s = std::to_wstring(value);
+	if (static_cast<int>(s.size()) < width) s.insert(0, width - s.size(), L'0');
+	return s;
+}
+
+std::wstring DatePart(wchar_t c, int n, const SYSTEMTIME& st, bool ja)
+{
+	static const wchar_t* const kDayJa[] = {L"日", L"月", L"火", L"水", L"木", L"金", L"土"};
+	static const wchar_t* const kDayEn[] = {L"Sunday", L"Monday", L"Tuesday", L"Wednesday", L"Thursday", L"Friday", L"Saturday"};
+	static const wchar_t* const kMonthEn[] = {L"January", L"February", L"March", L"April", L"May", L"June", L"July",
+		L"August", L"September", L"October", L"November", L"December"};
+	switch (c) {
+	case L'd': {
+		if (n <= 2) return Number(st.wDay, n);
+		const int w = DayOfWeek(st.wYear, st.wMonth, st.wDay);
+		if (ja) return std::wstring(kDayJa[w]) + (n == 3 ? L"" : L"曜日");
+		const std::wstring name = kDayEn[w];
+		return n == 3 ? name.substr(0, 3) : name;
+	}
+	case L'M': {
+		if (n <= 2) return Number(st.wMonth, n);
+		if (ja) return Number(st.wMonth, 1) + (n == 3 ? L"" : L"月");
+		const std::wstring name = kMonthEn[st.wMonth - 1];
+		return n == 3 ? name.substr(0, 3) : name;
+	}
+	case L'y':
+		return n >= 4 ? Number(st.wYear, 4) : Number(st.wYear % 100, n >= 2 ? 2 : 1);
+	default:	// g, gg: 時代。西暦のみ
+		return ja ? L"西暦" : L"A.D.";
+	}
+}
+
+std::wstring TimePart(wchar_t c, int n, const SYSTEMTIME& st, bool ja)
+{
+	const int width = n >= 2 ? 2 : 1;
+	switch (c) {
+	case L'h': return Number(st.wHour % 12 ? st.wHour % 12 : 12, width);
+	case L'H': return Number(st.wHour, width);
+	case L'm': return Number(st.wMinute, width);
+	case L's': return Number(st.wSecond, width);
+	default: {	// t, tt: 午前／午後
+		const std::wstring marker = st.wHour < 12 ? (ja ? L"午前" : L"AM") : (ja ? L"午後" : L"PM");
+		return n == 1 ? marker.substr(0, 1) : marker;
+	}
+	}
+}
+
+//! 書式を展開する。' で囲んだ範囲はそのまま出力し、' 2 個は ' 1 文字になる
+template <class PartFn>
+std::wstring ExpandPicture(const wchar_t* format, const wchar_t* specifiers, PartFn part)
+{
+	std::wstring out;
+	bool quoted = false;
+	for (const wchar_t* p = format; *p; ) {
+		if (*p == L'\'') {
+			if (p[1] == L'\'') { out += L'\''; p += 2; continue; }
+			quoted = !quoted;
+			++p;
+		} else if (!quoted && std::wcschr(specifiers, *p)) {
+			const wchar_t c = *p;
+			int n = 0;
+			while (*p == c) { ++n; ++p; }
+			out += part(c, n);
+		} else {
+			out += *p++;
+		}
+	}
+	return out;
+}
+
+int FinishFormat(const std::wstring& text, LPWSTR dest, int cch)
+{
+	const int need = static_cast<int>(text.size()) + 1;
+	if (cch == 0) return need;
+	if (cch < need) {
+		dest[0] = L'\0';
+		SetLastError(ERROR_INSUFFICIENT_BUFFER);
+		return 0;
+	}
+	std::wmemcpy(dest, text.c_str(), need);
+	return need;
+}
+
+int FailFormat(LPWSTR dest, int cch)
+{
+	if (dest && cch > 0) dest[0] = L'\0';
+	SetLastError(ERROR_INVALID_PARAMETER);
+	return 0;
+}
+
+}  // namespace
+
+int WINAPI GetDateFormatW(LCID Locale, DWORD dwFlags, const SYSTEMTIME* lpDate, LPCWSTR lpFormat, LPWSTR lpDateStr, int cchDate)
+{
+	SYSTEMTIME now;
+	if (!lpDate) { GetLocalTime(&now); lpDate = &now; }
+	if (cchDate < 0 || (cchDate > 0 && !lpDateStr) || lpDate->wMonth < 1 || lpDate->wMonth > 12 || lpDate->wDay < 1 || lpDate->wDay > 31) {
+		return FailFormat(lpDateStr, cchDate);
+	}
+	const bool ja = IsJapanese(Locale);
+	if (!lpFormat) {
+		if (dwFlags & DATE_LONGDATE) lpFormat = ja ? L"yyyy'年'M'月'd'日'" : L"dddd, MMMM d, yyyy";
+		else lpFormat = ja ? L"yyyy/MM/dd" : L"M/d/yyyy";
+	}
+	return FinishFormat(ExpandPicture(lpFormat, L"dMyg", [&](wchar_t c, int n) { return DatePart(c, n, *lpDate, ja); }), lpDateStr, cchDate);
+}
+
+int WINAPI GetTimeFormatW(LCID Locale, DWORD, const SYSTEMTIME* lpTime, LPCWSTR lpFormat, LPWSTR lpTimeStr, int cchTime)
+{
+	SYSTEMTIME now;
+	if (!lpTime) { GetLocalTime(&now); lpTime = &now; }
+	if (cchTime < 0 || (cchTime > 0 && !lpTimeStr) || lpTime->wHour > 23 || lpTime->wMinute > 59 || lpTime->wSecond > 59) {
+		return FailFormat(lpTimeStr, cchTime);
+	}
+	const bool ja = IsJapanese(Locale);
+	if (!lpFormat) lpFormat = ja ? L"H:mm:ss" : L"h:mm:ss tt";
+	return FinishFormat(ExpandPicture(lpFormat, L"hHmst", [&](wchar_t c, int n) { return TimePart(c, n, *lpTime, ja); }), lpTimeStr, cchTime);
+}
+
+/* ---- advapi32: レジストリ ----
+
+	mac にレジストリは無いので「キーが無い」と答える。スタブの 0 は ERROR_SUCCESS になり、上流が
+	未設定のバッファを成功として読んでしまう。
+*/
+LSTATUS WINAPI RegOpenKeyExW(HKEY, LPCWSTR, DWORD, REGSAM, PHKEY phkResult)
+{
+	if (phkResult) *phkResult = nullptr;
+	return ERROR_FILE_NOT_FOUND;
+}
+LSTATUS WINAPI RegCreateKeyExW(HKEY, LPCWSTR, DWORD, LPWSTR, DWORD, REGSAM, LPSECURITY_ATTRIBUTES, PHKEY phkResult, LPDWORD)
+{
+	if (phkResult) *phkResult = nullptr;
+	return ERROR_ACCESS_DENIED;
+}
+LSTATUS WINAPI RegCloseKey(HKEY) { return ERROR_INVALID_HANDLE; }
+LSTATUS WINAPI RegQueryValueExW(HKEY, LPCWSTR, LPDWORD, LPDWORD, LPBYTE, LPDWORD) { return ERROR_FILE_NOT_FOUND; }
+LSTATUS WINAPI RegSetValueExW(HKEY, LPCWSTR, DWORD, DWORD, const BYTE*, DWORD) { return ERROR_ACCESS_DENIED; }
+LSTATUS WINAPI RegDeleteKeyW(HKEY, LPCWSTR) { return ERROR_FILE_NOT_FOUND; }
+LSTATUS WINAPI RegDeleteValueW(HKEY, LPCWSTR) { return ERROR_FILE_NOT_FOUND; }
+LSTATUS WINAPI RegEnumKeyExW(HKEY, DWORD, LPWSTR, LPDWORD, LPDWORD, LPWSTR, LPDWORD, PFILETIME) { return ERROR_NO_MORE_ITEMS; }
+LSTATUS WINAPI RegEnumValueW(HKEY, DWORD, LPWSTR, LPDWORD, LPDWORD, LPDWORD, LPBYTE, LPDWORD) { return ERROR_NO_MORE_ITEMS; }

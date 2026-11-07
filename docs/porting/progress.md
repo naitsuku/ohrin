@@ -1,5 +1,28 @@
 # 移植作業進捗ログ
 
+## 2026-11-07 — Week 8: 正規表現、タブ、.app / DMG、安定化
+
+- [x] **正規表現が未実装だったので実装**（計画表に無かった）: `LoadLibrary` が常に失敗し、bregonig.dll が読めていなかった
+  - externals の本物の bregonig + Onigmo をビルドする。bregonig は wchar_t 2 バイト前提なので `winport_regex` だけ `-fshort-wchar`。
+    `winport/bregonig/` が最小の windows.h / tchar.h を提供する（externals は無変更）
+  - 共通の関数は UNICODE なしの側で定義されているので、Windows と同じく 2 通りビルドする
+  - `DllMain` が Onigmo の初期化と構文拡張を行うので、`LoadLibrary("bregonig.dll")` の初回に呼ぶ
+  - `bregonig_bridge.cpp` が 4 バイト ↔ UTF-16 を詰め替える。1 要素 = 1 UTF-16 単位なので位置はそのまま対応する
+- [x] **タブ**（`control_tab.cpp`）: CTabWnd が使う項目管理・配置・当たり判定・描画（オーナードロー対応）を実装。
+  タブのまとめ表示、クリックでの切り替え、× で閉じる操作を確認
+- [x] **シングルトンを仮想プロセス単位の表へ移した**（I-109 解決）: 大きなファイルを開くと落ちていた。
+  上流がレイアウトを std::thread で並列化し、thread_local のシングルトンが未初期化のまま別に作られていた。
+  上流の 2 か所のワーカーは `winport::AdoptProcess` で親のプロセスに入る
+- [x] **設定の保存先**: `~/Library/Application Support/sakura/SakuraEditor.ini`。上流のマルチユーザー設定を常に有効にした。
+  SHGetKnownFolderPath と GetPrivateProfileStringW を実装（I-118 解決）
+- [x] **Finder 連携**: application:openFiles:（起動時と起動中）、Dock からの再オープン、CFBundleDocumentTypes、アイコン
+- [x] **DMG**: `tools/porting/make_dmg.sh`。Release ビルド、ctest、アドホック署名、hdiutil。約 2.3MB
+- [x] **Windows 版との比較**: Windows 機が無いので実機比較はしていない。代わりに上流 GoogleTest の期待値を基準にした。
+  有効な全件がパス。除外は mac_main.cpp の一覧のとおりで、テスト側のワイド文字リテラル、MS ゴシックの画素幅、CP932 前提が中心
+- [x] **負荷試験**（Release、60 万行 45MB）: 正規表現の全置換 3.2 秒、Undo/Redo 各 2.2 秒、検索 0.09 秒、2 万回の編集 25 秒。
+  2 つの大きなファイルの同時読み込み、DMG 上での起動と Cmd+Q も確認
+- 既知の未確認: タブのクリックが 1 回だけ効かなかった（その後の 4 回は成功、原因不明）
+
 ## 2026-11-07 — Week 7: キーマクロと JS マクロ
 
 - [x] **方針**: 上流のマクロコード（CWSH / CIfObj / CMacro）は変更せず、Windows が提供するものを互換層に用意した。

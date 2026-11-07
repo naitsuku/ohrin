@@ -57,7 +57,7 @@ winport/      … Win32 互換層
 - C++17（clang / Apple SDK）、Objective-C++（互換層の AppKit 部分）
 - CMake 3.20+、Ninja
 - Win32 ヘッダの土台: Homebrew `mingw-w64` のヘッダ（public domain / ZPL）を `-idirafter` で参照
-- 正規表現: Oniguruma（bregonig 相当を互換層で提供予定）
+- 正規表現: externals の bregonig + Onigmo（`winport/src/bregonig_bridge.cpp` が組み込みの bregonig.dll として渡す）
 - マクロ: JavaScriptCore
 
 ## ビルド・テストコマンド
@@ -66,6 +66,7 @@ winport/      … Win32 互換層
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
 cmake --build build
 ctest --test-dir build --output-on-failure
+tools/porting/make_dmg.sh   # Release ビルドと DMG（build-release/）
 ```
 
 ## 作業進捗の記録方法

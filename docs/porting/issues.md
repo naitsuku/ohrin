@@ -197,7 +197,7 @@ BOOL / ハンドルを返す関数は 0 = 失敗なので問題ない。
 CEditWnd 等を参照する箇所が無いか要確認。Week 5 で 2 枚同時の編集・終了は確認したが、
 同時に重いファイルを読み込む場合は未確認。
 
-**ステータス**: 暫定対応
+**ステータス**: 解決（2026-11-07）。シングルトンを仮想プロセス単位の表へ移し、ワーカーは親のプロセスに入る
 
 ### I-110: SCROLLBAR コントロール
 
@@ -263,11 +263,9 @@ CP（コードページの追加）は出していない。「最近のファイ
 日本語入力ソースが有効なとき、`osascript -e 'tell application "System Events" to keystroke " "'` の
 スペースはアプリに届かない（入力システム側で消費される）。自動テストでは `key code 49` を使う。
 
-### I-118: ユーザー別設定フォルダーを有効にすると落ちる見込み
+### I-118: ユーザー別設定フォルダー
 
-`CControlProcess::GetPrivateIniFileName` は SHGetKnownFolderPath の結果を確認せず `std::filesystem::path(pFolderPath)` に
-渡すので、スタブのままだと nullptr で落ちる。`sakura.exe.ini` 相当でマルチユーザー設定を有効にした場合だけ通る経路で、
-既定では到達しない（コードを読んだ判断で、実機では未確認）。GetPrivateProfileStringW も同じ経路で未実装。
+解決（2026-11-07）。SHGetKnownFolderPath と GetPrivateProfileStringW を実装し、常にこの経路を使う。
 
 ### I-119: `\\` だけを区切りと見るコードが残っている
 
@@ -285,3 +283,10 @@ CP（コードページの追加）は出していない。「最近のファイ
 ウィンドウを持つ画面の中央に出すよう backend::ShowMessageBox を直す余地がある。
 I-111 の手がかり: 警告の表示中はエディタ右に白い帯が出た。起動直後の WM_SIZE の処理前に描画している可能性がある。
 
+### I-122: 配布に残っている作業
+
+- 公証していない（アドホック署名のみ）。他の Mac では Gatekeeper の確認が出る。Developer ID と notarytool が必要
+- arm64 のみ。Intel 向けには universal ビルドが必要
+- アイコンは上流の 32x32 を拡大したもので粗い
+- 開発中に .app 内の SakuraEditor.ini へ保存していた設定は引き継がない
+- CMigemo（ローマ字検索）は未対応。LoadLibrary が失敗するので、機能が無効になるだけ

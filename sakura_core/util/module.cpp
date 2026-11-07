@@ -7,6 +7,7 @@
 */
 
 #include "StdAfx.h"
+#include "version.h"
 #include "module.h"
 #include "util/os.h"
 #include "util/file.h"
@@ -171,6 +172,12 @@ void GetAppVersionInfo(
 	/* リソースから製品バージョンの取得 */
 	*pdwProductVersionMS = 0;
 	*pdwProductVersionLS = 0;
+#ifdef SAKURA_WINPORT
+	// [winport] VERSIONINFO リソースは持たない
+	*pdwProductVersionMS = MAKELONG( VER_B, VER_A );
+	*pdwProductVersionLS = MAKELONG( VER_D, VER_C );
+	return;
+#endif
 	static bool bLoad = false;
 	static DWORD dwVersionMS = 0;
 	static DWORD dwVersionLS = 0;

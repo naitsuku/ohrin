@@ -11,6 +11,7 @@
 /.vs
 /cppcheck-*.xml
 /build
+/build-release
 /MinGW
 /Win32
 /x64

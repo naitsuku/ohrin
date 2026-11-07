@@ -77,7 +77,10 @@ add_library(winport STATIC
     src/gdi.cpp
     src/gdi_text.cpp
     src/commdlg.cpp
+    src/control_listview.cpp
+    src/control_misc.cpp
     src/control_tab.cpp
+    src/control_treeview.cpp
     src/propsheet.cpp
     src/dialog.cpp
     src/dialog_controls.cpp

@@ -55,6 +55,7 @@ list(TRANSFORM TESTS1_ENABLED PREPEND ${TESTS1_DIR}/)
 
 add_executable(sakura_mac_tests
     mac_main.cpp
+    test-winport-controls.cpp
     test-winport-datetime.cpp
     test-winport-gdi.cpp
     test-winport-jscript.cpp

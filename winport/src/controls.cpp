@@ -574,6 +574,9 @@ LRESULT CALLBACK ProgressProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 namespace winport {
 
 LRESULT CALLBACK TabControlProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+LRESULT CALLBACK ListViewProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+LRESULT CALLBACK TreeViewProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+WNDPROC SmallControlProc(const wchar_t* name);
 
 WNDPROC BuiltinControlProc(const wchar_t* name)
 {
@@ -582,6 +585,9 @@ WNDPROC BuiltinControlProc(const wchar_t* name)
 	if (!_wcsicmp(name, L"ToolbarWindow32")) return ToolbarProc;
 	if (!_wcsicmp(name, L"msctls_progress32")) return ProgressProc;
 	if (!_wcsicmp(name, L"SysTabControl32")) return TabControlProc;
+	if (!_wcsicmp(name, L"SysListView32")) return ListViewProc;
+	if (!_wcsicmp(name, L"SysTreeView32")) return TreeViewProc;
+	if (WNDPROC proc = SmallControlProc(name)) return proc;
 	if (WNDPROC proc = DialogControlProc(name)) return proc;
 	return DefWindowProcW;
 }

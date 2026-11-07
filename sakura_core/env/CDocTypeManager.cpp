@@ -37,7 +37,12 @@ CTypeConfig CDocTypeManager::GetDocumentTypeOfPath( const WCHAR* pszFilePath )
 
 	// ファイル名を抽出
 	const WCHAR* pszFileName = pszFilePath;
+#ifdef SAKURA_WINPORT
+	const WCHAR* pszSep = wcsrchr(pszFilePath, L'/');
+	if (!pszSep) pszSep = wcsrchr(pszFilePath, L'\\');
+#else
 	const WCHAR* pszSep = wcsrchr(pszFilePath, L'\\');
+#endif
 	if (pszSep) {
 		pszFileName = pszSep + 1;
 	}

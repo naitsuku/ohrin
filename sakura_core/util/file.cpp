@@ -203,7 +203,12 @@ bool IsLocalDrive( const WCHAR* pszDrive )
 const WCHAR* GetFileTitlePointer(const WCHAR* pszPath)
 {
 	std::wstring_view name(pszPath);
-	if (const size_t sep = name.find_last_of(L'\\'); sep != std::wstring_view::npos) {
+#ifdef SAKURA_WINPORT
+	constexpr std::wstring_view separators = L"\\/";
+#else
+	constexpr std::wstring_view separators = L"\\";
+#endif
+	if (const size_t sep = name.find_last_of(separators); sep != std::wstring_view::npos) {
 		if (sep + 1 == name.length()) {
 			return pszPath + name.length();
 		}

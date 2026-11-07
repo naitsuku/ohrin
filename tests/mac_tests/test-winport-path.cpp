@@ -42,6 +42,14 @@ TEST(WinportPath, PosixAbsolutePathIsNotRelative)
 	EXPECT_TRUE(_IS_REL_PATH(L""));
 }
 
+TEST(WinportPath, FileTitleUsesEitherSeparator)
+{
+	EXPECT_STREQ(L"b.txt", GetFileTitlePointer(L"/a.d/b.txt"));
+	EXPECT_STREQ(L"b.txt", GetFileTitlePointer(L"C:\\a\\b.txt"));
+	EXPECT_STREQ(L"b.txt", GetFileTitlePointer(L"b.txt"));
+	EXPECT_STREQ(L"", GetFileTitlePointer(L"/a/"));
+}
+
 TEST(WinportTextStream, Utf8WithoutBom)
 {
 	EXPECT_EQ(L"あ😀"[0], ReadFirstLine("\xE3\x81\x82\xF0\x9F\x98\x80\n", 8)[0]);

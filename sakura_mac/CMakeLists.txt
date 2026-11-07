@@ -25,9 +25,16 @@ add_custom_command(
 # ---- version.h（上流 version.h.in を最小限の値で展開） ----
 set(BUILD_ENV_NAME "winport")
 set(BUILD_VERSION 0)
-set(SAKURA_MAJOR_VERSION 2)
-set(SAKURA_MINOR_VERSION 4)
-set(SAKURA_PATCH_VERSION 2)
+# 版番号は上流の version.cmake から読む（上流を取り込むと自動で上がる）
+file(STRINGS ${CMAKE_SOURCE_DIR}/src/main/cmake/version.cmake _sakura_ver REGEX "^set\\(SAKURA_(MAJOR|MINOR|PATCH)_VERSION")
+foreach(_part MAJOR MINOR PATCH)
+    string(REGEX MATCH "SAKURA_${_part}_VERSION \"([0-9]+)\"" _m "${_sakura_ver}")
+    if(NOT CMAKE_MATCH_1)
+        message(FATAL_ERROR "SAKURA_${_part}_VERSION not found in version.cmake")
+    endif()
+    set(SAKURA_${_part}_VERSION ${CMAKE_MATCH_1})
+endforeach()
+message(STATUS "Sakura version: ${SAKURA_MAJOR_VERSION}.${SAKURA_MINOR_VERSION}.${SAKURA_PATCH_VERSION}")
 configure_file(${CMAKE_SOURCE_DIR}/src/main/cmake/version.h.in ${SAKURA_MAC_GEN_DIR}/version.h @ONLY)
 
 # ---- 外部ヘッダ（上流 cmake はビルドディレクトリの include/ にコピーして参照する） ----
@@ -98,7 +105,7 @@ set_target_properties(sakura_mac PROPERTIES
     MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_SOURCE_DIR}/Info.plist.in
     MACOSX_BUNDLE_GUI_IDENTIFIER "io.github.sakura-editor.mac"
     MACOSX_BUNDLE_BUNDLE_NAME "SakuraEditor"
-    MACOSX_BUNDLE_SHORT_VERSION_STRING "2.4.2"
+    MACOSX_BUNDLE_SHORT_VERSION_STRING "${SAKURA_MAJOR_VERSION}.${SAKURA_MINOR_VERSION}.${SAKURA_PATCH_VERSION}"
     MACOSX_BUNDLE_BUNDLE_VERSION "0"
 )
 target_include_directories(sakura_mac PRIVATE ${CMAKE_SOURCE_DIR}/winport/src)

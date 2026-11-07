@@ -8,6 +8,8 @@
 	SPDX-License-Identifier: Zlib
 */
 #include <windows.h>
+
+#include <algorithm>
 #include <shlwapi.h>
 
 #include <dirent.h>
@@ -134,22 +136,44 @@ DWORD CopyPathOut(const std::wstring& s, LPWSTR buf, DWORD n)
 extern "C" {
 
 //! sakura.exe.ini（マルチユーザー設定）の読み取りにだけ使われる。sakura.ini 本体は CProfile が読む
-UINT WINAPI GetPrivateProfileIntW(LPCWSTR lpAppName, LPCWSTR lpKeyName, INT nDefault, LPCWSTR lpFileName)
+namespace {
+
+//! ini の値を探す。無ければ false
+bool ReadProfileValue(LPCWSTR lpAppName, LPCWSTR lpKeyName, LPCWSTR lpFileName, std::string* value)
 {
 	FILE* f = std::fopen(winport::WideToUtf8(lpFileName).c_str(), "r");
-	if (!f) return nDefault;
+	if (!f) return false;
 	const std::string section = "[" + winport::WideToUtf8(lpAppName) + "]", key = winport::WideToUtf8(lpKeyName) + "=";
 	char line[1024];
 	bool inSection = false;
-	UINT result = nDefault;
-	while (std::fgets(line, sizeof(line), f)) {
+	bool found = false;
+	while (!found && std::fgets(line, sizeof(line), f)) {
 		std::string l(line);
 		while (!l.empty() && std::isspace(static_cast<unsigned char>(l.back()))) l.pop_back();
 		if (!l.empty() && l[0] == '[') inSection = strcasecmp(l.c_str(), section.c_str()) == 0;
-		else if (inSection && strncasecmp(l.c_str(), key.c_str(), key.size()) == 0) { result = static_cast<UINT>(std::atoi(l.c_str() + key.size())); break; }
+		else if (inSection && strncasecmp(l.c_str(), key.c_str(), key.size()) == 0) { *value = l.substr(key.size()); found = true; }
 	}
 	std::fclose(f);
-	return result;
+	return found;
+}
+
+}  // namespace
+
+UINT WINAPI GetPrivateProfileIntW(LPCWSTR lpAppName, LPCWSTR lpKeyName, INT nDefault, LPCWSTR lpFileName)
+{
+	std::string value;
+	return ReadProfileValue(lpAppName, lpKeyName, lpFileName, &value) ? static_cast<UINT>(std::atoi(value.c_str())) : nDefault;
+}
+
+DWORD WINAPI GetPrivateProfileStringW(LPCWSTR lpAppName, LPCWSTR lpKeyName, LPCWSTR lpDefault, LPWSTR lpReturnedString, DWORD nSize, LPCWSTR lpFileName)
+{
+	if (nSize == 0) return 0;
+	std::string value;
+	const std::wstring text = ReadProfileValue(lpAppName, lpKeyName, lpFileName, &value) ? winport::Utf8ToWide(value) : (lpDefault ? lpDefault : L"");
+	const size_t n = std::min(text.size(), static_cast<size_t>(nSize) - 1);
+	std::wmemcpy(lpReturnedString, text.data(), n);
+	lpReturnedString[n] = L'\0';
+	return static_cast<DWORD>(n);
 }
 
 /* ---- ファイルハンドル ---- */

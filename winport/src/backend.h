@@ -33,7 +33,8 @@ struct Rect {
 //! アプリ起動時にメインスレッドで呼ぶ（NSApplication の準備と画面情報の確定）
 void Initialize();
 //! メインスレッドのイベントループ（戻らない）
-void Run();
+//! Cocoa のイベントループを回す。起動が完了したら LaunchFirstProcess を呼ぶ
+void Run(int argc, char** argv);
 
 //! ウィンドウが表示状態になった／隠れた（トップレベルなら NSWindow を出す）
 void WindowVisibilityChanged(void* hwnd);
@@ -115,7 +116,10 @@ void CursorPos(int* x, int* y);
 
 namespace winport {
 //! 最初の仮想プロセス（sakura の wWinMain）をコマンドライン引数付きで起動する（process.cpp）
-void LaunchFirstProcess(int argc, char** argv);
+//! documents は起動時に Finder から渡されたファイル（UTF-8）
+void LaunchFirstProcess(int argc, char** argv, const std::vector<std::string>& documents);
+//! 起動後にファイルを開く。空なら新しい無題のウィンドウ
+void OpenDocument(const std::string& path);
 }  // namespace winport
 
 namespace winport::bridge {

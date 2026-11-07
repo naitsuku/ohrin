@@ -14,8 +14,7 @@ int main(int argc, char** argv)
 {
 	@autoreleasepool {
 		winport::backend::Initialize();
-		winport::LaunchFirstProcess(argc, argv);
-		winport::backend::Run();
+		winport::backend::Run(argc, argv);
 	}
 	return 0;
 }

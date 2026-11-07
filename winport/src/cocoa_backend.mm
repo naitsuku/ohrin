@@ -697,10 +697,41 @@ void RebuildMenuBar(void* hwnd)
 }
 @end
 
+static int g_argc = 0;
+static char** g_argv = nullptr;
+static bool g_launched = false;
+static std::vector<std::string> g_pendingDocuments;
+
 @interface WPAppDelegate : NSObject <NSApplicationDelegate>
 @end
 
 @implementation WPAppDelegate
+- (void)applicationDidFinishLaunching:(NSNotification*)notification
+{
+	// Finder から開かれたときは、この通知より先に application:openFiles: が来る
+	g_launched = true;
+	winport::LaunchFirstProcess(g_argc, g_argv, g_pendingDocuments);
+	g_pendingDocuments.clear();
+}
+- (void)application:(NSApplication*)sender openFiles:(NSArray<NSString*>*)filenames
+{
+	for (NSString* name in filenames) {
+		const std::string path = name.UTF8String;
+		if (!g_launched) {
+			g_pendingDocuments.push_back(path);
+		} else {
+			// ここはメインスレッド。Win32 の処理は動かさない
+			dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{ winport::OpenDocument(path); });
+		}
+	}
+	[sender replyToOpenOrPrint:NSApplicationDelegateReplySuccess];
+}
+- (BOOL)applicationShouldHandleReopen:(NSApplication*)sender hasVisibleWindows:(BOOL)visible
+{
+	// Dock のアイコンをクリックしたとき。ウィンドウが無ければ新しく開く
+	if (!visible && g_launched) dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{ winport::OpenDocument(""); });
+	return YES;
+}
 - (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication*)sender
 {
 	// 保存確認があるので、ここでは終了せずウィンドウを閉じていく。全部閉じると backend::Quit が呼ばれる
@@ -757,8 +788,10 @@ void Initialize()
 	}];
 }
 
-void Run()
+void Run(int argc, char** argv)
 {
+	g_argc = argc;
+	g_argv = argv;
 	[NSApp activateIgnoringOtherApps:YES];
 	[NSApp run];
 }

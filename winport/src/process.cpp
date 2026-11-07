@@ -19,6 +19,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "backend.h"
 #include "winport_internal.h"
@@ -132,16 +133,32 @@ HANDLE StartVirtualProcess(const std::wstring& arguments)
 	}, 0, cmdLine, true);
 }
 
-void LaunchFirstProcess(int argc, char** argv)
+namespace {
+
+void AppendArgument(std::wstring& args, const std::wstring& a)
+{
+	if (!args.empty()) args += L' ';
+	args += (a.find(L' ') != std::wstring::npos) ? L"\"" + a + L"\"" : a;
+}
+
+}  // namespace
+
+void LaunchFirstProcess(int argc, char** argv, const std::vector<std::string>& documents)
 {
 	std::wstring args;
 	for (int i = 1; i < argc; ++i) {
 		// Finder から起動したときの -psn_ 引数は捨てる
 		if (std::string(argv[i]).rfind("-psn_", 0) == 0) continue;
-		const std::wstring a = Utf8ToWide(argv[i]);
-		if (!args.empty()) args += L' ';
-		args += (a.find(L' ') != std::wstring::npos) ? L"\"" + a + L"\"" : a;
+		AppendArgument(args, Utf8ToWide(argv[i]));
 	}
+	for (const std::string& path : documents) AppendArgument(args, Utf8ToWide(path));
+	CloseHandle(StartVirtualProcess(args));
+}
+
+void OpenDocument(const std::string& path)
+{
+	std::wstring args;
+	if (!path.empty()) AppendArgument(args, Utf8ToWide(path));
 	CloseHandle(StartVirtualProcess(args));
 }
 

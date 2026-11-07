@@ -11,11 +11,14 @@
 #include <shellapi.h>
 #include <shlobj.h>
 
+#include <cstdlib>
 #include <cwchar>
 #include <string>
 #include <vector>
 
 #include "user32_internal.h"
+
+#include "winport_internal.h"
 
 extern "C" {
 
@@ -90,3 +93,24 @@ HDROP CreateDropHandle(const std::vector<std::wstring>& files, POINT pt)
 }
 
 }  // namespace winport
+
+/* ---- ユーザーのフォルダー ---- */
+void WINAPI CoTaskMemFree(LPVOID pv) { std::free(pv); }
+
+//! 設定の保存先を決めるのに使う（CControlProcess::GetPrivateIniFileName）
+HRESULT WINAPI SHGetKnownFolderPath(REFKNOWNFOLDERID rfid, DWORD, HANDLE, PWSTR* ppszPath)
+{
+	*ppszPath = nullptr;
+	const char* home = std::getenv("HOME");
+	if (!home) return E_FAIL;
+	std::string path = home;
+	if (IsEqualGUID(rfid, FOLDERID_RoamingAppData)) path += "/Library/Application Support";
+	else if (IsEqualGUID(rfid, FOLDERID_Documents)) path += "/Documents";
+	else if (!IsEqualGUID(rfid, FOLDERID_Profile)) return E_INVALIDARG;
+	const std::wstring wide = winport::Utf8ToWide(path);
+	auto* buffer = static_cast<PWSTR>(std::malloc((wide.size() + 1) * sizeof(WCHAR)));
+	if (!buffer) return E_OUTOFMEMORY;
+	std::wmemcpy(buffer, wide.c_str(), wide.size() + 1);
+	*ppszPath = buffer;
+	return S_OK;
+}

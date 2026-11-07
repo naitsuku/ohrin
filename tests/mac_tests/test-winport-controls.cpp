@@ -533,3 +533,43 @@ TEST(WinportPropertySheet, RejectedKillActiveKeepsSheetOpen)
 	const std::vector<std::string> expected{"init:1", "active:1", "kill:1", "kill:1", "apply:1"};
 	EXPECT_EQ(expected, g_pages.events);
 }
+
+namespace {
+
+//! エディット（ID 10）とボタン（ID 11）を持つダイアログテンプレート（どちらも WS_TABSTOP）
+std::vector<uint16_t> EditAndButtonTemplate()
+{
+	std::vector<uint16_t> t;
+	auto dword = [&t](DWORD v) { t.push_back(LOWORD(v)); t.push_back(HIWORD(v)); };
+	dword(WS_POPUP | WS_CAPTION);
+	dword(0);
+	t.insert(t.end(), {2, 0, 0, 120, 60, 0, 0, 0});	// cdit, x, y, cx, cy, menu, class, title
+	const uint16_t atoms[] = {0x0081, 0x0080};	// EDIT, BUTTON
+	for (int i = 0; i < 2; ++i) {
+		if (t.size() % 2) t.push_back(0);	// DWORD 境界
+		dword(WS_CHILD | WS_VISIBLE | WS_TABSTOP);
+		dword(0);
+		t.insert(t.end(), {4, static_cast<uint16_t>(4 + 20 * i), 80, 14, static_cast<uint16_t>(10 + i), 0xFFFF, atoms[i], 0, 0});
+	}
+	return t;
+}
+
+INT_PTR CALLBACK HideFirstProc(HWND hDlg, UINT msg, WPARAM, LPARAM)
+{
+	if (msg != WM_INITDIALOG) return FALSE;
+	::ShowWindow(::GetDlgItem(hDlg, 10), SW_HIDE);
+	return TRUE;
+}
+
+}  // namespace
+
+// WM_INITDIALOG が TRUE を返したら、その中で隠したコントロールを飛ばして最初のタブ停止へフォーカスを置く
+// （ダイレクトタグジャンプ一覧はキーワード欄を隠し、一覧で ↓ / Enter を受ける）
+TEST(WinportDialog, DefaultFocusSkipsControlsHiddenInInitDialog)
+{
+	const std::vector<uint16_t> tmpl = EditAndButtonTemplate();
+	HWND dlg = ::CreateDialogIndirectParamW(nullptr, reinterpret_cast<LPCDLGTEMPLATEW>(tmpl.data()), nullptr, HideFirstProc, 0);
+	ASSERT_NE(nullptr, dlg);
+	EXPECT_EQ(::GetDlgItem(dlg, 11), ::GetFocus());
+	::DestroyWindow(dlg);
+}

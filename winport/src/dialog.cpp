@@ -160,11 +160,17 @@ HWND CreateFromTemplate(HINSTANCE hInstance, const void* tmpl, HWND hWndParent, 
 		}
 	}
 
-	HWND first = nullptr;
-	for (HWND h : s->order) {
-		if ((GetWindowLongW(h, GWL_STYLE) & (WS_TABSTOP | WS_DISABLED | WS_VISIBLE)) == (WS_TABSTOP | WS_VISIBLE)) { first = h; break; }
+	auto firstTabStop = [s] () -> HWND {
+		for (HWND h : s->order) {
+			if ((GetWindowLongW(h, GWL_STYLE) & (WS_TABSTOP | WS_DISABLED | WS_VISIBLE)) == (WS_TABSTOP | WS_VISIBLE)) return h;
+		}
+		return nullptr;
+	};
+	// TRUE が返ったら、WM_INITDIALOG の中で隠したり無効にしたりした分を除いて探し直す（Win32 と同じ。
+	// ダイレクトタグジャンプ一覧はキーワード欄を隠して一覧にフォーカスを渡す）
+	if (SendMessageW(hDlg, WM_INITDIALOG, reinterpret_cast<WPARAM>(firstTabStop()), lParam) && !s->ended && !asPage) {
+		if (HWND first = firstTabStop()) DialogSetFocus(hDlg, first);
 	}
-	if (SendMessageW(hDlg, WM_INITDIALOG, reinterpret_cast<WPARAM>(first), lParam) && first && !s->ended && !asPage) DialogSetFocus(hDlg, first);
 	if (!IsWindow(hDlg)) return nullptr;
 	if (style & WS_DISABLED) EnableWindow(hDlg, FALSE);
 	if ((style & WS_VISIBLE) && !s->ended) ShowWindow(hDlg, child ? SW_SHOWNA : SW_SHOW);

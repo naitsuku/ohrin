@@ -11,7 +11,9 @@ zlib ライセンスのオープンソース。開発者 1 名 + Claude。
   ダイアログも互換層で動かす（2026-11-04 Week 6 で変更。Win32 のダイアログ機構とコントロールを
   winport に実装し、上流の CDlg* をそのまま使う）。開く／保存／フォントは mac 標準パネルを使う。
 - **目標プラットフォーム**: macOS 13+（Apple Silicon 優先）。Linux は当面対象外。
-- **旧方針の wxWidgets 版 `sakura_wx/` は凍結**（参照・流用のみ。新機能を足さない）。
+- 旧方針の wxWidgets 版 `sakura_wx/` は 2026-11-08 に削除した（履歴には残っている）。
+- **公開名は「サクラエディタ for Mac（非公式）」**、リポジトリは github.com/naitsuku/sakura-editor-mac、
+  バンドル ID は `io.github.naitsuku.sakura-editor-mac`。名称は本家コミュニティに確認予定（確定まで「非公式」を明記）。
 
 計画の詳細は `docs/porting/mac_native_plan.md`、進捗は `docs/porting/progress.md`。
 作業に入る前に必ず両方を確認すること。

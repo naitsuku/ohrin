@@ -12,7 +12,13 @@ git diff --name-only --diff-filter=U        # 衝突したファイル
 ```
 
 1. **衝突を解く**
-   - `CLAUDE.md` は上流にもある。こちら（移植の方針）を残す: `git checkout --ours CLAUDE.md`
+   - 公開用に書き換えた・消したファイルは、こちらを残す:
+     `CLAUDE.md` `README.md` `CONTRIBUTING.md` `LICENSE`（本家の文面が変わったら本家側を採り、末尾の Mac 版の追記を付け直す）
+     `.github/`（本家の Windows 用ワークフローやテンプレートは消している。復活したら再び消す）
+     ```bash
+     git checkout --ours CLAUDE.md README.md CONTRIBUTING.md
+     git rm -q --ignore-unmatch .github/workflows/<本家のワークフロー>.yml
+     ```
    - `sakura_core` の `#ifdef SAKURA_WINPORT` の箇所。上流が同じ不具合を直していたら上流側を採って ifdef を消す
      （v2.4.3 では CMenuDrawer の `tbd[i]` がそうだった）
 2. **ビルド**: `cmake -S . -B build && cmake --build build`

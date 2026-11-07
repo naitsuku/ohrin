@@ -1,5 +1,21 @@
 # 移植作業進捗ログ
 
+## 2026-11-08 — 公開用ファイルの整備
+
+- [x] 旧 wx 版の残り（sakura_wx/、tests/wx_tests/、phase*_prompt.md、sakura_core/platform/、wx 用のワークフロー）を削除。
+  StdAfx.h は本家と同じに戻した（mac では _WIN32 を定義するので、wx 用の分岐は使われていなかった）
+- [x] 名称を「サクラエディタ for Mac（非公式）」に（sakura_rc.rc2 を ifdef。ウィンドウタイトル、警告の題、バージョン情報）。
+  Finder の表示名「サクラエディタ for Mac」、バンドル ID `io.github.naitsuku.sakura-editor-mac`。
+  バージョン情報にこのリポジトリの URL と、本家へ報告しない旨。版の後ろにコミットのハッシュ
+- [x] LICENSE の末尾に移植部分の著作権と「改変版で本家と無関係」の注記（元の文面は変えていない）。
+  THIRD_PARTY_NOTICES.txt（Onigmo の BSD、bregonig は Artistic License を選択、mingw-w64 ヘッダーの謝辞）。
+  DMG とアプリの Resources に LICENSE・THIRD_PARTY_NOTICES.txt を同梱
+- [x] README.md、CONTRIBUTING.md、CHANGELOG-mac.md を Mac 版向けに書いた。Issue / PR テンプレートを Mac 版用に。
+  本家の Windows 用ワークフロー（MSBuild、SonarCloud、cppcheck、doxygen、Copilot）を削除し、`.github/workflows/macos.yml`
+  （push / PR でビルドとテスト、タグ v* で DMG を作り下書きのリリースへ）を追加。**GitHub 上では未実行**
+- 確認: テスト 820 件、Release の DMG の中身（アプリ、LICENSE、THIRD_PARTY_NOTICES.txt、README.md、署名）、
+  タイトルとバージョン情報の表示、Cmd+Q の終了コード 0
+
 ## 2026-11-08 — 上流 v2.4.3 の取り込み
 
 - [x] **v2.4.3 を merge**（それまでの土台は 2026-04-29 の master）。衝突は 2 件: CMenuDrawer は上流が同じ不具合（`tbd[i]`）を

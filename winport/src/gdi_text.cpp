@@ -65,7 +65,8 @@ std::string MapFace(const std::wstring& face, BYTE pitchAndFamily)
 	static const struct { const wchar_t* win; int kind; } kMap[] = {
 		// kind: 0 = 等幅和文, 1 = 和文ゴシック（プロポーショナル）, 2 = 明朝, 3 = 等幅欧文
 		{L"ＭＳ ゴシック", 0}, {L"MS Gothic", 0}, {L"BIZ UDゴシック", 0}, {L"BIZ UDGothic", 0},
-		{L"ＭＳ 明朝", 2}, {L"MS Mincho", 2}, {L"BIZ UD明朝", 2},
+		// ＭＳ 明朝は等幅。mac に等幅の明朝は無く、桁が揃うことを優先して等幅のゴシックにする（印刷の既定フォント）
+		{L"ＭＳ 明朝", 0}, {L"MS Mincho", 0}, {L"BIZ UD明朝", 0},
 		{L"ＭＳ Ｐゴシック", 1}, {L"MS PGothic", 1}, {L"MS UI Gothic", 1}, {L"メイリオ", 1}, {L"Meiryo", 1},
 		{L"Meiryo UI", 1}, {L"Yu Gothic", 1}, {L"游ゴシック", 1}, {L"Yu Gothic UI", 1}, {L"MS Shell Dlg", 1},
 		{L"MS Shell Dlg 2", 1}, {L"Segoe UI", 1}, {L"Tahoma", 1}, {L"System", 1}, {L"Microsoft Sans Serif", 1},
@@ -364,9 +365,11 @@ WINBOOL WINAPI ExtTextOutW(HDC hdc, int x, int y, UINT options, const RECT* lpre
 	else if (halign == TA_CENTER) x -= total / 2;
 	double baseline;
 	const UINT valign = dc->textAlign & (TA_TOP | TA_BASELINE | TA_BOTTOM);
+	// MM_LOMETRIC などの論理座標は y が上向き。ydir はそのときの行の進む向き
+	const double ydir = dc->Mapped() && dc->ScaleY() < 0 ? -1 : 1;
 	if (valign == TA_BASELINE) baseline = y;
-	else if (valign == TA_BOTTOM) baseline = y - f->descent;
-	else baseline = y + f->ascent;
+	else if (valign == TA_BOTTOM) baseline = y - ydir * f->descent;
+	else baseline = y + ydir * f->ascent;
 
 	CGContextSaveGState(ctx);
 	if (dc->paintDC) CGContextClipToRect(ctx, CGRectMake(dc->paintClip.left, dc->paintClip.top, dc->paintClip.right - dc->paintClip.left, dc->paintClip.bottom - dc->paintClip.top));
@@ -377,6 +380,7 @@ WINBOOL WINAPI ExtTextOutW(HDC hdc, int x, int y, UINT options, const RECT* lpre
 		else CGContextClipToRects(ctx, rs.data(), rs.size());
 	}
 	CGContextTranslateCTM(ctx, dc->origin.x, dc->origin.y);
+	if (dc->Mapped()) CGContextScaleCTM(ctx, dc->ScaleX(), dc->ScaleY());
 
 	RECT dirty{x, y, x + total, y + f->tm.tmHeight};
 	if (lprect && (options & ETO_OPAQUE)) {
@@ -385,7 +389,7 @@ WINBOOL WINAPI ExtTextOutW(HDC hdc, int x, int y, UINT options, const RECT* lpre
 		UnionRect(&dirty, &dirty, lprect);
 	} else if (dc->bkMode == OPAQUE && n > 0) {
 		CGContextSetRGBFillColor(ctx, R(dc->bkColor), G(dc->bkColor), B(dc->bkColor), 1);
-		CGContextFillRect(ctx, CGRectMake(x, baseline - f->ascent, total, f->ascent + f->descent));
+		CGContextFillRect(ctx, CGRectMake(x, baseline - ydir * f->ascent, total, ydir * (f->ascent + f->descent)));
 	}
 	if (lprect && (options & ETO_CLIPPED)) {
 		CGContextClipToRect(ctx, CGRectMake(lprect->left, lprect->top, lprect->right - lprect->left, lprect->bottom - lprect->top));
@@ -395,7 +399,7 @@ WINBOOL WINAPI ExtTextOutW(HDC hdc, int x, int y, UINT options, const RECT* lpre
 		CGContextSetShouldAntialias(ctx, true);
 		CGContextSetShouldSmoothFonts(ctx, true);
 		CGContextSetRGBFillColor(ctx, R(dc->textColor), G(dc->textColor), B(dc->textColor), 1);
-		CGContextSetTextMatrix(ctx, CGAffineTransformMakeScale(1, -1));
+		CGContextSetTextMatrix(ctx, CGAffineTransformMakeScale(1, -ydir));
 		// 同じフォントが続く範囲をまとめて描く
 		std::vector<CGGlyph> glyphs;
 		std::vector<CGPoint> points;
@@ -412,15 +416,15 @@ WINBOOL WINAPI ExtTextOutW(HDC hdc, int x, int y, UINT options, const RECT* lpre
 				if (g.font != runFont) { flush(); runFont = g.font; }
 				glyphs.push_back(g.glyph);
 				// 位置はテキスト空間（テキスト行列で上下反転済み）なので y の符号を反転して渡す
-				points.push_back(CGPointMake(pen, -baseline));
+				points.push_back(CGPointMake(pen, -ydir * baseline));
 			}
 			pen += adv[i] + (units == 2 ? adv[i + 1] : 0);
 		});
 		flush();
 		if (f->lf.lfUnderline || f->lf.lfStrikeOut) {
 			const double thick = std::max(1.0, std::round(CTFontGetUnderlineThickness(f->ct)));
-			if (f->lf.lfUnderline) CGContextFillRect(ctx, CGRectMake(x, baseline + std::max(1.0, std::round(-CTFontGetUnderlinePosition(f->ct))), total, thick));
-			if (f->lf.lfStrikeOut) CGContextFillRect(ctx, CGRectMake(x, baseline - f->ascent / 3, total, thick));
+			if (f->lf.lfUnderline) CGContextFillRect(ctx, CGRectMake(x, baseline + ydir * std::max(1.0, std::round(-CTFontGetUnderlinePosition(f->ct))), total, ydir * thick));
+			if (f->lf.lfStrikeOut) CGContextFillRect(ctx, CGRectMake(x, baseline - ydir * f->ascent / 3, total, ydir * thick));
 		}
 	}
 	CGContextRestoreGState(ctx);

@@ -545,10 +545,11 @@ int WINAPI SetScrollInfo(HWND hwnd, int nBar, LPCSCROLLINFO lpsi, WINBOOL)
 		if (lpsi->fMask & SIF_RANGE) { si.nMin = lpsi->nMin; si.nMax = lpsi->nMax; }
 		if (lpsi->fMask & SIF_PAGE) si.nPage = lpsi->nPage;
 		if (lpsi->fMask & SIF_POS) si.nPos = lpsi->nPos;
-		if (lpsi->fMask & SIF_TRACKPOS) si.nTrackPos = lpsi->nTrackPos;
 		const int maxPos = std::max(si.nMin, si.nMax - std::max<int>(static_cast<int>(si.nPage) - 1, 0));
 		si.nPos = std::clamp(si.nPos, si.nMin, maxPos);
 		pos = si.nPos;
+		// nTrackPos は設定できない。つまみのドラッグ中以外は現在位置を返す（上流の印刷プレビューはこれに頼っている）
+		si.nTrackPos = pos;
 		if (nBar == SB_CTL) {
 			// SCROLLBAR コントロール自身の状態（controls.cpp が描く）
 			AddUpdateRect(w, nullptr, false);

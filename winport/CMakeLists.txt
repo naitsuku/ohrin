@@ -96,6 +96,7 @@ add_library(winport STATIC
     src/user32_message.cpp
     src/user32_misc.cpp
     src/user32_window.cpp
+    src/print.cpp
     src/printf.cpp
     src/debug.cpp
     src/darkmode.cpp
@@ -105,4 +106,4 @@ add_library(winport STATIC
 target_link_libraries(winport PUBLIC winport_headers winport_regex)
 target_include_directories(winport PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set_source_files_properties(src/cocoa_backend.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
-target_link_libraries(winport PUBLIC "-framework CoreFoundation" "-framework CoreGraphics" "-framework CoreText" "-framework Cocoa" "-framework ImageIO" "-framework JavaScriptCore")
+target_link_libraries(winport PUBLIC "-framework CoreFoundation" "-framework CoreGraphics" "-framework CoreText" "-framework Cocoa" "-framework ImageIO" "-framework JavaScriptCore" "-framework PDFKit")

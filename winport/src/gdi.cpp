@@ -91,6 +91,7 @@ struct DrawScope {
 			else CGContextClipToRects(ctx, rs.data(), rs.size());
 		}
 		CGContextTranslateCTM(ctx, dc->origin.x, dc->origin.y);
+		if (dc->Mapped()) CGContextScaleCTM(ctx, dc->ScaleX(), dc->ScaleY());
 	}
 	~DrawScope() { if (ctx) CGContextRestoreGState(ctx); }
 	explicit operator bool() const { return ctx != nullptr; }
@@ -250,13 +251,14 @@ RECT Region::Bounds() const
 
 CGContextRef DC::Target() const
 {
+	if (printer) return inPage ? pdf : nullptr;
 	if (surface) return surface->ctx;
 	if (bitmap) return bitmap->ctx;
 	return nullptr;
 }
 
-int DC::TargetWidth() const { return surface ? surface->width : bitmap ? bitmap->width : 0; }
-int DC::TargetHeight() const { return surface ? surface->height : bitmap ? bitmap->height : 0; }
+int DC::TargetWidth() const { return printer ? pageWidth : surface ? surface->width : bitmap ? bitmap->width : 0; }
+int DC::TargetHeight() const { return printer ? pageHeight : surface ? surface->height : bitmap ? bitmap->height : 0; }
 
 void RegisterObject(Object* o) { Register(o); }
 
@@ -636,13 +638,12 @@ HDC WINAPI CreateCompatibleDC(HDC hdc)
 	return reinterpret_cast<HDC>(dc);
 }
 
-HDC WINAPI CreateDCW(LPCWSTR, LPCWSTR, LPCWSTR, const DEVMODEW*) { return CreateCompatibleDC(nullptr); }
-
 WINBOOL WINAPI DeleteDC(HDC hdc)
 {
 	auto dc = DCOf(hdc);
 	if (!dc) return FALSE;
 	if (dc->hwnd) { ReleaseWindowDC(hdc); return TRUE; }
+	if (dc->pdf) AbortDoc(hdc);
 	const HBITMAP def = dc->defaultBitmap;
 	{
 		std::lock_guard lock(ObjMutex());
@@ -658,7 +659,7 @@ int WINAPI SaveDC(HDC hdc)
 	auto dc = DCOf(hdc);
 	if (!dc) return 0;
 	dc->saved.push_back({dc->font, dc->brush, dc->pen, dc->textColor, dc->bkColor, dc->bkMode, dc->textAlign, dc->rop2,
-	                     dc->pos, dc->origin, dc->hasClip, dc->clip});
+	                     dc->pos, dc->origin, dc->hasClip, dc->clip, dc->mapMode, dc->windowExt, dc->viewportExt});
 	return static_cast<int>(dc->saved.size());
 }
 
@@ -673,11 +674,26 @@ WINBOOL WINAPI RestoreDC(HDC hdc, int nSavedDC)
 	dc->font = s.font; dc->brush = s.brush; dc->pen = s.pen; dc->textColor = s.textColor; dc->bkColor = s.bkColor;
 	dc->bkMode = s.bkMode; dc->textAlign = s.textAlign; dc->rop2 = s.rop2; dc->pos = s.pos; dc->origin = s.origin;
 	dc->hasClip = s.hasClip; dc->clip = s.clip;
+	dc->mapMode = s.mapMode; dc->windowExt = s.windowExt; dc->viewportExt = s.viewportExt;
 	return TRUE;
 }
 
-int WINAPI GetDeviceCaps(HDC, int index)
+int WINAPI GetDeviceCaps(HDC hdc, int index)
 {
+	if (auto dc = DCOf(hdc); dc && dc->printer) {
+		switch (index) {
+		case LOGPIXELSX: case LOGPIXELSY: return kPrinterDpi;
+		case BITSPIXEL: return 32;
+		case PLANES: return 1;
+		case HORZRES: case PHYSICALWIDTH: return dc->pageWidth;
+		case VERTRES: case PHYSICALHEIGHT: return dc->pageHeight;
+		case HORZSIZE: return dc->pageWidth * 254 / (kPrinterDpi * 10);
+		case VERTSIZE: return dc->pageHeight * 254 / (kPrinterDpi * 10);
+		case TECHNOLOGY: return DT_RASPRINTER;
+		case RASTERCAPS: return RC_BITBLT | RC_STRETCHBLT | RC_DI_BITMAP;
+		default: return 0;
+		}
+	}
 	const RECT scr = ToRECT(backend::ScreenRect());
 	switch (index) {
 	case LOGPIXELSX: case LOGPIXELSY: return 96;
@@ -751,8 +767,32 @@ int WINAPI SetROP2(HDC hdc, int rop2)
 
 int WINAPI GetROP2(HDC hdc) { auto dc = DCOf(hdc); return dc ? dc->rop2 : 0; }
 
-int WINAPI SetMapMode(HDC, int) { return MM_TEXT; }
-int WINAPI GetMapMode(HDC) { return MM_TEXT; }
+//! 物理単位のマッピングモードは、1 インチあたりの論理単位数と DPI の比で決まる。y は上向き
+int WINAPI SetMapMode(HDC hdc, int mode)
+{
+	auto dc = DCOf(hdc);
+	if (!dc) return 0;
+	const int old = dc->mapMode;
+	const int dpi = GetDeviceCaps(hdc, LOGPIXELSX);
+	auto physical = [&](int perInchTimes10) {
+		dc->windowExt = {perInchTimes10, perInchTimes10};
+		dc->viewportExt = {dpi * 10, -dpi * 10};
+	};
+	switch (mode) {
+	case MM_TEXT: dc->windowExt = dc->viewportExt = {1, 1}; break;
+	case MM_LOMETRIC: physical(2540); break;
+	case MM_HIMETRIC: physical(25400); break;
+	case MM_LOENGLISH: physical(1000); break;
+	case MM_HIENGLISH: physical(10000); break;
+	case MM_TWIPS: physical(14400); break;
+	case MM_ISOTROPIC: case MM_ANISOTROPIC: break;	// 直前の比率を引き継ぐ（上流はこれを使う）
+	default: return 0;
+	}
+	dc->mapMode = mode;
+	return old;
+}
+
+int WINAPI GetMapMode(HDC hdc) { auto dc = DCOf(hdc); return dc ? dc->mapMode : 0; }
 int WINAPI SetStretchBltMode(HDC, int) { return BLACKONWHITE; }
 int WINAPI SetGraphicsMode(HDC, int) { return GM_COMPATIBLE; }
 
@@ -776,16 +816,35 @@ WINBOOL WINAPI SetWindowOrgEx(HDC hdc, int x, int y, LPPOINT lppt)
 	return TRUE;
 }
 
-WINBOOL WINAPI SetWindowExtEx(HDC, int, int, LPSIZE lpsz) { if (lpsz) *lpsz = {1, 1}; return TRUE; }
-WINBOOL WINAPI SetViewportExtEx(HDC, int, int, LPSIZE lpsz) { if (lpsz) *lpsz = {1, 1}; return TRUE; }
-WINBOOL WINAPI GetWindowExtEx(HDC, LPSIZE lpsize) { *lpsize = {1, 1}; return TRUE; }
-WINBOOL WINAPI GetViewportExtEx(HDC, LPSIZE lpsize) { *lpsize = {1, 1}; return TRUE; }
+namespace {
+
+//! 比率を変えられるのは MM_ISOTROPIC / MM_ANISOTROPIC のときだけ（Win32 と同じ）
+WINBOOL SetExtent(DC* dc, SIZE DC::*member, int x, int y, LPSIZE previous)
+{
+	if (!dc) return FALSE;
+	if (previous) *previous = dc->*member;
+	if (dc->mapMode != MM_ISOTROPIC && dc->mapMode != MM_ANISOTROPIC) return TRUE;
+	if (!x || !y) return FALSE;
+	dc->*member = {x, y};
+	return TRUE;
+}
+
+}  // namespace
+
+WINBOOL WINAPI SetWindowExtEx(HDC hdc, int x, int y, LPSIZE lpsz) { return SetExtent(DCOf(hdc), &DC::windowExt, x, y, lpsz); }
+WINBOOL WINAPI SetViewportExtEx(HDC hdc, int x, int y, LPSIZE lpsz) { return SetExtent(DCOf(hdc), &DC::viewportExt, x, y, lpsz); }
+WINBOOL WINAPI GetWindowExtEx(HDC hdc, LPSIZE lpsize) { auto dc = DCOf(hdc); if (!dc) return FALSE; *lpsize = dc->windowExt; return TRUE; }
+WINBOOL WINAPI GetViewportExtEx(HDC hdc, LPSIZE lpsize) { auto dc = DCOf(hdc); if (!dc) return FALSE; *lpsize = dc->viewportExt; return TRUE; }
 
 WINBOOL WINAPI DPtoLP(HDC hdc, LPPOINT lppt, int c)
 {
 	auto dc = DCOf(hdc);
 	if (!dc) return FALSE;
-	for (int i = 0; i < c; ++i) { lppt[i].x -= dc->origin.x; lppt[i].y -= dc->origin.y; }
+	const double sx = dc->ScaleX(), sy = dc->ScaleY();
+	for (int i = 0; i < c; ++i) {
+		lppt[i].x = std::lround((lppt[i].x - dc->origin.x) / sx);
+		lppt[i].y = std::lround((lppt[i].y - dc->origin.y) / sy);
+	}
 	return TRUE;
 }
 
@@ -793,7 +852,11 @@ WINBOOL WINAPI LPtoDP(HDC hdc, LPPOINT lppt, int c)
 {
 	auto dc = DCOf(hdc);
 	if (!dc) return FALSE;
-	for (int i = 0; i < c; ++i) { lppt[i].x += dc->origin.x; lppt[i].y += dc->origin.y; }
+	const double sx = dc->ScaleX(), sy = dc->ScaleY();
+	for (int i = 0; i < c; ++i) {
+		lppt[i].x = std::lround(lppt[i].x * sx) + dc->origin.x;
+		lppt[i].y = std::lround(lppt[i].y * sy) + dc->origin.y;
+	}
 	return TRUE;
 }
 

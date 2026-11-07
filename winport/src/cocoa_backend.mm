@@ -10,6 +10,7 @@
 	SPDX-License-Identifier: Zlib
 */
 #import <Cocoa/Cocoa.h>
+#import <PDFKit/PDFKit.h>
 
 #include <cmath>
 #include <functional>
@@ -1164,6 +1165,59 @@ void ShowColorPanel(unsigned* rgb, std::atomic<int>* result)
 			NSColor* c = [well.color colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
 			*rgb = static_cast<unsigned>(c.redComponent * 255 + 0.5) << 16 | static_cast<unsigned>(c.greenComponent * 255 + 0.5) << 8 | static_cast<unsigned>(c.blueComponent * 255 + 0.5);
 		}
+		result->store(ok ? 1 : -1);
+	});
+	CFRunLoopWakeUp(CFRunLoopGetMain());
+}
+
+std::vector<std::u16string> PrinterNames()
+{
+	@autoreleasepool {
+		std::vector<std::u16string> names;
+		NSPrinter* preferred = NSPrintInfo.defaultPrinter;
+		if (preferred.name.length) names.push_back(U16(preferred.name));
+		for (NSString* name in NSPrinter.printerNames) {
+			if (![name isEqualToString:preferred.name]) names.push_back(U16(name));
+		}
+		return names;
+	}
+}
+
+void ShowPrinterChooser(const std::vector<std::u16string>* names, std::u16string* name, std::atomic<int>* result)
+{
+	CFRunLoopPerformBlock(CFRunLoopGetMain(), kCFRunLoopCommonModes, ^{
+		NSPopUpButton* popup = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(0, 0, 300, 26) pullsDown:NO];
+		for (const auto& n : *names) [popup addItemWithTitle:NS(n)];
+		[popup selectItemWithTitle:NS(*name)];
+		NSAlert* alert = [NSAlert new];
+		alert.messageText = @"プリンターの設定";
+		alert.accessoryView = popup;
+		[alert addButtonWithTitle:@"OK"];
+		[alert addButtonWithTitle:@"キャンセル"];
+		[NSApp activateIgnoringOtherApps:YES];
+		const bool ok = [alert runModal] == NSAlertFirstButtonReturn;
+		if (ok && popup.titleOfSelectedItem) *name = U16(popup.titleOfSelectedItem);
+		result->store(ok ? 1 : -1);
+	});
+	CFRunLoopWakeUp(CFRunLoopGetMain());
+}
+
+void RunPrintJob(const PrintJob* job, std::atomic<int>* result)
+{
+	// ページ範囲・部数・PDF として保存は標準の印刷パネルに任せる
+	CFRunLoopPerformBlock(CFRunLoopGetMain(), kCFRunLoopCommonModes, ^{
+		PDFDocument* document = [[PDFDocument alloc] initWithURL:[NSURL fileURLWithPath:NS(job->pdfPath)]];
+		NSPrintInfo* info = [NSPrintInfo.sharedPrintInfo copy];
+		if (NSPrinter* printer = [NSPrinter printerWithName:NS(job->printer)]) info.printer = printer;
+		info.paperSize = NSMakeSize(job->width, job->height);
+		info.orientation = job->width > job->height ? NSPaperOrientationLandscape : NSPaperOrientationPortrait;
+		info.topMargin = info.bottomMargin = info.leftMargin = info.rightMargin = 0;
+		NSPrintOperation* operation = [document printOperationForPrintInfo:info scalingMode:kPDFPrintPageScaleNone autoRotate:NO];
+		operation.jobTitle = NS(job->title);
+		operation.showsPrintPanel = YES;
+		operation.showsProgressPanel = YES;
+		[NSApp activateIgnoringOtherApps:YES];
+		const bool ok = document && operation && [operation runOperation];
 		result->store(ok ? 1 : -1);
 	});
 	CFRunLoopWakeUp(CFRunLoopGetMain());

@@ -94,6 +94,16 @@ void ShowFilePanel(const PanelRequest* request, PanelResult* result);
 void ShowFontPanel(FontChoice* choice, std::atomic<int>* result);
 //! 閉じられたら *result が 1（OK）か -1（キャンセル）になり、OK なら *rgb（0xRRGGBB）を更新する
 void ShowColorPanel(unsigned* rgb, std::atomic<int>* result);
+//! プリンターの名前の一覧（既定のプリンターが先頭）。無ければ空
+std::vector<std::u16string> PrinterNames();
+//! プリンターを選ばせる。閉じられたら *result が 1（OK）か -1（キャンセル）になり、OK なら *name を更新する
+void ShowPrinterChooser(const std::vector<std::u16string>* names, std::u16string* name, std::atomic<int>* result);
+struct PrintJob {
+	std::u16string pdfPath, title, printer;
+	double width = 0, height = 0;      //!< 用紙（ポイント）
+};
+//! 標準の印刷パネルを出して PDF を印刷する。閉じられたら *result が 1（印刷）か -1（キャンセル）になる
+void RunPrintJob(const PrintJob* job, std::atomic<int>* result);
 //! ファイル・フォルダー・URL を既定のアプリで開く
 bool OpenWithSystem(const std::u16string& target);
 //! システムのクリップボード。どのスレッドから呼んでもよく、メインスレッドを待たない

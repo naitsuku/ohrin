@@ -61,6 +61,7 @@ add_executable(sakura_mac_tests
     test-winport-jscript.cpp
     test-winport-oleaut.cpp
     test-winport-path.cpp
+    test-winport-print.cpp
     test-winport-process.cpp
     test-winport-regex.cpp
     test-winport-window.cpp

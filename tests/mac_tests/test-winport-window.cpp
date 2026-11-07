@@ -45,3 +45,18 @@ TEST(WinportWindow, SetWindowPosSendsSizeOnlyWhenChanged)
 
 	::DestroyWindow(hwnd);
 }
+
+// nTrackPos は設定できず、ドラッグ中以外は現在位置を返す。上流の印刷プレビューは SIF_ALL で nTrackPos=100 を渡し、
+// 読み戻した値を現在位置として使うので、保存すると表示が 100 ピクセルずれる
+TEST(WinportWindow, ScrollTrackPosFollowsPosition)
+{
+	HWND bar = ::CreateWindowExW(0, L"SCROLLBAR", L"", WS_POPUP, 0, 0, 20, 100, nullptr, nullptr, nullptr, nullptr);
+	ASSERT_NE(nullptr, bar);
+	SCROLLINFO set{sizeof(set), SIF_ALL, 0, 500, 50, 30, 100};
+	::SetScrollInfo(bar, SB_CTL, &set, FALSE);
+	SCROLLINFO get{sizeof(get), SIF_POS | SIF_TRACKPOS};
+	::GetScrollInfo(bar, SB_CTL, &get);
+	EXPECT_EQ(30, get.nPos);
+	EXPECT_EQ(30, get.nTrackPos);
+	::DestroyWindow(bar);
+}

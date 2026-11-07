@@ -43,5 +43,7 @@
 	<true/>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>ネットワークプリンターで印刷するために使います。</string>
 </dict>
 </plist>

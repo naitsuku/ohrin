@@ -91,6 +91,9 @@ struct DC : Object {
 	int rop2 = R2_COPYPEN;
 	POINT pos{0, 0};
 	POINT origin{0, 0};                    //!< SetViewportOrgEx
+	int mapMode = MM_TEXT;
+	SIZE windowExt{1, 1};                  //!< 論理座標 × viewportExt / windowExt = デバイス座標
+	SIZE viewportExt{1, 1};
 	bool hasClip = false;
 	std::vector<RECT> clip;                //!< SelectClipRgn（デバイス座標）
 	RECT dirty{};                          //!< 描画した範囲（Present 用、クライアント座標）
@@ -100,14 +103,27 @@ struct DC : Object {
 
 	struct Saved {
 		HFONT font; HBRUSH brush; HPEN pen; COLORREF textColor, bkColor; int bkMode; UINT textAlign; int rop2;
-		POINT pos, origin; bool hasClip; std::vector<RECT> clip;
+		POINT pos, origin; bool hasClip; std::vector<RECT> clip; int mapMode; SIZE windowExt, viewportExt;
 	};
 	std::vector<Saved> saved;
+
+	// プリンター DC（print.cpp）。デバイス座標は kPrinterDpi の画素で、PDF へ書く
+	bool printer = false;
+	int pageWidth = 0, pageHeight = 0;     //!< デバイス座標
+	CGContextRef pdf = nullptr;            //!< StartDoc 〜 EndDoc
+	bool inPage = false;
+	std::wstring printerName, jobName, pdfPath, outputPath;
+
+	double ScaleX() const { return static_cast<double>(viewportExt.cx) / windowExt.cx; }
+	double ScaleY() const { return static_cast<double>(viewportExt.cy) / windowExt.cy; }
+	bool Mapped() const { return mapMode != MM_TEXT; }
 
 	CGContextRef Target() const;
 	int TargetWidth() const;
 	int TargetHeight() const;
 };
+
+constexpr int kPrinterDpi = 600;
 
 Object* ObjectOf(HGDIOBJ h);
 //! 生成した GDI オブジェクトを有効なハンドルとして登録する

@@ -676,12 +676,28 @@ void CPrintPreview::OnChangePrintSetting( void )
 	::SetMapMode( hdc, MM_LOMETRIC ); //MM_HIMETRIC それぞれの論理単位は、0.01 mm にマップされます
 	::SetMapMode( hdc, MM_ANISOTROPIC );
 
+#ifdef SAKURA_WINPORT
+	// 見つからなかったことを下で判定する（このメンバーは初期化されていない）
+	m_lfPreviewHan = LOGFONT{};
+	m_lfPreviewZen = LOGFONT{};
+#endif
 	::EnumFontFamilies(
 		hdc,
 		nullptr,
 		(FONTENUMPROC)CPrintPreview::MyEnumFontFamProc,
 		(LPARAM)this
 	);
+#ifdef SAKURA_WINPORT
+	// 既定の「ＭＳ 明朝」などは mac に無く列挙に現れない。フォントの情報が空のままだと文字幅が決まらないので、
+	// 名前だけ指定して代替フォントに任せる
+	if( m_lfPreviewHan.lfFaceName[0] == L'\0' || m_lfPreviewZen.lfFaceName[0] == L'\0' ){
+		LOGFONT lfDefault = {};
+		lfDefault.lfCharSet = DEFAULT_CHARSET;
+		lfDefault.lfPitchAndFamily = FIXED_PITCH;
+		if( m_lfPreviewHan.lfFaceName[0] == L'\0' ) SetPreviewFontHan( &lfDefault );
+		if( m_lfPreviewZen.lfFaceName[0] == L'\0' ) SetPreviewFontZen( &lfDefault );
+	}
+#endif
 	SelectCharWidthCache( CWM_FONT_PRINT, CWM_CACHE_LOCAL );
 	LOGFONT aLogFontArray[] = {m_lfPreviewHan, m_lfPreviewZen};
 	InitCharWidthCacheFromDC( aLogFontArray, CWM_FONT_PRINT, hdc );

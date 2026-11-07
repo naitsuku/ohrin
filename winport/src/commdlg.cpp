@@ -1,5 +1,5 @@
 /*
-	commdlg.cpp — コモンダイアログ（GetOpenFileName / GetSaveFileName / ChooseFont）
+	commdlg.cpp — コモンダイアログ（GetOpenFileName / GetSaveFileName / ChooseFont / ChooseColor / IFileOpenDialog）
 
 	画面は mac 標準のパネル。上流のフック（文字コード・改行・BOM の選択）は、Windows と同じテンプレートの
 	ダイアログを非表示のまま動かし、その中のコンボボックスとチェックボックスをパネルの補助ビューへ写す。
@@ -10,6 +10,7 @@
 #include "user32_internal.h"
 
 #include <commdlg.h>
+#include <shobjidl.h>
 
 #include <algorithm>
 #include <atomic>
@@ -301,4 +302,162 @@ WINBOOL WINAPI ChooseFontW(LPCHOOSEFONTW cf)
 	return TRUE;
 }
 
+WINBOOL WINAPI ChooseColorW(LPCHOOSECOLORW cc)
+{
+	if (!backend::Available()) return FALSE;
+	const COLORREF initial = (cc->Flags & CC_RGBINIT) ? cc->rgbResult : 0;
+	unsigned rgb = GetRValue(initial) << 16 | GetGValue(initial) << 8 | GetBValue(initial);
+	const HWND owner = cc->hwndOwner ? GetAncestor(cc->hwndOwner, GA_ROOT) : nullptr;
+	const bool ownerEnabled = owner && IsWindowEnabled(owner);
+	if (ownerEnabled) EnableWindow(owner, FALSE);
+	std::atomic<int> result{0};
+	backend::ShowColorPanel(&rgb, &result);
+	WaitModal([&] { return result.load() != 0; });
+	if (ownerEnabled) EnableWindow(owner, TRUE);
+	if (owner && IsWindowVisible(owner)) SetForegroundWindow(owner);
+	if (result.load() != 1) return FALSE;
+	cc->rgbResult = RGB((rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255);
+	return TRUE;
+}
+
 }  // extern "C"
+
+// ---- IFileOpenDialog ----
+// 上流の SelectDir がフォルダーの選択に使う。使わないメソッドは E_NOTIMPL を返す
+namespace {
+
+class WpShellItem final : public IShellItem {
+public:
+	explicit WpShellItem(std::wstring path) : path_(std::move(path)) {}
+	HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** out) override
+	{
+		*out = nullptr;
+		if (!IsEqualIID(riid, IID_IUnknown) && !IsEqualIID(riid, IID_IShellItem)) return E_NOINTERFACE;
+		AddRef();
+		*out = this;
+		return S_OK;
+	}
+	ULONG STDMETHODCALLTYPE AddRef() override { return ++refs_; }
+	ULONG STDMETHODCALLTYPE Release() override
+	{
+		const ULONG n = --refs_;
+		if (!n) delete this;
+		return n;
+	}
+	HRESULT STDMETHODCALLTYPE BindToHandler(IBindCtx*, REFGUID, REFIID, void**) override { return E_NOTIMPL; }
+	HRESULT STDMETHODCALLTYPE GetParent(IShellItem**) override { return E_NOTIMPL; }
+	HRESULT STDMETHODCALLTYPE GetDisplayName(SIGDN, LPWSTR* name) override
+	{
+		*name = static_cast<LPWSTR>(CoTaskMemAlloc((path_.size() + 1) * sizeof(wchar_t)));
+		if (!*name) return E_OUTOFMEMORY;
+		std::wmemcpy(*name, path_.c_str(), path_.size() + 1);
+		return S_OK;
+	}
+	HRESULT STDMETHODCALLTYPE GetAttributes(SFGAOF, SFGAOF*) override { return E_NOTIMPL; }
+	HRESULT STDMETHODCALLTYPE Compare(IShellItem*, SICHINTF, int*) override { return E_NOTIMPL; }
+	const std::wstring& Path() const { return path_; }
+
+private:
+	std::wstring path_;
+	std::atomic<ULONG> refs_{1};
+};
+
+class WpFileOpenDialog final : public IFileOpenDialog {
+public:
+	HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** out) override
+	{
+		*out = nullptr;
+		if (!IsEqualIID(riid, IID_IUnknown) && !IsEqualIID(riid, IID_IModalWindow) && !IsEqualIID(riid, IID_IFileDialog) && !IsEqualIID(riid, IID_IFileOpenDialog)) return E_NOINTERFACE;
+		AddRef();
+		*out = this;
+		return S_OK;
+	}
+	ULONG STDMETHODCALLTYPE AddRef() override { return ++refs_; }
+	ULONG STDMETHODCALLTYPE Release() override
+	{
+		const ULONG n = --refs_;
+		if (!n) delete this;
+		return n;
+	}
+	HRESULT STDMETHODCALLTYPE Show(HWND parent) override
+	{
+		backend::PanelRequest request;
+		request.folders = (options_ & FOS_PICKFOLDERS) != 0;
+		request.title = U16(title_);
+		request.directory = U16(folder_);
+		backend::PanelResult result;
+		const HWND owner = parent ? GetAncestor(parent, GA_ROOT) : nullptr;
+		const bool ownerEnabled = owner && IsWindowEnabled(owner);
+		if (ownerEnabled) EnableWindow(owner, FALSE);
+		backend::ShowFilePanel(&request, &result);
+		WaitModal([&] { return result.done.load(); });
+		if (ownerEnabled) EnableWindow(owner, TRUE);
+		if (owner && IsWindowVisible(owner)) SetForegroundWindow(owner);
+		if (!result.ok || result.paths.empty()) return HRESULT_FROM_WIN32(ERROR_CANCELLED);
+		result_ = W(result.paths[0]);
+		return S_OK;
+	}
+	HRESULT STDMETHODCALLTYPE SetOptions(FILEOPENDIALOGOPTIONS options) override { options_ = options; return S_OK; }
+	HRESULT STDMETHODCALLTYPE GetOptions(FILEOPENDIALOGOPTIONS* options) override { *options = options_; return S_OK; }
+	HRESULT STDMETHODCALLTYPE SetFolder(IShellItem* item) override
+	{
+		if (item) folder_ = static_cast<WpShellItem*>(item)->Path();
+		return S_OK;
+	}
+	HRESULT STDMETHODCALLTYPE SetDefaultFolder(IShellItem* item) override { return SetFolder(item); }
+	HRESULT STDMETHODCALLTYPE SetTitle(LPCWSTR title) override { title_ = title ? title : L""; return S_OK; }
+	HRESULT STDMETHODCALLTYPE GetResult(IShellItem** item) override
+	{
+		if (result_.empty()) return E_UNEXPECTED;
+		*item = new WpShellItem(result_);
+		return S_OK;
+	}
+	HRESULT STDMETHODCALLTYPE SetFileTypes(UINT, const COMDLG_FILTERSPEC*) override { return E_NOTIMPL; }
+	HRESULT STDMETHODCALLTYPE SetFileTypeIndex(UINT) override { return E_NOTIMPL; }
+	HRESULT STDMETHODCALLTYPE GetFileTypeIndex(UINT*) override { return E_NOTIMPL; }
+	HRESULT STDMETHODCALLTYPE Advise(IFileDialogEvents*, DWORD*) override { return E_NOTIMPL; }
+	HRESULT STDMETHODCALLTYPE Unadvise(DWORD) override { return E_NOTIMPL; }
+	HRESULT STDMETHODCALLTYPE GetFolder(IShellItem**) override { return E_NOTIMPL; }
+	HRESULT STDMETHODCALLTYPE GetCurrentSelection(IShellItem**) override { return E_NOTIMPL; }
+	HRESULT STDMETHODCALLTYPE SetFileName(LPCWSTR) override { return E_NOTIMPL; }
+	HRESULT STDMETHODCALLTYPE GetFileName(LPWSTR*) override { return E_NOTIMPL; }
+	HRESULT STDMETHODCALLTYPE SetOkButtonLabel(LPCWSTR) override { return S_OK; }
+	HRESULT STDMETHODCALLTYPE SetFileNameLabel(LPCWSTR) override { return S_OK; }
+	HRESULT STDMETHODCALLTYPE AddPlace(IShellItem*, FDAP) override { return E_NOTIMPL; }
+	HRESULT STDMETHODCALLTYPE SetDefaultExtension(LPCWSTR) override { return E_NOTIMPL; }
+	HRESULT STDMETHODCALLTYPE Close(HRESULT) override { return S_OK; }
+	HRESULT STDMETHODCALLTYPE SetClientGuid(REFGUID) override { return S_OK; }
+	HRESULT STDMETHODCALLTYPE ClearClientData() override { return S_OK; }
+	HRESULT STDMETHODCALLTYPE SetFilter(IShellItemFilter*) override { return E_NOTIMPL; }
+	HRESULT STDMETHODCALLTYPE GetResults(IShellItemArray**) override { return E_NOTIMPL; }
+	HRESULT STDMETHODCALLTYPE GetSelectedItems(IShellItemArray**) override { return E_NOTIMPL; }
+
+private:
+	FILEOPENDIALOGOPTIONS options_ = 0;
+	std::wstring title_, folder_, result_;
+	std::atomic<ULONG> refs_{1};
+};
+
+}  // namespace
+
+namespace winport {
+
+HRESULT CreateFileOpenDialog(REFIID riid, void** out)
+{
+	auto dialog = new WpFileOpenDialog;
+	const HRESULT hr = dialog->QueryInterface(riid, out);
+	dialog->Release();
+	return hr;
+}
+
+}  // namespace winport
+
+extern "C" HRESULT WINAPI SHCreateItemFromParsingName(PCWSTR path, IBindCtx*, REFIID riid, void** out)
+{
+	*out = nullptr;
+	if (!path || !*path) return E_INVALIDARG;
+	auto item = new WpShellItem(path);
+	const HRESULT hr = item->QueryInterface(riid, out);
+	item->Release();
+	return hr;
+}

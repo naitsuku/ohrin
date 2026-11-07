@@ -169,6 +169,10 @@ static LRESULT CALLBACK PropSheetWndProc( HWND hwnd, UINT uMsg, WPARAM wParam, L
 				WCHAR szPath[_MAX_PATH];
 				GetInidir( szPath );
 
+#ifdef SAKURA_WINPORT
+				::ShellExecute( hwnd, L"open", szPath, nullptr, nullptr, SW_SHOWNORMAL );
+				break;
+#endif
 				// フォルダの ITEMIDLIST を取得して ShellExecuteEx() で開く
 				// Note. MSDN の ShellExecute() の解説にある方法でフォルダを開こうとした場合、
 				//       フォルダと同じ場所に <フォルダ名>.exe があるとうまく動かない。

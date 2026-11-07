@@ -711,6 +711,29 @@ void RebuildMenuBar(void* hwnd)
 @end
 
 // 開く／保存パネルの補助ビュー
+//! 色の選択の R / G / B 欄と NSColorWell を同期する
+@interface WPColorTarget : NSObject
+@property(nonatomic, strong) NSColorWell* well;
+@property(nonatomic, strong) NSArray<NSTextField*>* fields;
+- (void)wellChanged:(id)sender;
+- (void)fieldChanged:(id)sender;
+@end
+
+@implementation WPColorTarget
+- (void)wellChanged:(id)sender
+{
+	NSColor* c = [self.well.color colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+	const CGFloat v[3] = {c.redComponent, c.greenComponent, c.blueComponent};
+	for (int i = 0; i < 3; ++i) self.fields[i].integerValue = static_cast<NSInteger>(v[i] * 255 + 0.5);
+}
+- (void)fieldChanged:(id)sender
+{
+	CGFloat v[3];
+	for (int i = 0; i < 3; ++i) v[i] = std::clamp<NSInteger>(self.fields[i].integerValue, 0, 255) / 255.0;
+	self.well.color = [NSColor colorWithSRGBRed:v[0] green:v[1] blue:v[2] alpha:1];
+}
+@end
+
 @interface WPPanelTarget : NSObject
 @property(nonatomic, weak) NSSavePanel* panel;
 - (void)recentChosen:(NSPopUpButton*)sender;
@@ -1015,8 +1038,8 @@ void ShowFilePanel(const PanelRequest* request, PanelResult* result)
 		} else {
 			NSOpenPanel* open = [NSOpenPanel openPanel];
 			open.allowsMultipleSelection = request->multiple;
-			open.canChooseFiles = YES;
-			open.canChooseDirectories = NO;
+			open.canChooseFiles = !request->folders;
+			open.canChooseDirectories = request->folders;
 			panel = open;
 		}
 		panel.canCreateDirectories = YES;
@@ -1096,6 +1119,66 @@ void ShowFontPanel(FontChoice* choice, std::atomic<int>* result)
 		result->store(ok ? 1 : -1);
 	});
 	CFRunLoopWakeUp(CFRunLoopGetMain());
+}
+
+void ShowColorPanel(unsigned* rgb, std::atomic<int>* result)
+{
+	// ShowFontPanel と同じく OK / キャンセルが要るので NSAlert に色の欄を置く。NSColorWell から標準のカラーパネルも開ける
+	CFRunLoopPerformBlock(CFRunLoopGetMain(), kCFRunLoopCommonModes, ^{
+		NSView* view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 300, 44)];
+		NSColorWell* well = [[NSColorWell alloc] initWithFrame:NSMakeRect(0, 4, 60, 36)];
+		well.color = [NSColor colorWithSRGBRed:((*rgb >> 16) & 255) / 255.0 green:((*rgb >> 8) & 255) / 255.0 blue:(*rgb & 255) / 255.0 alpha:1];
+		WPColorTarget* target = [WPColorTarget new];
+		target.well = well;
+		well.target = target;
+		well.action = @selector(wellChanged:);
+		[view addSubview:well];
+		NSMutableArray<NSTextField*>* fields = [NSMutableArray array];
+		NSArray<NSString*>* names = @[@"R", @"G", @"B"];
+		for (int i = 0; i < 3; ++i) {
+			NSTextField* label = [NSTextField labelWithString:names[i]];
+			label.frame = NSMakeRect(72 + i * 76, 12, 14, 20);
+			NSTextField* field = [NSTextField textFieldWithString:@""];
+			field.frame = NSMakeRect(88 + i * 76, 10, 50, 24);
+			field.target = target;
+			field.action = @selector(fieldChanged:);
+			[view addSubview:label];
+			[view addSubview:field];
+			[fields addObject:field];
+		}
+		target.fields = fields;
+		[target wellChanged:nil];
+		NSColorPanel.sharedColorPanel.worksWhenModal = YES;
+		NSColorPanel.sharedColorPanel.restorable = NO;	// 開いたまま落ちると次の起動で現れる
+		NSAlert* alert = [NSAlert new];
+		alert.messageText = @"色の設定";
+		alert.accessoryView = view;
+		[alert addButtonWithTitle:@"OK"];
+		[alert addButtonWithTitle:@"キャンセル"];
+		[NSApp activateIgnoringOtherApps:YES];
+		const bool ok = [alert runModal] == NSAlertFirstButtonReturn;
+		[NSColorPanel.sharedColorPanel orderOut:nil];
+		[well deactivate];
+		if (ok) {
+			[target fieldChanged:nil];	// 欄で確定していない入力も拾う
+			NSColor* c = [well.color colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+			*rgb = static_cast<unsigned>(c.redComponent * 255 + 0.5) << 16 | static_cast<unsigned>(c.greenComponent * 255 + 0.5) << 8 | static_cast<unsigned>(c.blueComponent * 255 + 0.5);
+		}
+		result->store(ok ? 1 : -1);
+	});
+	CFRunLoopWakeUp(CFRunLoopGetMain());
+}
+
+bool OpenWithSystem(const std::u16string& target)
+{
+	@autoreleasepool {
+		NSString* text = NS(target);
+		NSURL* url = nil;
+		if ([text hasPrefix:@"/"] || [text hasPrefix:@"~"]) url = [NSURL fileURLWithPath:text.stringByExpandingTildeInPath];
+		else if ([text rangeOfString:@"://"].location != NSNotFound || [text hasPrefix:@"mailto:"]) url = [NSURL URLWithString:text];
+		else url = [NSURL fileURLWithPath:text];
+		return url && [NSWorkspace.sharedWorkspace openURL:url];
+	}
 }
 
 long ClipboardChangeCount() { return NSPasteboard.generalPasteboard.changeCount; }

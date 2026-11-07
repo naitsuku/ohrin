@@ -11,6 +11,7 @@
 #include <shellapi.h>
 #include <shlobj.h>
 
+#include <algorithm>
 #include <cstdlib>
 #include <cwchar>
 #include <string>
@@ -20,7 +21,40 @@
 
 #include "winport_internal.h"
 
+namespace {
+
+//! Win32 のパス区切りが混じっていても開けるようにする
+std::u16string SystemPath(const wchar_t* file)
+{
+	std::u16string out;
+	for (const wchar_t* p = file; *p; ++p) out += static_cast<char16_t>(*p);
+	if (out.find(u"://") == std::u16string::npos) std::replace(out.begin(), out.end(), u'\\', u'/');
+	return out;
+}
+
+bool OpensWithSystem(LPCWSTR verb)
+{
+	return !verb || !*verb || !_wcsicmp(verb, L"open") || !_wcsicmp(verb, L"explore");
+}
+
+}  // namespace
+
 extern "C" {
+
+//! 既定のアプリで開く。戻り値は 32 より大きければ成功（Win32 と同じ）
+HINSTANCE WINAPI ShellExecuteW(HWND, LPCWSTR verb, LPCWSTR file, LPCWSTR, LPCWSTR, INT)
+{
+	if (!file || !OpensWithSystem(verb)) return reinterpret_cast<HINSTANCE>(static_cast<intptr_t>(SE_ERR_NOASSOC));
+	return reinterpret_cast<HINSTANCE>(static_cast<intptr_t>(winport::backend::OpenWithSystem(SystemPath(file)) ? 33 : SE_ERR_FNF));
+}
+
+WINBOOL WINAPI ShellExecuteExW(SHELLEXECUTEINFOW* info)
+{
+	if (!info->lpFile || !OpensWithSystem(info->lpVerb)) return FALSE;
+	const bool ok = winport::backend::OpenWithSystem(SystemPath(info->lpFile));
+	info->hInstApp = reinterpret_cast<HINSTANCE>(static_cast<intptr_t>(ok ? 33 : SE_ERR_FNF));
+	return ok;
+}
 
 HRESULT WINAPI OleInitialize(LPVOID) { return S_OK; }
 void WINAPI OleUninitialize(void) {}
@@ -95,6 +129,7 @@ HDROP CreateDropHandle(const std::vector<std::wstring>& files, POINT pt)
 }  // namespace winport
 
 /* ---- ユーザーのフォルダー ---- */
+LPVOID WINAPI CoTaskMemAlloc(SIZE_T size) { return std::malloc(size); }
 void WINAPI CoTaskMemFree(LPVOID pv) { std::free(pv); }
 
 //! 設定の保存先を決めるのに使う（CControlProcess::GetPrivateIniFileName）

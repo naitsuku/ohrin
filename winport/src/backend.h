@@ -73,6 +73,7 @@ struct PanelControl {
 struct PanelRequest {
 	bool save = false;
 	bool multiple = false;
+	bool folders = false;              //!< フォルダーを選ぶ
 	std::u16string title, directory, name;
 	std::vector<PanelControl> controls;
 };
@@ -91,6 +92,10 @@ struct FontChoice {
 void ShowFilePanel(const PanelRequest* request, PanelResult* result);
 //! 閉じられたら *result が 1（OK）か -1（キャンセル）になり、OK なら choice を更新する
 void ShowFontPanel(FontChoice* choice, std::atomic<int>* result);
+//! 閉じられたら *result が 1（OK）か -1（キャンセル）になり、OK なら *rgb（0xRRGGBB）を更新する
+void ShowColorPanel(unsigned* rgb, std::atomic<int>* result);
+//! ファイル・フォルダー・URL を既定のアプリで開く
+bool OpenWithSystem(const std::u16string& target);
 //! システムのクリップボード。どのスレッドから呼んでもよく、メインスレッドを待たない
 long ClipboardChangeCount();
 void ClipboardWriteText(const std::u16string& text);   //!< 内容を置き換える（空なら消すだけ）

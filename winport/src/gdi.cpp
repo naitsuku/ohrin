@@ -1367,8 +1367,29 @@ WINBOOL WINAPI DrawEdge(HDC hdc, LPRECT qrc, UINT edge, UINT grfFlags)
 	return TRUE;
 }
 
-WINBOOL WINAPI DrawFrameControl(HDC hdc, LPRECT lprc, UINT, UINT)
+WINBOOL WINAPI DrawFrameControl(HDC hdc, LPRECT lprc, UINT type, UINT state)
 {
+	if (type == DFC_BUTTON && (state & DFCS_BUTTONCHECK)) {
+		// 同色統一ダイアログの一覧のチェックボックス
+		const int size = std::min<int>(lprc->right - lprc->left, lprc->bottom - lprc->top);
+		const RECT box{lprc->left, lprc->top, lprc->left + size, lprc->top + size};
+		HBRUSH white = CreateSolidBrush(RGB(255, 255, 255));
+		HBRUSH line = CreateSolidBrush(RGB(120, 120, 120));
+		FillRect(hdc, &box, white);
+		FrameRect(hdc, &box, line);
+		DeleteObject(white);
+		DeleteObject(line);
+		if (state & DFCS_CHECKED) {
+			HPEN pen = CreatePen(PS_SOLID, 2, RGB(0, 0, 0));
+			HGDIOBJ old = SelectObject(hdc, pen);
+			MoveToEx(hdc, box.left + size / 4, box.top + size / 2, nullptr);
+			LineTo(hdc, box.left + size * 2 / 5, box.top + size * 3 / 4);
+			LineTo(hdc, box.left + size * 3 / 4, box.top + size / 4);
+			SelectObject(hdc, old);
+			DeleteObject(pen);
+		}
+		return TRUE;
+	}
 	DrawEdge(hdc, lprc, EDGE_RAISED, BF_RECT | BF_MIDDLE);
 	return TRUE;
 }

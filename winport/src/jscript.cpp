@@ -15,6 +15,7 @@
 */
 #include <windows.h>
 #include <activscp.h>
+#include <shobjidl.h>
 
 #include <JavaScriptCore/JavaScript.h>
 
@@ -453,6 +454,10 @@ private:
 
 }  // namespace
 
+namespace winport {
+HRESULT CreateFileOpenDialog(REFIID riid, void** out);  // commdlg.cpp
+}
+
 HRESULT WINAPI CLSIDFromProgID(LPCOLESTR progId, LPCLSID clsid)
 {
 	if (std::wcscmp(progId, L"JScript") != 0) return REGDB_E_CLASSNOTREG;
@@ -463,6 +468,7 @@ HRESULT WINAPI CLSIDFromProgID(LPCOLESTR progId, LPCLSID clsid)
 HRESULT WINAPI CoCreateInstance(REFCLSID clsid, LPUNKNOWN, DWORD, REFIID riid, LPVOID* out)
 {
 	*out = nullptr;
+	if (IsEqualCLSID(clsid, CLSID_FileOpenDialog)) return winport::CreateFileOpenDialog(riid, out);
 	if (!IsEqualCLSID(clsid, kClsidJScript)) return REGDB_E_CLASSNOTREG;
 	IActiveScript* engine = new JScriptEngine;
 	const HRESULT hr = engine->QueryInterface(riid, out);

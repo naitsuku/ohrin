@@ -122,6 +122,7 @@ void CFileLoad::Prepare( const CFileLoad& other, size_t nReadBufOffsetBegin, siz
 	m_bEolEx		= other.m_bEolEx;
 	m_nMaxEolLen	= other.m_nMaxEolLen;
 	m_cLineTemp		= other.m_cLineTemp;
+	m_nReadOffset2	= 0;
 
 	m_nLineIndex	= -1;
 	m_eMode			= FLMODE_READY;

@@ -1432,7 +1432,8 @@ WINBOOL WINAPI DrawEdge(HDC hdc, LPRECT qrc, UINT edge, UINT grfFlags)
 
 WINBOOL WINAPI DrawFrameControl(HDC hdc, LPRECT lprc, UINT type, UINT state)
 {
-	if (type == DFC_BUTTON && (state & DFCS_BUTTONCHECK)) {
+	// DFCS_BUTTONCHECK は 0 なので、ボタンの種類（下位 5 ビット）を比べる
+	if (type == DFC_BUTTON && (state & 0x1F) == DFCS_BUTTONCHECK) {
 		// 同色統一ダイアログの一覧のチェックボックス
 		const int size = std::min<int>(lprc->right - lprc->left, lprc->bottom - lprc->top);
 		const RECT box{lprc->left, lprc->top, lprc->left + size, lprc->top + size};

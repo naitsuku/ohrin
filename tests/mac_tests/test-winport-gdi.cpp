@@ -84,3 +84,15 @@ TEST(WinportGdi, TextExtentMatchesFixedPitch)
 	::SelectObject(m.dc, old);
 	::DeleteObject(font);
 }
+
+// 同色統一ダイアログの一覧のチェックボックス。DFCS_BUTTONCHECK は 0 なので、ビットで調べると描かれなかった
+TEST(WinportGdi, DrawFrameControlDrawsCheckMark)
+{
+	MemDC unchecked(16, 16), checked(16, 16);
+	RECT rc{0, 0, 16, 16};
+	ASSERT_TRUE(::DrawFrameControl(unchecked.dc, &rc, DFC_BUTTON, DFCS_BUTTONCHECK | DFCS_FLAT));
+	ASSERT_TRUE(::DrawFrameControl(checked.dc, &rc, DFC_BUTTON, DFCS_BUTTONCHECK | DFCS_FLAT | DFCS_CHECKED));
+	// 未チェックは中が白い枠だけ、チェックは中に印がある
+	EXPECT_EQ(RGB(255, 255, 255), ::GetPixel(unchecked.dc, 8, 8));
+	EXPECT_GT(CountInk(checked.dc, 16, 16, RGB(255, 255, 255)), CountInk(unchecked.dc, 16, 16, RGB(255, 255, 255)) + 5);
+}

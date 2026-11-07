@@ -50,6 +50,7 @@ set(TESTS1_ENABLED
 #       … テスト側が std::filesystem::path を wstring として扱う（mac の path は char）
 #   test-csharedata.cpp … std::jthread（Apple libc++ 未対応）
 #   test-cerrorinfo.cpp … COM（_com_raise_error / IErrorInfo）前提
+#   test-extmodules.cpp … テスト側が std::filesystem::path を wstring として扱う（正規表現は test-winport-regex.cpp で確認）
 list(TRANSFORM TESTS1_ENABLED PREPEND ${TESTS1_DIR}/)
 
 add_executable(sakura_mac_tests
@@ -59,6 +60,7 @@ add_executable(sakura_mac_tests
     test-winport-jscript.cpp
     test-winport-oleaut.cpp
     test-winport-path.cpp
+    test-winport-process.cpp
     test-winport-regex.cpp
     test-winport-window.cpp
     ${CMAKE_SOURCE_DIR}/src/test/resources/printECodeType.cpp

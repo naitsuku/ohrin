@@ -21,6 +21,23 @@
 
 #include "debug/Debug2.h"
 
+#ifdef SAKURA_WINPORT
+#include <cstdint>
+
+// [winport] 仮想プロセス単位の記憶域（winport/src/process.cpp）
+namespace winport {
+//! このスレッドの仮想プロセス
+uint32_t CurrentProcessKey();
+//! 上流が作るワーカースレッドの先頭で呼ぶ。以後このスレッドは key の仮想プロセスに属する
+void AdoptProcess(uint32_t key);
+//! 仮想プロセスごとの値
+void* ProcessSlot(const void* tag);
+void SetProcessSlot(const void* tag, void* value);
+//! 仮想プロセスごとの実体。無ければ作り、仮想プロセスの終了時に破棄する
+void* ProcessSingleton(const void* tag, void* (*create)(), void (*destroy)(void*));
+}  // namespace winport
+#endif
+
 // http://google-styleguide.googlecode.com/svn/trunk/cppguide.xml#Copy_Constructors
 // A macro to disallow the copy constructor and operator= functions
 #define DISALLOW_COPY_AND_ASSIGN(TypeName) \
@@ -42,12 +59,19 @@ public:
 	{
 #ifdef SAKURA_WINPORT
 		// [winport] 1 スレッド = 1 仮想プロセス（docs/porting/mac_native_plan.md）なので、
-		// プロセス単位のシングルトンはスレッド単位に持つ
-		static thread_local T instance;
+		// プロセス単位のシングルトンは仮想プロセスの表に持つ
+		static thread_local T* cached = nullptr;
+		if (!cached) {
+			static char tag;
+			cached = static_cast<T*>(winport::ProcessSingleton(&tag,
+				[]() -> void* { return new T; },
+				[](void* p) { delete static_cast<T*>(p); }));
+		}
+		return cached;
 #else
 		static T instance;
-#endif
 		return &instance;
+#endif
 	}
 
 protected:
@@ -82,8 +106,8 @@ private:
 	using Me = TSingleInstance<T>;
 
 #ifdef SAKURA_WINPORT
-	static thread_local T* gm_instance;	//!< [winport] 仮想プロセス（スレッド）ごとのインスタンス
-	static inline std::atomic<T*> gm_fallback{nullptr};	//!< [winport] ワーカースレッド用
+	static thread_local T* gm_instance;	//!< [winport] 仮想プロセスの最初のスレッド用
+	static inline char gm_tag = 0;		//!< [winport] 仮想プロセスの表のキー
 #else
 	static T* gm_instance;				//!< シングルインスタンスを保持するポインタ
 #endif
@@ -96,9 +120,8 @@ public:
 		@retval nullptr インスタンスが未生成
 	 */
 #ifdef SAKURA_WINPORT
-	// [winport] 上流が std::thread で作るワーカースレッド（レイアウト・読み込みの並列化）には
-	// 仮想プロセスの文脈が引き継がれないので、最後に生成されたインスタンスを代わりに返す
-	[[nodiscard]] static T* getInstance() noexcept { return gm_instance ? gm_instance : gm_fallback.load(); }
+	// [winport] 同じ仮想プロセスの別スレッド（ワーカーなど）は表から引く
+	[[nodiscard]] static T* getInstance() noexcept { return gm_instance ? gm_instance : static_cast<T*>(winport::ProcessSlot(&gm_tag)); }
 #else
 	[[nodiscard]] static T* getInstance() noexcept { return gm_instance; }
 #endif
@@ -121,7 +144,7 @@ protected:
 		}
 		gm_instance = static_cast<T*>(this);
 #ifdef SAKURA_WINPORT
-		gm_fallback = gm_instance;
+		winport::SetProcessSlot(&gm_tag, gm_instance);
 #endif
 	}
 
@@ -133,8 +156,7 @@ protected:
 	virtual ~TSingleInstance() noexcept
 	{
 #ifdef SAKURA_WINPORT
-		T* self = gm_instance;
-		gm_fallback.compare_exchange_strong(self, nullptr);
+		winport::SetProcessSlot(&gm_tag, nullptr);
 #endif
 		gm_instance = nullptr;
 	}
@@ -170,9 +192,21 @@ private:
 	using Me = TInstanceHolder<T>;
 
 #ifdef SAKURA_WINPORT
-	static thread_local std::vector<T*> gm_table;	//!< [winport] 仮想プロセス（スレッド）ごと
+	//! [winport] 仮想プロセスごとの動的配列
+	[[nodiscard]] static std::vector<T*>& Table()
+	{
+		static thread_local std::vector<T*>* cached = nullptr;
+		if (!cached) {
+			static char tag;
+			cached = static_cast<std::vector<T*>*>(winport::ProcessSingleton(&tag,
+				[]() -> void* { return new std::vector<T*>; },
+				[](void* p) { delete static_cast<std::vector<T*>*>(p); }));
+		}
+		return *cached;
+	}
 #else
 	static std::vector<T*> gm_table;	//!< インスタンスを保持する動的配列
+	[[nodiscard]] static std::vector<T*>& Table() { return gm_table; }
 #endif
 
 public:
@@ -181,7 +215,7 @@ public:
 
 		@returns 作成済みのインスタンス数
 	 */
-	[[nodiscard]] static size_t GetInstanceCount() noexcept { return gm_table.size(); }
+	[[nodiscard]] static size_t GetInstanceCount() noexcept { return Table().size(); }
 
 	/*!
 		作成済みのインスタンスを取得する
@@ -192,10 +226,11 @@ public:
 	 */
 	[[nodiscard]] static T* GetInstance(size_t index) noexcept
 	{
-		if (gm_table.size() <= index || gm_table.empty()) {
+		auto& table = Table();
+		if (table.size() <= index || table.empty()) {
 			return nullptr;
 		}
-		return gm_table[index];
+		return table[index];
 	}
 
 	/*!
@@ -219,7 +254,7 @@ protected:
 	 */
 	TInstanceHolder()
 	{
-		gm_table.push_back(static_cast<T*>(this));
+		Table().push_back(static_cast<T*>(this));
 	}
 
 	/*!
@@ -229,10 +264,11 @@ protected:
 	 */
 	virtual ~TInstanceHolder() noexcept
 	{
-		if (const auto it = std::find(gm_table.cbegin(), gm_table.cend(), this);
-			it != gm_table.cend())
+		auto& table = Table();
+		if (const auto it = std::find(table.cbegin(), table.cend(), this);
+			it != table.cend())
 		{
-			gm_table.erase(it);
+			table.erase(it);
 		}
 	}
 };
@@ -243,10 +279,7 @@ protected:
 	プロセスで生成したインスタンスを記録する機構で、
 	TInstanceHolder<T>以外からはアクセスさせない。
  */
-#ifdef SAKURA_WINPORT
-template <class T>
-thread_local std::vector<T*> TInstanceHolder<T>::gm_table;
-#else
+#ifndef SAKURA_WINPORT
 template <class T>
 std::vector<T*> TInstanceHolder<T>::gm_table;
 #endif

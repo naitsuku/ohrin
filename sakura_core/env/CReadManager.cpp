@@ -112,6 +112,17 @@ EConvertResult CReadManager::ReadFile_To_CDocLineMgr(
 				eRet = ReadLines( true, vecThreadFileLoads[i], vecThreadDocLineMgrs[i], bCanceled );
 			}else{
 				// ワーカースレッドで処理
+#ifdef SAKURA_WINPORT
+				vecWorkerFutures.push_back(
+					std::async(
+						std::launch::async,
+						[this, processKey = winport::CurrentProcessKey(), &cFileLoad = vecThreadFileLoads[i], &cDocLineMgr = vecThreadDocLineMgrs[i], &bCanceled]{
+							winport::AdoptProcess(processKey);
+							return ReadLines(false, cFileLoad, cDocLineMgr, bCanceled);
+						}
+					)
+				);
+#else
 				vecWorkerFutures.push_back(
 					std::async(
 						std::launch::async,
@@ -123,6 +134,7 @@ EConvertResult CReadManager::ReadFile_To_CDocLineMgr(
 						std::ref(bCanceled)
 					)
 				);
+#endif
 			}
 		}
 

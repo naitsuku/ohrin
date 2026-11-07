@@ -384,7 +384,13 @@ void CLayoutMgr::_DoLayout(bool bBlockingHook)
 			// ワーカースレッドを起こして処理
 			auto pcLayoutMgr = &vecWorkerLayoutMgrs[nWorkerThreadCount - i];
 			pcLayoutMgr->_Prepare(*this);
+#ifdef SAKURA_WINPORT
+			const auto processKey = winport::CurrentProcessKey();
+			vecWorkerThreads.emplace_back([processKey, pcLayoutMgr, pDocLineBegin, pDocLineEnd, nLineIndexBegin, nLineCount, pbCanceled]{
+				winport::AdoptProcess(processKey);
+#else
 			vecWorkerThreads.emplace_back([pcLayoutMgr, pDocLineBegin, pDocLineEnd, nLineIndexBegin, nLineCount, pbCanceled]{
+#endif
 				pcLayoutMgr->_DoLayoutSub(pDocLineBegin, pDocLineEnd, nLineIndexBegin, nLineCount, pbCanceled);
 			});
 		}

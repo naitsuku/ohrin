@@ -14,11 +14,13 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <cstdint>
 #include <cwchar>
 #include <functional>
 #include <mutex>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 #include "backend.h"
@@ -58,6 +60,37 @@ struct ThreadObject : KernelObject {
 };
 
 //! スレッドを起動する。obj は 2 参照（呼び出し元とスレッド）
+//! 仮想プロセスごとの記憶域。上流の「プロセスに 1 つ」のもの（design_template.h）はここに置く
+struct ProcessData {
+	std::unordered_map<const void*, void*> slots;
+	std::vector<std::pair<void*, void (*)(void*)>> owned;	// 作成順
+};
+
+std::recursive_mutex& ProcessDataMutex()
+{
+	static auto* m = new std::recursive_mutex;
+	return *m;
+}
+
+std::unordered_map<DWORD, ProcessData>& ProcessTable()
+{
+	static auto* table = new std::unordered_map<DWORD, ProcessData>;
+	return *table;
+}
+
+void DestroyProcessData(DWORD key)
+{
+	ProcessData data;
+	{
+		std::lock_guard lock(ProcessDataMutex());
+		auto it = ProcessTable().find(key);
+		if (it == ProcessTable().end()) return;
+		data = std::move(it->second);
+		ProcessTable().erase(it);
+	}
+	for (auto o = data.owned.rbegin(); o != data.owned.rend(); ++o) o->second(o->first);
+}
+
 ThreadObject* Spawn(std::function<DWORD()> body, DWORD processId, const std::wstring& commandLine, bool newProcess)
 {
 	auto obj = new ThreadObject;
@@ -76,6 +109,7 @@ ThreadObject* Spawn(std::function<DWORD()> body, DWORD processId, const std::wst
 		}
 		startedCv.notify_all();
 		const DWORD code = body();
+		if (newProcess) DestroyProcessData(tid);
 		obj->Finish(code);
 		if (--obj->refs == 0) delete obj;
 		if (newProcess && --g_liveProcesses == 0) backend::Quit();
@@ -123,6 +157,41 @@ DWORD CurrentProcessId()
 }
 
 //! 仮想プロセスを起動する（アプリ起動時と CreateProcessW から使う）
+uint32_t CurrentProcessKey() { return CurrentProcessId(); }
+
+void AdoptProcess(uint32_t key) { t_processId = key; }
+
+void* ProcessSlot(const void* tag)
+{
+	std::lock_guard lock(ProcessDataMutex());
+	auto& slots = ProcessTable()[CurrentProcessId()].slots;
+	const auto it = slots.find(tag);
+	return it == slots.end() ? nullptr : it->second;
+}
+
+void SetProcessSlot(const void* tag, void* value)
+{
+	std::lock_guard lock(ProcessDataMutex());
+	ProcessTable()[CurrentProcessId()].slots[tag] = value;
+}
+
+void* ProcessSingleton(const void* tag, void* (*create)(), void (*destroy)(void*))
+{
+	// create の中から別のシングルトンを作ることがあるので再帰可能なロックのまま呼ぶ
+	std::lock_guard lock(ProcessDataMutex());
+	const DWORD key = CurrentProcessId();
+	{
+		auto& slots = ProcessTable()[key].slots;
+		const auto it = slots.find(tag);
+		if (it != slots.end()) return it->second;
+	}
+	void* value = create();
+	auto& data = ProcessTable()[key];	// create の間に表が再配置されることがある
+	data.slots[tag] = value;
+	data.owned.emplace_back(value, destroy);
+	return value;
+}
+
 HANDLE StartVirtualProcess(const std::wstring& arguments)
 {
 	++g_liveProcesses;

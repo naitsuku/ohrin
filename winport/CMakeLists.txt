@@ -33,7 +33,42 @@ target_compile_options(winport_headers INTERFACE
 # 実装済みの関数は winport/src 側の強いシンボルが優先される。
 set(WINPORT_STUBS ${CMAKE_CURRENT_SOURCE_DIR}/src/generated_stubs.cpp)
 
+# 正規表現: 上流と同じ bregonig + Onigmo をそのままビルドする。bregonig は wchar_t が 2 バイトである前提なので
+# このライブラリだけ -fshort-wchar を使う（winport_headers はリンクしない）。4 バイトとの変換は src/bregonig_bridge.cpp
+enable_language(C)
+set(ONIGMO_DIR ${CMAKE_SOURCE_DIR}/externals/Onigmo)
+set(BREGONIG_DIR ${CMAKE_SOURCE_DIR}/externals/bregonig/src)
+if(NOT EXISTS ${BREGONIG_DIR}/bregonig.cpp OR NOT EXISTS ${ONIGMO_DIR}/regexec.c)
+    message(FATAL_ERROR "externals are missing. Run: git submodule update --init externals/Onigmo externals/bregonig")
+endif()
+add_library(winport_regex STATIC
+    ${ONIGMO_DIR}/regcomp.c ${ONIGMO_DIR}/regenc.c ${ONIGMO_DIR}/regerror.c ${ONIGMO_DIR}/regexec.c
+    ${ONIGMO_DIR}/regext.c ${ONIGMO_DIR}/regparse.c ${ONIGMO_DIR}/regsyntax.c ${ONIGMO_DIR}/regtrav.c
+    ${ONIGMO_DIR}/regversion.c ${ONIGMO_DIR}/st.c
+    ${ONIGMO_DIR}/enc/ascii.c ${ONIGMO_DIR}/enc/us_ascii.c ${ONIGMO_DIR}/enc/unicode.c
+    ${ONIGMO_DIR}/enc/utf_8.c ${ONIGMO_DIR}/enc/utf_16le.c ${ONIGMO_DIR}/enc/utf_16be.c
+    ${ONIGMO_DIR}/enc/utf_32le.c ${ONIGMO_DIR}/enc/utf_32be.c
+    ${ONIGMO_DIR}/enc/shift_jis.c ${ONIGMO_DIR}/enc/windows_31j.c
+    ${BREGONIG_DIR}/bregonig.cpp ${BREGONIG_DIR}/subst.cpp ${BREGONIG_DIR}/bsplit.cpp
+    ${BREGONIG_DIR}/btrans.cpp ${BREGONIG_DIR}/sv.cpp
+)
+target_include_directories(winport_regex PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/bregonig ${ONIGMO_DIR} ${ONIGMO_DIR}/enc/unicode ${BREGONIG_DIR})
+# MEM_VC6_H_: VC6 向けの operator new の置き換えを読まない。register は C++17 で削除された
+target_compile_definitions(winport_regex PRIVATE HAVE_CONFIG_H ONIG_EXTERN=extern UNICODE _UNICODE USE_ONIGMO_6 _BREGEXP_
+    MEM_VC6_H_ $<$<COMPILE_LANGUAGE:CXX>:register=>)
+target_compile_options(winport_regex PRIVATE -w -fdeclspec
+    $<$<COMPILE_LANGUAGE:CXX>:-fshort-wchar>)
+
+# bregonig は同じソースを UNICODE あり／なしで 2 度ビルドする前提で、共通の関数とデータは「なし」の側で定義している
+add_library(winport_regex_ansi STATIC ${BREGONIG_DIR}/bregonig.cpp ${BREGONIG_DIR}/subst.cpp
+    ${BREGONIG_DIR}/bsplit.cpp ${BREGONIG_DIR}/btrans.cpp ${BREGONIG_DIR}/sv.cpp)
+target_include_directories(winport_regex_ansi PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/bregonig ${ONIGMO_DIR} ${BREGONIG_DIR})
+target_compile_definitions(winport_regex_ansi PRIVATE ONIG_EXTERN=extern USE_ONIGMO_6 _BREGEXP_ MEM_VC6_H_ register=)
+target_compile_options(winport_regex_ansi PRIVATE -w -fdeclspec -fshort-wchar)
+target_link_libraries(winport_regex PUBLIC winport_regex_ansi)
+
 add_library(winport STATIC
+    src/bregonig_bridge.cpp
     src/bridge.cpp
     src/cocoa_backend.mm
     src/codepage.cpp
@@ -62,7 +97,7 @@ add_library(winport STATIC
     src/guids.cpp
     ${WINPORT_STUBS}
 )
-target_link_libraries(winport PUBLIC winport_headers)
+target_link_libraries(winport PUBLIC winport_headers winport_regex)
 target_include_directories(winport PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set_source_files_properties(src/cocoa_backend.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
 target_link_libraries(winport PUBLIC "-framework CoreFoundation" "-framework CoreGraphics" "-framework CoreText" "-framework Cocoa" "-framework ImageIO" "-framework JavaScriptCore")

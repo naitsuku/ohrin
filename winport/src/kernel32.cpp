@@ -76,10 +76,21 @@ HMODULE WINAPI GetModuleHandleW(LPCWSTR lpModuleName)
 	return lpModuleName ? nullptr : reinterpret_cast<HMODULE>(&s_main);
 }
 
-HMODULE WINAPI LoadLibraryW(LPCWSTR) { SetLastError(ERROR_MOD_NOT_FOUND); return nullptr; }
-HMODULE WINAPI LoadLibraryExW(LPCWSTR, HANDLE, DWORD) { SetLastError(ERROR_MOD_NOT_FOUND); return nullptr; }
+//! DLL は読み込めない。組み込みのもの（bregonig_bridge.cpp）だけを返す
+HMODULE WINAPI LoadLibraryW(LPCWSTR lpLibFileName)
+{
+	if (void* module = winport::LoadBuiltinModule(lpLibFileName)) return static_cast<HMODULE>(module);
+	SetLastError(ERROR_MOD_NOT_FOUND);
+	return nullptr;
+}
+HMODULE WINAPI LoadLibraryExW(LPCWSTR lpLibFileName, HANDLE, DWORD) { return LoadLibraryW(lpLibFileName); }
 WINBOOL WINAPI FreeLibrary(HMODULE) { return TRUE; }
-FARPROC WINAPI GetProcAddress(HMODULE, LPCSTR) { SetLastError(ERROR_PROC_NOT_FOUND); return nullptr; }
+FARPROC WINAPI GetProcAddress(HMODULE hModule, LPCSTR lpProcName)
+{
+	if (void* proc = winport::BuiltinProcAddress(hModule, lpProcName)) return reinterpret_cast<FARPROC>(proc);
+	SetLastError(ERROR_PROC_NOT_FOUND);
+	return nullptr;
+}
 
 /* ---- カレントディレクトリ ---- */
 DWORD WINAPI GetCurrentDirectoryW(DWORD nBufferLength, LPWSTR lpBuffer)

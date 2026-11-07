@@ -20,6 +20,10 @@ void ReportUnimplemented(const char* dll, const char* name);
 std::string WideToUtf8(std::wstring_view ws);
 std::wstring Utf8ToWide(std::string_view s);
 
+//! 組み込みモジュール（bregonig.dll）の読み込み。無ければ nullptr
+void* LoadBuiltinModule(const wchar_t* path);
+void* BuiltinProcAddress(void* module, const char* name);
+
 //! Win32 API に渡されたパスを POSIX パス（UTF-8、区切りは '/'）にする。'\\' も区切りとして扱う
 std::string ToNativePath(const wchar_t* path);
 

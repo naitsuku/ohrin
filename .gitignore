@@ -12,6 +12,7 @@
 /cppcheck-*.xml
 /build
 /build-release
+/build-asan
 /MinGW
 /Win32
 /x64

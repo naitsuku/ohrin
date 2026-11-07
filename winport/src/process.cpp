@@ -65,6 +65,7 @@ struct ProcessData {
 	std::unordered_map<const void*, void*> slots;
 	std::vector<std::pair<void*, void (*)(void*)>> owned;	// 作成順
 	std::vector<std::pair<void*, void (*)(void*)>> containers;	// owned の破棄が全部終わってから破棄する
+	std::vector<void*> storage;	// 実体の記憶域。全部のデストラクタが終わってから解放する
 };
 
 std::recursive_mutex& ProcessDataMutex()
@@ -95,8 +96,16 @@ void DestroyProcessData(DWORD key)
 	while (next(&ProcessData::owned, &entry)) entry.second(entry.first);
 	// TInstanceHolder の一覧は、その要素のデストラクタが触るので最後
 	while (next(&ProcessData::containers, &entry)) entry.second(entry.first);
-	std::lock_guard lock(ProcessDataMutex());
-	ProcessTable().erase(key);
+	// 上流の関数内 static は、デストラクタの後もプロセスの終わりまで記憶域が残る。デストラクタが破棄済みの
+	// シングルトンを触ることがある（~CEditDoc → CDiffManager）ので、記憶域は最後にまとめて解放する
+	std::vector<void*> storage;
+	{
+		std::lock_guard lock(ProcessDataMutex());
+		auto it = ProcessTable().find(key);
+		if (it != ProcessTable().end()) storage.swap(it->second.storage);
+		ProcessTable().erase(key);
+	}
+	for (void* p : storage) ::operator delete(p);
 }
 
 ThreadObject* Spawn(std::function<DWORD()> body, DWORD processId, const std::wstring& commandLine, bool newProcess)
@@ -185,7 +194,7 @@ void SetProcessSlot(const void* tag, void* value)
 
 void ReleaseProcess(uint32_t key) { DestroyProcessData(key); }
 
-void* ProcessSingleton(const void* tag, void* (*create)(), void (*destroy)(void*), bool container)
+void* ProcessSingleton(const void* tag, void* (*create)(), void (*finalize)(void*), bool container)
 {
 	// create の中から別のシングルトンを作ることがあるので再帰可能なロックのまま呼ぶ
 	std::lock_guard lock(ProcessDataMutex());
@@ -198,7 +207,8 @@ void* ProcessSingleton(const void* tag, void* (*create)(), void (*destroy)(void*
 	void* value = create();
 	auto& data = ProcessTable()[key];	// create の間に表が再配置されることがある
 	data.slots[tag] = value;
-	(container ? data.containers : data.owned).emplace_back(value, destroy);
+	(container ? data.containers : data.owned).emplace_back(value, finalize);
+	data.storage.push_back(value);
 	return value;
 }
 

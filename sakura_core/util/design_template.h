@@ -23,6 +23,8 @@
 
 #ifdef SAKURA_WINPORT
 #include <cstdint>
+#include <cstring>
+#include <new>
 
 // [winport] 仮想プロセス単位の記憶域（winport/src/process.cpp）
 namespace winport {
@@ -33,9 +35,11 @@ void AdoptProcess(uint32_t key);
 //! 仮想プロセスごとの値
 void* ProcessSlot(const void* tag);
 void SetProcessSlot(const void* tag, void* value);
-//! 仮想プロセスごとの実体。無ければ作り、仮想プロセスの終了時に作成の逆順で破棄する
+//! 仮想プロセスごとの実体。無ければ作り、仮想プロセスの終了時に作成の逆順で finalize（デストラクタ）を呼ぶ
 //! container なら他の実体のデストラクタから触られるものとして、それらの破棄がすべて終わってから破棄する
-void* ProcessSingleton(const void* tag, void* (*create)(), void (*destroy)(void*), bool container = false);
+//! create は ::operator new の記憶域に作って返す。記憶域は全部の finalize の後に ::operator delete で解放する（関数内 static と同じく、
+//! 破棄済みの実体を別のデストラクタが触っても落ちない）
+void* ProcessSingleton(const void* tag, void* (*create)(), void (*finalize)(void*), bool container = false);
 }  // namespace winport
 #endif
 
@@ -60,13 +64,14 @@ public:
 	{
 #ifdef SAKURA_WINPORT
 		// [winport] 1 スレッド = 1 仮想プロセス（docs/porting/mac_native_plan.md）なので、
-		// プロセス単位のシングルトンは仮想プロセスの表に持つ
+		// プロセス単位のシングルトンは仮想プロセスの表に持つ。関数内 static と同じく、コンストラクタの前に
+		// 0 で埋める（上流には初期化していないメンバーを 0 のつもりで読むところがある。CEditApp::m_pcGrepAgent など）
 		static thread_local T* cached = nullptr;
 		if (!cached) {
 			static char tag;
 			cached = static_cast<T*>(winport::ProcessSingleton(&tag,
-				[]() -> void* { return new T; },
-				[](void* p) { delete static_cast<T*>(p); }));
+				[]() -> void* { void* m = ::operator new(sizeof(T)); std::memset(m, 0, sizeof(T)); return new (m) T; },
+				[](void* p) { static_cast<T*>(p)->~T(); }));
 		}
 		return cached;
 #else
@@ -201,7 +206,7 @@ private:
 			static char tag;
 			cached = static_cast<std::vector<T*>*>(winport::ProcessSingleton(&tag,
 				[]() -> void* { return new std::vector<T*>; },
-				[](void* p) { delete static_cast<std::vector<T*>*>(p); }, true));
+				[](void* p) { using V = std::vector<T*>; static_cast<V*>(p)->~V(); }, true));
 		}
 		return *cached;
 	}

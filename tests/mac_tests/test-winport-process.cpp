@@ -102,11 +102,27 @@ TEST(WinportProcess, ContainersOutliveOwnedObjects)
 	std::thread([] {
 		winport::AdoptProcess(kOtherProcess + 1);
 		static char owner, container, later;
-		winport::ProcessSingleton(&owner, []() -> void* { return new int; }, [](void* p) { delete static_cast<int*>(p); g_destroyed.push_back("owner"); });
-		winport::ProcessSingleton(&container, []() -> void* { return new int; }, [](void* p) { delete static_cast<int*>(p); g_destroyed.push_back("container"); }, true);
-		winport::ProcessSingleton(&later, []() -> void* { return new int; }, [](void* p) { delete static_cast<int*>(p); g_destroyed.push_back("later"); });
+		winport::ProcessSingleton(&owner, []() -> void* { return new int; }, [](void*) { g_destroyed.push_back("owner"); });
+		winport::ProcessSingleton(&container, []() -> void* { return new int; }, [](void*) { g_destroyed.push_back("container"); }, true);
+		winport::ProcessSingleton(&later, []() -> void* { return new int; }, [](void*) { g_destroyed.push_back("later"); });
 		winport::ReleaseProcess(kOtherProcess + 1);
 	}).join();
 	const std::vector<std::string> expected{"later", "owner", "container"};
 	EXPECT_EQ(expected, g_destroyed);
+}
+
+// 上流の関数内 static は、デストラクタが終わっても記憶域が残る。~CEditApp → ~CEditDoc が先に破棄された
+// CDiffManager に書き込むので、記憶域は全部のデストラクタが終わるまで解放しない（ASan ビルドで確かめる）
+TEST(WinportProcess, SingletonStorageOutlivesAllDestructors)
+{
+	static int seenByEarlier = 0;
+	static int* later = nullptr;
+	std::thread([] {
+		winport::AdoptProcess(kOtherProcess + 2);
+		static char earlier, laterTag;
+		winport::ProcessSingleton(&earlier, []() -> void* { return new int(0); }, [](void*) { *later = 7; seenByEarlier = *later; });
+		later = static_cast<int*>(winport::ProcessSingleton(&laterTag, []() -> void* { return new int(42); }, [](void* p) { *static_cast<int*>(p) = -1; }));
+		winport::ReleaseProcess(kOtherProcess + 2);
+	}).join();
+	EXPECT_EQ(7, seenByEarlier);
 }

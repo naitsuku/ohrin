@@ -680,7 +680,12 @@ CMenuDrawer::CMenuDrawer()
 			&m_tbMyButton[i],
 			(F_DUMMY_MAX_CODE < funcCode)? imageIndex : -1,	// 2007.11.02 ryoji アイコンの未定義化(-1)
 			funcCode,
+#ifdef SAKURA_WINPORT
+			// 上流は tbd[i] で 1 つ先の要素を見ていて、最後で配列の外を読む
+			(funcCode == F_DISABLE)? 0 : TBSTATE_ENABLED,
+#else
 			(tbd[i] == F_DISABLE)? 0 : TBSTATE_ENABLED,	// F_DISABLE なら DISABLEに	2010/7/11 Uchi
+#endif
 			style, 0, 0
 		);
 	}

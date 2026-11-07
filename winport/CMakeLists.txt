@@ -45,6 +45,7 @@ add_library(winport STATIC
     src/dialog.cpp
     src/dialog_controls.cpp
     src/imm32.cpp
+    src/jscript.cpp
     src/kernel32.cpp
     src/kernel32_file.cpp
     src/kernel32_object.cpp
@@ -64,4 +65,4 @@ add_library(winport STATIC
 target_link_libraries(winport PUBLIC winport_headers)
 target_include_directories(winport PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set_source_files_properties(src/cocoa_backend.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
-target_link_libraries(winport PUBLIC "-framework CoreFoundation" "-framework CoreGraphics" "-framework CoreText" "-framework Cocoa" "-framework ImageIO")
+target_link_libraries(winport PUBLIC "-framework CoreFoundation" "-framework CoreGraphics" "-framework CoreText" "-framework Cocoa" "-framework ImageIO" "-framework JavaScriptCore")

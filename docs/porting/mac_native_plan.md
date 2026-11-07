@@ -20,8 +20,8 @@ wxWidgets 版（Phase 0〜15b）は、sakura_core のうち PAL と `basis/` の
   （上流がサブクラス化するため、NSControl には置き換えない）。開く／保存／フォントは mac 標準パネル
 - プロセス: 1 プロセス複数ウィンドウを第一候補（`TSingleInstance<CEditWnd>` を
   互換層のメッセージ配送時にコンテキスト切替で扱う案）。不成立なら 1 プロセス 1 ウィンドウ
-- マクロ: キーマクロ（本体そのまま）+ JavaScriptCore に `CSMacroMgr::m_MacroFuncInfoArr`
-  を公開して WSH JScript 互換の JS マクロ
+- マクロ: キーマクロ（本体そのまま）+ IActiveScript を JavaScriptCore で実装した JScript 互換エンジン。
+  上流の CWSHClient からは Windows の JScript と同じに見える（`winport/src/jscript.cpp`）
 
 ## 仮想プロセス（1 スレッド = 1 sakura プロセス）— Week 3 で決定
 
@@ -99,3 +99,5 @@ Python マクロ、見た目合わせ。対象外: PPA マクロ、VBScript マ�
 - Week 6（2026-11-04）: Win32 のダイアログ機構とコントロールを実装し、上流の検索・置換・Grep・ジャンプが
   そのまま動く。開く／保存は mac のパネルで、文字コード・改行・BOM の指定は上流のフックのまま。
   クリップボード（NSPasteboard）、ファイルのドロップ、フォント選択も実装。
+- Week 7（2026-11-07）: oleaut32 と JavaScriptCore の JScript エンジンを実装。上流のマクロコードは変更なしで、
+  キーマクロの記録・実行と JS マクロが動く。エラーの行番号表示と、無限ループの中止ダイアログも上流のまま動作する。

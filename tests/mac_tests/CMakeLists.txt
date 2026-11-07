@@ -56,6 +56,7 @@ add_executable(sakura_mac_tests
     mac_main.cpp
     test-winport-datetime.cpp
     test-winport-gdi.cpp
+    test-winport-jscript.cpp
     test-winport-oleaut.cpp
     test-winport-path.cpp
     test-winport-window.cpp

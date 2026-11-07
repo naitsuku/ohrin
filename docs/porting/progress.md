@@ -1,5 +1,27 @@
 # 移植作業進捗ログ
 
+## 2026-11-07 — Week 7: キーマクロと JS マクロ
+
+- [x] **方針**: 上流のマクロコード（CWSH / CIfObj / CMacro）は変更せず、Windows が提供するものを互換層に用意した。
+  当初案の「JavaScriptCore に m_MacroFuncInfoArr を公開」は不要になり、プラグインの WSH も同じ経路を通る
+- [x] **oleaut32**（`winport/src/oleaut32.cpp`）: BSTR / VARIANT。キーマクロも `HandleFunction` で VARIANT を使う
+  - mingw のヘッダは `VariantCopy` などの変換元が非 const。const を付けて定義すると別の C++ 関数になり、スタブが残る。
+    実装後は `nm -gU` で C シンボルになっていることを確認する
+- [x] **JScript エンジン**（`winport/src/jscript.cpp`）: IActiveScript / IActiveScriptParse を JavaScriptCore で実装
+  - `.js` → `JSFile` → `JScript` は `RegOpenKeyExW` の小さな表で返す。CoCreateInstance はこのエンジンだけを返す
+  - 名前は IDispatch の GetIDsOfNames で解決するので、大文字小文字を区別しないのも Windows と同じ
+  - グローバルメンバー（`Editor.` の省略）はグローバルオブジェクトのクラスで解決。プロトタイプの差し替えは効かなかった。
+    コールバックは通常の検索より先に呼ばれるので、先に通常の検索をさせてスクリプトの変数と Math などを優先する
+  - 中止は `JSContextGroupSetExecutionTimeLimit`（SDK のヘッダには無いが公開シンボル）。コールバックが false を返すと
+    次は呼ばれないので、コールバック内で設定し直して定期確認にしている
+- [x] **`_IS_REL_PATH` が `/Users/...` を相対パス扱い**: マクロフォルダーが二重に連結され、キーマクロの記録終了が失敗した
+- [x] **BOM なし UTF-8**: `CTextInputStream` が UTF-8 として正しいものは UTF-8 で読む（Shift_JIS はそのまま）
+- [x] **`GetFileTitlePointer` / 種別判定が `/` を見ていなかった**: `$f` がフルパスになり、種別判定もパス全体が対象だった。
+  修正で `.c` の色分けが効くようになった
+- [x] 実機確認: キーマクロの記録・終了・実行、`.mac` のファイル実行、JS マクロ約 20 関数（`GetLineStr` の長さは UTF-16 単位）、
+  検索・すべて置換・Undo/Redo・保存、エラーの行番号表示、無限ループの中止ダイアログ、開くパネルからの実行
+  - 未確認: 登録済みマクロ（設定画面が未実装）、キーマクロの保存・読み込み、プラグインの WSH、`-MTYPE` での文字列実行
+
 ## 2026-11-07 — 残りのメニュー確認で見つかったクラッシュ 2 件
 
 - [x] **UTF-7 で開き直すと落ちる**: 並列読み込みのワーカーを準備する `CFileLoad::Prepare` が `m_nReadOffset2` を初期化しない。

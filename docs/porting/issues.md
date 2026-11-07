@@ -268,3 +268,20 @@ CP（コードページの追加）は出していない。「最近のファイ
 `CControlProcess::GetPrivateIniFileName` は SHGetKnownFolderPath の結果を確認せず `std::filesystem::path(pFolderPath)` に
 渡すので、スタブのままだと nullptr で落ちる。`sakura.exe.ini` 相当でマルチユーザー設定を有効にした場合だけ通る経路で、
 既定では到達しない（コードを読んだ判断で、実機では未確認）。GetPrivateProfileStringW も同じ経路で未実装。
+
+### I-119: `\\` だけを区切りと見るコードが残っている
+
+`GetFileTitlePointer` と `CDocTypeManager` は直したが、`util/file.cpp` の長いパス処理（870 行以降）、`CBackupAgent`、
+`GetExedir` 周りなど `L'\\'` を直接見るコードが多い。ファイルを開く基本の流れでは問題が出ていない。動作確認しながら順に見る。
+
+### I-120: JS マクロの制限
+
+`ActiveXObject` は無い（`Scripting.FileSystemObject` を使うマクロは動かない）。JScript の `@cc_on` も無い。
+`WScript` はもともとサクラの環境には無い。VBScript / PPA は対象外なので `.vbs` `.ppa` は読み込みエラーになる。
+
+### I-121: 警告が別のディスプレイに出ることがある
+
+アプリが非アクティブのとき、NSAlert が所有ウィンドウと別の画面（x=2950）に出た。内容は正しい。
+ウィンドウを持つ画面の中央に出すよう backend::ShowMessageBox を直す余地がある。
+I-111 の手がかり: 警告の表示中はエディタ右に白い帯が出た。起動直後の WM_SIZE の処理前に描画している可能性がある。
+

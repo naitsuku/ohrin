@@ -13,6 +13,7 @@
 #include <unistd.h>
 
 #include <climits>
+#include <cstring>
 #include <cwchar>
 #include <map>
 #include <mutex>
@@ -391,12 +392,42 @@ int WINAPI GetTimeFormatW(LCID Locale, DWORD, const SYSTEMTIME* lpTime, LPCWSTR 
 
 /* ---- advapi32: レジストリ ----
 
-	mac にレジストリは無いので「キーが無い」と答える。スタブの 0 は ERROR_SUCCESS になり、上流が
-	未設定のバッファを成功として読んでしまう。
+	mac にレジストリは無いので、上流が読む値のうち意味のあるものだけ表で持つ。それ以外は「キーが無い」と
+	答える（スタブの 0 は ERROR_SUCCESS になり、上流が未設定のバッファを成功として読んでしまう）。
+	上流の CWSHMacroManager は拡張子 → ファイル種別 → ScriptEngine の順に引いてエンジン名を得る。
 */
-LSTATUS WINAPI RegOpenKeyExW(HKEY, LPCWSTR, DWORD, REGSAM, PHKEY phkResult)
+namespace {
+
+struct RegistryKey {
+	const wchar_t* path;
+	const wchar_t* defaultValue;
+};
+
+const RegistryKey kClassesRoot[] = {
+	{L".js", L"JSFile"},
+	{L"JSFile\\ScriptEngine", L"JScript"},
+};
+
+const RegistryKey* FindKey(HKEY hKey)
+{
+	for (const RegistryKey& key : kClassesRoot) {
+		if (hKey == reinterpret_cast<HKEY>(const_cast<RegistryKey*>(&key))) return &key;
+	}
+	return nullptr;
+}
+
+}  // namespace
+
+LSTATUS WINAPI RegOpenKeyExW(HKEY hKey, LPCWSTR lpSubKey, DWORD, REGSAM, PHKEY phkResult)
 {
 	if (phkResult) *phkResult = nullptr;
+	if (hKey != HKEY_CLASSES_ROOT || !lpSubKey) return ERROR_FILE_NOT_FOUND;
+	for (const RegistryKey& key : kClassesRoot) {
+		if (_wcsicmp(key.path, lpSubKey) == 0) {
+			if (phkResult) *phkResult = reinterpret_cast<HKEY>(const_cast<RegistryKey*>(&key));
+			return ERROR_SUCCESS;
+		}
+	}
 	return ERROR_FILE_NOT_FOUND;
 }
 LSTATUS WINAPI RegCreateKeyExW(HKEY, LPCWSTR, DWORD, LPWSTR, DWORD, REGSAM, LPSECURITY_ATTRIBUTES, PHKEY phkResult, LPDWORD)
@@ -404,8 +435,21 @@ LSTATUS WINAPI RegCreateKeyExW(HKEY, LPCWSTR, DWORD, LPWSTR, DWORD, REGSAM, LPSE
 	if (phkResult) *phkResult = nullptr;
 	return ERROR_ACCESS_DENIED;
 }
-LSTATUS WINAPI RegCloseKey(HKEY) { return ERROR_INVALID_HANDLE; }
-LSTATUS WINAPI RegQueryValueExW(HKEY, LPCWSTR, LPDWORD, LPDWORD, LPBYTE, LPDWORD) { return ERROR_FILE_NOT_FOUND; }
+LSTATUS WINAPI RegCloseKey(HKEY hKey) { return FindKey(hKey) ? ERROR_SUCCESS : ERROR_INVALID_HANDLE; }
+LSTATUS WINAPI RegQueryValueExW(HKEY hKey, LPCWSTR lpValueName, LPDWORD, LPDWORD lpType, LPBYTE lpData, LPDWORD lpcbData)
+{
+	const RegistryKey* key = FindKey(hKey);
+	if (!key || (lpValueName && *lpValueName)) return ERROR_FILE_NOT_FOUND;
+	const DWORD bytes = static_cast<DWORD>((std::wcslen(key->defaultValue) + 1) * sizeof(WCHAR));
+	if (lpType) *lpType = REG_SZ;
+	if (!lpcbData) return lpData ? ERROR_INVALID_PARAMETER : ERROR_SUCCESS;
+	const DWORD capacity = *lpcbData;
+	*lpcbData = bytes;
+	if (!lpData) return ERROR_SUCCESS;
+	if (capacity < bytes) return ERROR_MORE_DATA;
+	std::memcpy(lpData, key->defaultValue, bytes);
+	return ERROR_SUCCESS;
+}
 LSTATUS WINAPI RegSetValueExW(HKEY, LPCWSTR, DWORD, DWORD, const BYTE*, DWORD) { return ERROR_ACCESS_DENIED; }
 LSTATUS WINAPI RegDeleteKeyW(HKEY, LPCWSTR) { return ERROR_FILE_NOT_FOUND; }
 LSTATUS WINAPI RegDeleteValueW(HKEY, LPCWSTR) { return ERROR_FILE_NOT_FOUND; }

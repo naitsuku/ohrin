@@ -76,7 +76,7 @@ macOS の wchar_t は 4 バイト。sakura_core は WCHAR を UTF-16 単位と�
 | 7 | キーマクロ、JS マクロ（JavaScriptCore） | |
 | 8 | タブ・複数ウィンドウ、.app / DMG、Windows 版との挙動比較、安定化 | |
 
-MVP 後（+2〜4 ヶ月）: 共通設定・タイプ別設定画面、印刷、残りのダイアログ、プラグイン、
+MVP 後（+2〜4 ヶ月）: 印刷、残りのダイアログ、プラグイン、
 Python マクロ、見た目合わせ。対象外: PPA マクロ、VBScript マクロ。
 
 ## 進捗

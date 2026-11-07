@@ -1,5 +1,27 @@
 # 移植作業進捗ログ
 
+## 2026-11-08 — 共通設定・タイプ別設定
+
+- [x] **終了時のクラッシュを修正（Week 8 で入れた回帰）**: 仮想プロセスの破棄が単純な逆順だったので、CEditApp より後に作られる
+  TInstanceHolder の一覧を先に解放し、~CEditDoc が解放済みの一覧を触っていた。**すべての終了で SIGSEGV になり、
+  共通設定の変更も ini に書かれなかった**。クラッシュレポートでは 11-07 17:30 から出ていて、Week 8 の DMG にも入っていた。
+  Week 8 の「Cmd+Q 確認」は終了コードを見ておらず、見逃した。一覧は `container` として最後に破棄する。回帰テストあり。
+  Debug / Release で Cmd+Q の終了コード 0 を確認
+- [x] **PropertySheetW**（`propsheet.cpp`）: ページは初回に作る。切り替えは PSN_KILLACTIVE / PSN_SETACTIVE、OK は PSN_KILLACTIVE のあと
+  作成済みの全ページへ PSN_APPLY。テンプレートは単独のダイアログの形なので、作成時に子へ変える。Tab とニーモニックはページの中へ入る
+- [x] **子ビューの Z 順**: 親のあとに作られた子のビューが最背面に入り、ページがタブの裏に隠れていた。SetWindowPos の Z 順を NSView へ反映する
+- [x] **ListView / TreeView / トラックバー / ホットキー**（`control_listview.cpp` `control_treeview.cpp` `control_misc.cpp`）:
+  詳細表示と一覧表示、チェックボックス、列の幅変更、ソート、ラベル編集、NM_CUSTOMDRAW。ヘッダーは子ウィンドウにしていない
+- [x] **色の選択 / フォルダー選択 / 既定のアプリで開く**: ChooseColorW（NSAlert + NSColorWell + RGB 欄）、IFileOpenDialog（COM を互換層で実装）、
+  ShellExecuteW / ExW（NSWorkspace。クリッカブル URL もここを通る見込みだが未確認）
+- [x] BS_MULTILINE のチェックボックス、ShowWindow で子を再描画、表示前の SWP_NOREDRAW、WM_GETFONT、DrawFrameControl のチェック
+- 確認: 共通設定 18 ページ、タイプ別設定 6 ページを開いて表示を目視、クラッシュなし。キャンセルで破棄、OK で反映、終了後 ini に保存、
+  再起動で反映。Esc、Tab、Space、キーワードのその場編集と Esc 取り消し、ツリーの開閉と選択（項目以外の編集拒否は上流の動作）、
+  フォルダー選択、色の選択（R 欄と NSColorPanel）、設定フォルダーを開く。履歴の管理とアウトライン解析の一覧も表示された
+- 未確認: 全設定項目の個別の動作、インポート／エクスポート、ツリーのラベル確定、キーバインド変更の反映、タグジャンプ一覧、
+  ウィンドウ一覧、同色統一ダイアログ、アウトラインのジャンプ。Windows 実機との比較はしていない
+- テスト: `test-winport-controls.cpp` ほか 18 件追加
+
 ## 2026-11-07 — Week 8: 正規表現、タブ、.app / DMG、安定化
 
 - [x] **正規表現が未実装だったので実装**（計画表に無かった）: `LoadLibrary` が常に失敗し、bregonig.dll が読めていなかった

@@ -71,7 +71,7 @@ RECT ScaleRect(int x, int y, int cx, int cy)
 	return {x * kBaseX / 4, y * kBaseY / 8, (x + cx) * kBaseX / 4, (y + cy) * kBaseY / 8};
 }
 
-HWND CreateFromTemplate(HINSTANCE hInstance, const void* tmpl, HWND hWndParent, DLGPROC proc, LPARAM lParam)
+HWND CreateFromTemplate(HINSTANCE hInstance, const void* tmpl, HWND hWndParent, DLGPROC proc, LPARAM lParam, bool asPage = false)
 {
 	Reader r{static_cast<const unsigned char*>(tmpl)};
 	const bool ex = reinterpret_cast<const uint16_t*>(tmpl)[1] == 0xFFFF;
@@ -79,7 +79,14 @@ HWND CreateFromTemplate(HINSTANCE hInstance, const void* tmpl, HWND hWndParent, 
 	if (ex) { r.Get<uint32_t>(); r.Get<uint32_t>(); exStyle = r.Get<uint32_t>(); style = r.Get<uint32_t>(); }
 	else { style = r.Get<uint32_t>(); exStyle = r.Get<uint32_t>(); }
 	const int count = r.Get<uint16_t>();
-	const int x = r.Get<int16_t>(), y = r.Get<int16_t>(), cx = r.Get<int16_t>(), cy = r.Get<int16_t>();
+	int x = r.Get<int16_t>(), y = r.Get<int16_t>();
+	const int cx = r.Get<int16_t>(), cy = r.Get<int16_t>();
+	if (asPage) {
+		// プロパティシートのページ。テンプレートは単独のダイアログの形で書かれていても、子として作る（Win32 と同じ）
+		style = (style & ~(WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME | WS_VISIBLE | DS_MODALFRAME | DS_CENTER | DS_CENTERMOUSE)) | WS_CHILD | DS_CONTROL;
+		exStyle = (exStyle & ~(WS_EX_CONTEXTHELP | WS_EX_DLGMODALFRAME)) | WS_EX_CONTROLPARENT;
+		x = y = 0;
+	}
 	r.Sz();                             // メニュー
 	const std::wstring cls = r.Sz();    // クラス
 	const std::wstring title = r.Sz();
@@ -157,7 +164,7 @@ HWND CreateFromTemplate(HINSTANCE hInstance, const void* tmpl, HWND hWndParent, 
 	for (HWND h : s->order) {
 		if ((GetWindowLongW(h, GWL_STYLE) & (WS_TABSTOP | WS_DISABLED | WS_VISIBLE)) == (WS_TABSTOP | WS_VISIBLE)) { first = h; break; }
 	}
-	if (SendMessageW(hDlg, WM_INITDIALOG, reinterpret_cast<WPARAM>(first), lParam) && first && !s->ended) DialogSetFocus(hDlg, first);
+	if (SendMessageW(hDlg, WM_INITDIALOG, reinterpret_cast<WPARAM>(first), lParam) && first && !s->ended && !asPage) DialogSetFocus(hDlg, first);
 	if (!IsWindow(hDlg)) return nullptr;
 	if (style & WS_DISABLED) EnableWindow(hDlg, FALSE);
 	if ((style & WS_VISIBLE) && !s->ended) ShowWindow(hDlg, child ? SW_SHOWNA : SW_SHOW);
@@ -179,6 +186,46 @@ HWND DirectChild(HWND hDlg, HWND h)
 }
 
 bool Usable(HWND h) { return IsWindowVisible(h) && IsWindowEnabled(h); }
+
+//! タブ順。表示中の子ダイアログ（プロパティシートのページ）はその中のコントロールに展開する
+void AppendFlat(HWND hDlg, std::vector<HWND>* out)
+{
+	auto s = StateOf(hDlg);
+	if (!s) return;
+	for (HWND h : s->order) {
+		if (StateOf(h)) {
+			if (IsWindowVisible(h)) AppendFlat(h, out);
+		} else {
+			out->push_back(h);
+		}
+	}
+}
+
+std::vector<HWND> FlatOrder(HWND hDlg)
+{
+	std::vector<HWND> out;
+	AppendFlat(hDlg, &out);
+	return out;
+}
+
+//! h を含むいちばん内側のダイアログ
+HWND InnerDialog(HWND hDlg, HWND h)
+{
+	for (; h && h != hDlg; h = GetAncestor(h, GA_PARENT)) {
+		if (StateOf(h)) return h;
+	}
+	return hDlg;
+}
+
+//! h または h の親のうち、list にあるもの（コンボボックスの中のエディットなら、コンボボックス）
+int IndexIn(const std::vector<HWND>& list, HWND hDlg, HWND h)
+{
+	for (; h && h != hDlg; h = GetAncestor(h, GA_PARENT)) {
+		const auto it = std::find(list.begin(), list.end(), h);
+		if (it != list.end()) return static_cast<int>(it - list.begin());
+	}
+	return -1;
+}
 
 //! ラベルの "&X" のニーモニックを返す
 wchar_t MnemonicOf(const std::wstring& text)
@@ -207,16 +254,17 @@ void ActivateControl(HWND hDlg, HWND h)
 	if (code & (DLGC_BUTTON | DLGC_DEFPUSHBUTTON | DLGC_UNDEFPUSHBUTTON)) SendMessageW(h, BM_CLICK, 0, 0);
 }
 
-bool HandleMnemonic(HWND hDlg, wchar_t key, DialogState* s)
+bool HandleMnemonic(HWND hDlg, wchar_t key)
 {
 	key = static_cast<wchar_t>(towupper(key));
-	for (size_t i = 0; i < s->order.size(); ++i) {
-		HWND h = s->order[i];
+	const std::vector<HWND> order = FlatOrder(hDlg);
+	for (size_t i = 0; i < order.size(); ++i) {
+		HWND h = order[i];
 		if (MnemonicOf(TextOf(h)) != key || !IsWindowVisible(h)) continue;
 		// ラベルなら、その次のフォーカスを受けられるコントロールへ
 		if (IsStaticLabel(h)) {
-			for (size_t j = i + 1; j < s->order.size(); ++j) {
-				if ((GetWindowLongW(s->order[j], GWL_STYLE) & WS_TABSTOP) && Usable(s->order[j])) { DialogSetFocus(hDlg, s->order[j]); return true; }
+			for (size_t j = i + 1; j < order.size(); ++j) {
+				if ((GetWindowLongW(order[j], GWL_STYLE) & WS_TABSTOP) && Usable(order[j])) { DialogSetFocus(hDlg, order[j]); return true; }
 			}
 			continue;
 		}
@@ -242,6 +290,28 @@ void DialogSetFocus(HWND hDlg, HWND h)
 	SetFocus(h);
 	if (code & DLGC_HASSETSEL) SendMessageW(h, EM_SETSEL, 0, -1);
 	(void)hDlg;
+}
+
+HWND DialogCreatePage(HINSTANCE hInstance, const void* tmpl, HWND sheet, DLGPROC proc, LPARAM lParam)
+{
+	HWND page = CreateFromTemplate(hInstance, tmpl, sheet, proc, lParam, true);
+	if (auto s = StateOf(sheet); s && page) s->order.insert(s->order.begin() + std::min<size_t>(1, s->order.size()), page);
+	return page;
+}
+
+void DialogAdoptChildren(HWND hDlg)
+{
+	auto s = StateOf(hDlg);
+	if (!s) return;
+	std::vector<HWND> children;
+	{
+		std::lock_guard lock(UserMutex());
+		children = GetWindowObject(hDlg)->children;
+	}
+	std::reverse(children.begin(), children.end());  // 子のリストは新しい順
+	for (HWND h : children) {
+		if (std::find(s->order.begin(), s->order.end(), h) == s->order.end()) s->order.push_back(h);
+	}
 }
 
 std::vector<HWND> DialogGroupOf(HWND control)
@@ -359,6 +429,8 @@ LRESULT WINAPI DefDlgProcW(HWND hDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
 	case WM_SETFOCUS:
 		if (s && s->lastFocus && IsWindow(s->lastFocus)) SetFocus(s->lastFocus);
 		return 0;
+	case WM_GETFONT:
+		return reinterpret_cast<LRESULT>(DialogFont());
 	case DM_GETDEFID:
 		return s ? MAKELRESULT(s->defId, DC_HASDEFID) : 0;
 	case DM_SETDEFID:
@@ -376,15 +448,10 @@ LRESULT WINAPI DefDlgProcW(HWND hDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
 
 HWND WINAPI GetNextDlgTabItem(HWND hDlg, HWND hCtl, WINBOOL bPrevious)
 {
-	auto s = StateOf(hDlg);
-	if (!s || s->order.empty()) return nullptr;
-	const auto& o = s->order;
+	const std::vector<HWND> o = FlatOrder(hDlg);
+	if (o.empty()) return nullptr;
 	const int n = static_cast<int>(o.size());
-	int i = -1;
-	if (hCtl) {
-		const auto it = std::find(o.begin(), o.end(), DirectChild(hDlg, hCtl));
-		if (it != o.end()) i = static_cast<int>(it - o.begin());
-	}
+	int i = hCtl ? IndexIn(o, hDlg, hCtl) : -1;
 	if (i < 0) i = bPrevious ? 0 : n - 1;
 	for (int k = 1; k <= n; ++k) {
 		HWND h = o[((i + (bPrevious ? -k : k)) % n + n) % n];
@@ -395,8 +462,10 @@ HWND WINAPI GetNextDlgTabItem(HWND hDlg, HWND hCtl, WINBOOL bPrevious)
 
 HWND WINAPI GetNextDlgGroupItem(HWND hDlg, HWND hCtl, WINBOOL bPrevious)
 {
-	const auto group = DialogGroupOf(DirectChild(hDlg, hCtl));
-	const auto it = std::find(group.begin(), group.end(), DirectChild(hDlg, hCtl));
+	const HWND inner = InnerDialog(hDlg, hCtl);
+	const HWND control = DirectChild(inner, hCtl);
+	const auto group = DialogGroupOf(control);
+	const auto it = std::find(group.begin(), group.end(), control);
 	if (it == group.end()) return hCtl;
 	const int n = static_cast<int>(group.size());
 	const int i = static_cast<int>(it - group.begin());
@@ -432,7 +501,8 @@ WINBOOL WINAPI IsDialogMessageW(HWND hDlg, LPMSG lpMsg)
 				if (code & DLGC_WANTALLKEYS) break;
 				HWND btn = (code & DLGC_UNDEFPUSHBUTTON) ? lpMsg->hwnd : GetDlgItem(hDlg, s->defId);
 				if (btn && !IsWindowEnabled(btn)) return TRUE;
-				SendMessageW(hDlg, WM_COMMAND, MAKEWPARAM(btn ? GetDlgCtrlID(btn) : s->defId, BN_CLICKED), reinterpret_cast<LPARAM>(btn));
+				// ページの中のプッシュボタンなら、シートではなくページへ
+				SendMessageW(btn ? GetAncestor(btn, GA_PARENT) : hDlg, WM_COMMAND, MAKEWPARAM(btn ? GetDlgCtrlID(btn) : s->defId, BN_CLICKED), reinterpret_cast<LPARAM>(btn));
 				return TRUE;
 			}
 			case VK_ESCAPE:
@@ -445,7 +515,7 @@ WINBOOL WINAPI IsDialogMessageW(HWND hDlg, LPMSG lpMsg)
 		}
 	} else if (lpMsg->message == WM_SYSKEYDOWN && lpMsg->wParam >= '0' && lpMsg->wParam <= 'Z') {
 		// mac の Option+英字は別の文字になるので、WM_SYSCHAR ではなく仮想キーで見る
-		if (HandleMnemonic(hDlg, static_cast<wchar_t>(lpMsg->wParam), s)) {
+		if (HandleMnemonic(hDlg, static_cast<wchar_t>(lpMsg->wParam))) {
 			MSG drop;
 			PeekMessageW(&drop, lpMsg->hwnd, WM_SYSCHAR, WM_SYSCHAR, PM_REMOVE);
 			return TRUE;

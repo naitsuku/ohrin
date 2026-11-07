@@ -108,6 +108,7 @@ std::u16string ToU16(NSString* s)
 @interface WPPlatform : NSObject
 @property(nonatomic, strong) WPWindow* window;
 @property(nonatomic, strong) WPView* view;
+@property(nonatomic) BOOL realized;
 @end
 
 @implementation WPPlatform
@@ -124,12 +125,38 @@ WPPlatform* PlatformOf(void* hwnd)
 void ApplyFrame(void* hwnd);
 
 //! hwnd の表示系オブジェクトを用意する（親が未作成なら作らない）
+//! 子のビューの重なりを Win32 の Z 順に合わせる（スクロールバーなど子ウィンドウでないビューは最前面のまま）
+void SortChildViews(void* hwnd)
+{
+	const auto info = bridge::GetInfo(hwnd);
+	if (!info.platform) return;
+	WPPlatform* p = (__bridge WPPlatform*)info.platform;
+	NSMutableArray<NSView*>* ordered = [NSMutableArray array];
+	const auto children = bridge::Children(hwnd);  // 手前から順
+	for (auto it = children.rbegin(); it != children.rend(); ++it) {
+		const auto child = bridge::GetInfo(*it);
+		if (child.platform) [ordered addObject:((__bridge WPPlatform*)child.platform).view];
+	}
+	NSMutableArray<NSView*>* subviews = [ordered mutableCopy];
+	for (NSView* v in p.view.subviews) {
+		if (![ordered containsObject:v]) [subviews addObject:v];
+	}
+	if ([subviews isEqualToArray:p.view.subviews]) return;
+	NSMapTable<NSView*, NSNumber*>* rank = [NSMapTable strongToStrongObjectsMapTable];
+	for (NSUInteger i = 0; i < subviews.count; ++i) [rank setObject:@(i) forKey:subviews[i]];
+	[p.view sortSubviewsUsingFunction:[](__kindof NSView* a, __kindof NSView* b, void* table) -> NSComparisonResult {
+		auto t = (__bridge NSMapTable<NSView*, NSNumber*>*)table;
+		return [[t objectForKey:a] compare:[t objectForKey:b]];
+	} context:(__bridge void*)rank];
+}
+
 WPPlatform* Realize(void* hwnd)
 {
 	const auto info = bridge::GetInfo(hwnd);
 	if (!info.valid) return nil;
 	if (info.platform) return (__bridge WPPlatform*)info.platform;
 	WPPlatform* p = [WPPlatform new];
+	bool lateChild = false;
 	if (info.topLevel) {
 		NSWindowStyleMask style = NSWindowStyleMaskBorderless;
 		if (info.captioned) {
@@ -163,12 +190,16 @@ WPPlatform* Realize(void* hwnd)
 		view.clipsToBounds = YES;  // Win32 の子ウィンドウは親の範囲外に描かれない
 		[parent.view addSubview:view positioned:NSWindowBelow relativeTo:nil];
 		p.view = view;
+		lateChild = parent.realized;
 	}
 	[p.view registerForDraggedTypes:@[NSPasteboardTypeFileURL]];
 	bridge::SetPlatform(hwnd, (__bridge_retained void*)p);
 	ApplyFrame(hwnd);
 	for (void* child : bridge::Children(hwnd)) Realize(child);
 	[p.view syncScrollBars];
+	p.realized = YES;
+	// 親ができたあとに作られた子（プロパティシートのページなど）は最背面に入っているので並べ直す
+	if (lateChild) SortChildViews(info.parent);
 	return p;
 }
 
@@ -801,6 +832,13 @@ void Quit()
 	OnMain(^{
 		g_quitting = true;
 		[NSApp terminate:nil];
+	});
+}
+
+void ChildOrderChanged(void* parent)
+{
+	OnMain(^{
+		SortChildViews(parent);
 	});
 }
 

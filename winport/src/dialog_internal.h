@@ -16,6 +16,10 @@ HFONT DialogFont();
 void DialogSetFocus(HWND hDlg, HWND h);
 //! control と同じグループ（WS_GROUP で区切られた範囲）のコントロールを作成順に返す
 std::vector<HWND> DialogGroupOf(HWND control);
+//! プロパティシートのページを作る。テンプレートの枠のスタイルは無視して子にし、タブ順はシートの先頭の次に入る
+HWND DialogCreatePage(HINSTANCE hInstance, const void* tmpl, HWND sheet, DLGPROC proc, LPARAM lParam);
+//! CreateWindow で足した子をタブ順の最後に加える
+void DialogAdoptChildren(HWND hDlg);
 //! BUTTON / STATIC / EDIT / LISTBOX / COMBOBOX / msctls_updown32 のプロシージャ。対象外は nullptr
 WNDPROC DialogControlProc(const wchar_t* name);
 

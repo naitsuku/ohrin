@@ -52,6 +52,8 @@ void Activate(void* hwnd);
 void CaretChanged(void* hwnd, const Rect& rc, bool visible);
 //! マウスカーソル（IDC_* の値）
 void SetCursorShape(uintptr_t cursorId);
+//! 子ウィンドウの Z 順が変わった
+void ChildOrderChanged(void* parent);
 //! スクロールバーの状態が変わった
 void ScrollBarsChanged(void* hwnd);
 //! 警告音

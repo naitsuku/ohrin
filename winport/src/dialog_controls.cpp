@@ -292,7 +292,7 @@ void PaintButton(HWND hwnd, Button* s, HDC hdc)
 	}
 	if (IsCheck(t) || IsRadio(t)) {
 		const int box = 13;
-		const int y = (rc.bottom - rc.top - box) / 2;
+		const int y = (GetWindowLongW(hwnd, GWL_STYLE) & BS_TOP) ? 1 : (rc.bottom - rc.top - box) / 2;
 		RECT b{rc.left + 1, y, rc.left + 1 + box, y + box};
 		const bool on = s->check != BST_UNCHECKED;
 		const COLORREF fill = on && enabled ? kAccent : (s->pushed ? RGB(225, 225, 225) : RGB(255, 255, 255));
@@ -315,7 +315,14 @@ void PaintButton(HWND hwnd, Button* s, HDC hdc)
 			}
 		}
 		RECT l{b.right + 5, rc.top, rc.right, rc.bottom};
-		Label(hdc, text, l, textColor);
+		if (text.find(L'\n') != std::wstring::npos) {
+			// 上流の BS_MULTILINE のチェックボックスは文字列に改行が入っている
+			SetBkMode(hdc, TRANSPARENT);
+			SetTextColor(hdc, textColor);
+			DrawTextW(hdc, text.c_str(), static_cast<int>(text.size()), &l, DT_LEFT | DT_NOPREFIX);
+		} else {
+			Label(hdc, text, l, textColor);
+		}
 		return;
 	}
 	const bool def = t == BS_DEFPUSHBUTTON && enabled;

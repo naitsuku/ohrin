@@ -42,6 +42,7 @@ struct TabControl {
 	HFONT font = nullptr;
 	HIMAGELIST images = nullptr;
 	HWND tooltip = nullptr;
+	bool focused = false;
 };
 
 constexpr int kEdgeX = 2;	// 左端の余白
@@ -202,8 +203,24 @@ void Paint(HWND hwnd, TabControl* t)
 		if (i != t->selected) DrawItem(hwnd, dc, t, i, ownerDraw);
 	}
 	if (t->selected >= 0 && t->selected < static_cast<int>(t->items.size())) DrawItem(hwnd, dc, t, t->selected, ownerDraw);	// 選択項目を最前面に
+	if (t->focused && t->selected >= 0 && t->selected < static_cast<int>(t->items.size())) {
+		RECT mark = t->items[t->selected].rc;
+		InflateRect(&mark, -2, -2);
+		HBRUSH accent = CreateSolidBrush(RGB(0, 110, 230));
+		FrameRect(dc, &mark, accent);
+		DeleteObject(accent);
+	}
 	SelectObject(dc, oldFont);
 	EndPaint(hwnd, &ps);
+}
+
+//! ユーザーの操作で選択を変える。親が TCN_SELCHANGING で止めたら変えない
+void UserSelect(HWND hwnd, TabControl* t, int index)
+{
+	if (index == t->selected || Notify(hwnd, TCN_SELCHANGING)) return;
+	t->selected = index;
+	Refresh(hwnd, t);
+	Notify(hwnd, TCN_SELCHANGE);
 }
 
 }  // namespace
@@ -243,13 +260,24 @@ LRESULT CALLBACK TabControlProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
 	case WM_LBUTTONDOWN: {
 		const POINT pt{static_cast<SHORT>(LOWORD(lParam)), static_cast<SHORT>(HIWORD(lParam))};
 		const int hit = HitTest(t, pt);
-		if (hit >= 0 && hit != t->selected && !Notify(hwnd, TCN_SELCHANGING)) {
-			t->selected = hit;
-			Refresh(hwnd, t);
-			Notify(hwnd, TCN_SELCHANGE);
-		}
+		// 上流のタブバー（WS_TABSTOP なし）はエディタのフォーカスを奪わない
+		if (GetWindowLongPtrW(hwnd, GWL_STYLE) & WS_TABSTOP) SetFocus(hwnd);
+		if (hit >= 0) UserSelect(hwnd, t, hit);
 		return 0;
 	}
+	case WM_GETDLGCODE:
+		return DLGC_WANTARROWS;
+	case WM_SETFOCUS:
+	case WM_KILLFOCUS:
+		t->focused = msg == WM_SETFOCUS;
+		InvalidateRect(hwnd, nullptr, FALSE);
+		return 0;
+	case WM_KEYDOWN:
+		if (count && (wParam == VK_LEFT || wParam == VK_RIGHT)) {
+			UserSelect(hwnd, t, (t->selected + (wParam == VK_LEFT ? count - 1 : 1)) % count);
+			return 0;
+		}
+		break;
 	case TCM_GETITEMCOUNT:
 		return count;
 	case TCM_INSERTITEMW: {

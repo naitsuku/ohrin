@@ -80,7 +80,7 @@ void EnsureSystemClasses()
 		c->atom = g_nextAtom++;
 		c->background = reinterpret_cast<HBRUSH>(COLOR_BTNFACE + 1);
 		if (!std::wcscmp(n, L"#32770")) c->cbWndExtra = 3 * sizeof(LONG_PTR);  // DWLP_MSGRESULT / DLGPROC / USER
-		if (!std::wcscmp(n, L"BUTTON") || !std::wcscmp(n, L"EDIT") || !std::wcscmp(n, L"LISTBOX")) c->style = CS_DBLCLKS;
+		if (!std::wcscmp(n, L"BUTTON") || !std::wcscmp(n, L"EDIT") || !std::wcscmp(n, L"LISTBOX") || !std::wcscmp(n, L"SysListView32") || !std::wcscmp(n, L"SysTreeView32")) c->style = CS_DBLCLKS;
 		Classes()[ClassKey(n)] = std::move(c);
 	}
 }
@@ -198,6 +198,19 @@ void AddUpdateRect(Window* w, const RECT* rc, bool erase)
 	}
 	WakeQueue(w->threadId);
 }
+
+namespace {
+
+//! w とその子孫の全体を再描画の対象にする
+void AddUpdateTree(Window* w)
+{
+	AddUpdateRect(w, nullptr, true);
+	for (HWND h : w->children) {
+		if (auto child = GetWindowObject(h)) AddUpdateTree(child);
+	}
+}
+
+}  // namespace
 
 LRESULT CallWindowProcChain(Window* w, HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
@@ -725,7 +738,11 @@ WINBOOL WINAPI ShowWindow(HWND hWnd, int nCmdShow)
 			if (nCmdShow == SW_RESTORE || nCmdShow == SW_SHOWNORMAL) w->style &= ~(WS_MAXIMIZE | WS_MINIMIZE);
 		}
 		backend::WindowVisibilityChanged(hWnd);
-		if (show) AddUpdateRect(w, nullptr, true);
+		if (show) {
+			// 隠れていた間の子は描かれていない。Win32 では露出した領域として子まで再描画される
+			std::lock_guard lock(UserMutex());
+			AddUpdateTree(w);
+		}
 	}
 	if (show && !w->parent && nCmdShow != SW_SHOWNA && nCmdShow != SW_SHOWNOACTIVATE && nCmdShow != SW_SHOWMINNOACTIVE) {
 		SetActiveWindow(hWnd);
@@ -810,13 +827,15 @@ WINBOOL WINAPI SetWindowPos(HWND hWnd, HWND hWndInsertAfter, int X, int Y, int c
 			}
 		}
 	}
+	if (!(uFlags & SWP_NOZORDER) && w->parent) backend::ChildOrderChanged(w->parent);
 	if (std::getenv("WINPORT_TRACE")) {
 		std::fprintf(stderr, "SetWindowPos %p %s (%d,%d %dx%d) flags=%x changed=%d\n", static_cast<void*>(hWnd),
 		             WideToUtf8(w->cls->name).c_str(), wp.x, wp.y, wp.cx, wp.cy, uFlags, changed);
 	}
 	if (changed || (uFlags & SWP_FRAMECHANGED)) {
 		backend::FrameChanged(hWnd);
-		if (!(uFlags & SWP_NOREDRAW)) AddUpdateRect(w, nullptr, true);
+		// SWP_NOREDRAW でも、表示前のウィンドウは最初の表示で全体が描かれる（表示前の大きさの絵を残さない）
+		if (!(uFlags & SWP_NOREDRAW) || !IsReallyVisible(w)) AddUpdateRect(w, nullptr, true);
 	}
 	SendMessageW(hWnd, WM_WINDOWPOSCHANGED, 0, reinterpret_cast<LPARAM>(&wp));
 	if (uFlags & SWP_SHOWWINDOW) ShowWindow(hWnd, (uFlags & SWP_NOACTIVATE) ? SW_SHOWNA : SW_SHOW);

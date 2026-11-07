@@ -573,12 +573,15 @@ LRESULT CALLBACK ProgressProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 namespace winport {
 
+LRESULT CALLBACK TabControlProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
 WNDPROC BuiltinControlProc(const wchar_t* name)
 {
 	if (!_wcsicmp(name, L"SCROLLBAR")) return ScrollBarProc;
 	if (!_wcsicmp(name, L"msctls_statusbar32")) return StatusBarProc;
 	if (!_wcsicmp(name, L"ToolbarWindow32")) return ToolbarProc;
 	if (!_wcsicmp(name, L"msctls_progress32")) return ProgressProc;
+	if (!_wcsicmp(name, L"SysTabControl32")) return TabControlProc;
 	if (WNDPROC proc = DialogControlProc(name)) return proc;
 	return DefWindowProcW;
 }

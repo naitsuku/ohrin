@@ -74,7 +74,7 @@ def stage_sources(rc_path, tmp):
 
 
 def preprocess(rc_utf8, includes, mingw_include):
-    cmd = ["clang", "-E", "-P", "-x", "c", "-DRC_INVOKED", "-D_WIN32", "-D_WIN64",
+    cmd = ["clang", "-E", "-P", "-x", "c", "-DRC_INVOKED", "-D_WIN32", "-D_WIN64", "-DSAKURA_WINPORT",
            "-DUNICODE", "-D_UNICODE", "-Wno-everything"]
     for inc in includes:
         cmd += ["-I", inc]

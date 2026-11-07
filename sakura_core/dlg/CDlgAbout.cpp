@@ -187,6 +187,12 @@ BOOL CDlgAbout::OnInitDialog( HWND hwndDlg, WPARAM wParam, LPARAM lParam )
 	cmemMsg.AppendString( L"(GitURL " _T(GIT_REMOTE_ORIGIN_URL) L")\r\n");
 #endif
 
+#ifdef SAKURA_WINPORT
+	// [winport] 非公式の移植版であること、問い合わせ先
+	cmemMsg.AppendString( L"macOS 移植版（非公式）。不具合は本家ではなく次へ:\r\n" );
+	cmemMsg.AppendString( L"https://github.com/naitsuku/sakura-editor-mac\r\n" );
+#endif
+
 	// 段落区切り
 	cmemMsg.AppendString( L"\r\n" );
 

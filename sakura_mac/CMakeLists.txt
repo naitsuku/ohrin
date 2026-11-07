@@ -35,6 +35,15 @@ foreach(_part MAJOR MINOR PATCH)
     set(SAKURA_${_part}_VERSION ${CMAKE_MATCH_1})
 endforeach()
 message(STATUS "Sakura version: ${SAKURA_MAJOR_VERSION}.${SAKURA_MINOR_VERSION}.${SAKURA_PATCH_VERSION}")
+# バージョン情報に出すコミット（不具合報告で版を特定するため）。git が無ければ (Undefined)
+find_package(Git QUIET)
+if(GIT_FOUND)
+    execute_process(COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+                    OUTPUT_VARIABLE _sakura_hash OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+    if(_sakura_hash)
+        set(GIT_SHORT_COMMIT_HASH_DEFINE "#define GIT_SHORT_COMMIT_HASH \"${_sakura_hash}\"")
+    endif()
+endif()
 configure_file(${CMAKE_SOURCE_DIR}/src/main/cmake/version.h.in ${SAKURA_MAC_GEN_DIR}/version.h @ONLY)
 
 # ---- 外部ヘッダ（上流 cmake はビルドディレクトリの include/ にコピーして参照する） ----
@@ -68,7 +77,6 @@ file(GLOB_RECURSE SAKURA_CORE_MAC_SOURCES
     ${CMAKE_SOURCE_DIR}/src/main/cpp/*.cpp
 )
 # wx 版の PAL は winport では使わない
-list(FILTER SAKURA_CORE_MAC_SOURCES EXCLUDE REGEX "/sakura_core/platform/")
 
 add_library(sakura_core_mac STATIC ${SAKURA_CORE_MAC_SOURCES} ${SAKURA_MAC_RESOURCES_CPP})
 set_source_files_properties(${SAKURA_MAC_RESOURCES_CPP} PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
@@ -103,7 +111,7 @@ add_executable(sakura_mac MACOSX_BUNDLE main.mm ${_icns})
 set_target_properties(sakura_mac PROPERTIES
     OUTPUT_NAME "SakuraEditor"
     MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_SOURCE_DIR}/Info.plist.in
-    MACOSX_BUNDLE_GUI_IDENTIFIER "io.github.sakura-editor.mac"
+    MACOSX_BUNDLE_GUI_IDENTIFIER "io.github.naitsuku.sakura-editor-mac"
     MACOSX_BUNDLE_BUNDLE_NAME "SakuraEditor"
     MACOSX_BUNDLE_SHORT_VERSION_STRING "${SAKURA_MAJOR_VERSION}.${SAKURA_MINOR_VERSION}.${SAKURA_PATCH_VERSION}"
     MACOSX_BUNDLE_BUNDLE_VERSION "0"

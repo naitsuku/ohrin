@@ -64,6 +64,7 @@ struct ThreadObject : KernelObject {
 struct ProcessData {
 	std::unordered_map<const void*, void*> slots;
 	std::vector<std::pair<void*, void (*)(void*)>> owned;	// 作成順
+	std::vector<std::pair<void*, void (*)(void*)>> containers;	// owned の破棄が全部終わってから破棄する
 };
 
 std::recursive_mutex& ProcessDataMutex()
@@ -78,17 +79,24 @@ std::unordered_map<DWORD, ProcessData>& ProcessTable()
 	return *table;
 }
 
+//! 仮想プロセスの実体を破棄する。デストラクタが他の実体を参照するので、終わるまで表から消さない
 void DestroyProcessData(DWORD key)
 {
-	ProcessData data;
-	{
+	using Entry = std::pair<void*, void (*)(void*)>;
+	auto next = [key](std::vector<Entry> ProcessData::*list, Entry* entry) {
 		std::lock_guard lock(ProcessDataMutex());
 		auto it = ProcessTable().find(key);
-		if (it == ProcessTable().end()) return;
-		data = std::move(it->second);
-		ProcessTable().erase(it);
-	}
-	for (auto o = data.owned.rbegin(); o != data.owned.rend(); ++o) o->second(o->first);
+		if (it == ProcessTable().end() || (it->second.*list).empty()) return false;
+		*entry = (it->second.*list).back();
+		(it->second.*list).pop_back();
+		return true;
+	};
+	Entry entry;
+	while (next(&ProcessData::owned, &entry)) entry.second(entry.first);
+	// TInstanceHolder の一覧は、その要素のデストラクタが触るので最後
+	while (next(&ProcessData::containers, &entry)) entry.second(entry.first);
+	std::lock_guard lock(ProcessDataMutex());
+	ProcessTable().erase(key);
 }
 
 ThreadObject* Spawn(std::function<DWORD()> body, DWORD processId, const std::wstring& commandLine, bool newProcess)
@@ -175,7 +183,9 @@ void SetProcessSlot(const void* tag, void* value)
 	ProcessTable()[CurrentProcessId()].slots[tag] = value;
 }
 
-void* ProcessSingleton(const void* tag, void* (*create)(), void (*destroy)(void*))
+void ReleaseProcess(uint32_t key) { DestroyProcessData(key); }
+
+void* ProcessSingleton(const void* tag, void* (*create)(), void (*destroy)(void*), bool container)
 {
 	// create の中から別のシングルトンを作ることがあるので再帰可能なロックのまま呼ぶ
 	std::lock_guard lock(ProcessDataMutex());
@@ -188,7 +198,7 @@ void* ProcessSingleton(const void* tag, void* (*create)(), void (*destroy)(void*
 	void* value = create();
 	auto& data = ProcessTable()[key];	// create の間に表が再配置されることがある
 	data.slots[tag] = value;
-	data.owned.emplace_back(value, destroy);
+	(container ? data.containers : data.owned).emplace_back(value, destroy);
 	return value;
 }
 

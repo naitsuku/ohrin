@@ -8,7 +8,9 @@
 */
 #include "pch.h"
 
+#include <string>
 #include <thread>
+#include <vector>
 
 #include "util/design_template.h"
 
@@ -80,4 +82,31 @@ TEST(WinportProcess, InstanceHolderIsSharedWithWorker)
 		count = Held::GetInstanceCount();
 	}).join();
 	EXPECT_EQ(1u, count);
+}
+
+namespace winport {
+void ReleaseProcess(uint32_t key);
+}
+
+namespace {
+
+std::vector<std::string> g_destroyed;
+
+}  // namespace
+
+// CEditApp が持つ CEditDoc のデストラクタは TInstanceHolder の一覧を触る。一覧は CEditApp より後に作られるので、
+// 単純な逆順で破棄すると解放済みの一覧を触って終了時に落ちる
+TEST(WinportProcess, ContainersOutliveOwnedObjects)
+{
+	g_destroyed.clear();
+	std::thread([] {
+		winport::AdoptProcess(kOtherProcess + 1);
+		static char owner, container, later;
+		winport::ProcessSingleton(&owner, []() -> void* { return new int; }, [](void* p) { delete static_cast<int*>(p); g_destroyed.push_back("owner"); });
+		winport::ProcessSingleton(&container, []() -> void* { return new int; }, [](void* p) { delete static_cast<int*>(p); g_destroyed.push_back("container"); }, true);
+		winport::ProcessSingleton(&later, []() -> void* { return new int; }, [](void* p) { delete static_cast<int*>(p); g_destroyed.push_back("later"); });
+		winport::ReleaseProcess(kOtherProcess + 1);
+	}).join();
+	const std::vector<std::string> expected{"later", "owner", "container"};
+	EXPECT_EQ(expected, g_destroyed);
 }

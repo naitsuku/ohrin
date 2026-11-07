@@ -33,8 +33,9 @@ void AdoptProcess(uint32_t key);
 //! 仮想プロセスごとの値
 void* ProcessSlot(const void* tag);
 void SetProcessSlot(const void* tag, void* value);
-//! 仮想プロセスごとの実体。無ければ作り、仮想プロセスの終了時に破棄する
-void* ProcessSingleton(const void* tag, void* (*create)(), void (*destroy)(void*));
+//! 仮想プロセスごとの実体。無ければ作り、仮想プロセスの終了時に作成の逆順で破棄する
+//! container なら他の実体のデストラクタから触られるものとして、それらの破棄がすべて終わってから破棄する
+void* ProcessSingleton(const void* tag, void* (*create)(), void (*destroy)(void*), bool container = false);
 }  // namespace winport
 #endif
 
@@ -200,7 +201,7 @@ private:
 			static char tag;
 			cached = static_cast<std::vector<T*>*>(winport::ProcessSingleton(&tag,
 				[]() -> void* { return new std::vector<T*>; },
-				[](void* p) { delete static_cast<std::vector<T*>*>(p); }));
+				[](void* p) { delete static_cast<std::vector<T*>*>(p); }, true));
 		}
 		return *cached;
 	}

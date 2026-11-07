@@ -17,6 +17,46 @@
 //                     CTextInputStream                        //
 // -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- //
 
+#ifdef SAKURA_WINPORT
+/*!
+	[winport] 残りの内容が UTF-8 として正しく、かつ ASCII 以外を含むか調べる
+
+	mac のエディタが作るテキストは BOM なしの UTF-8 が普通なので、BOM が無くても UTF-8 と分かるものは
+	UTF-8 で読む。Windows から持ち込んだ Shift_JIS のファイルは条件を満たさず、従来どおり読める。
+*/
+static bool IsUtf8WithoutBom(FILE* fp)
+{
+	bool bMultiByte = false;
+	bool bValid = true;
+	int nFollow = 0;	// 残りの継続バイト数
+	int nMin = 0x80, nMax = 0xBF;	// 次の継続バイトの範囲（過長・サロゲート・範囲外を除く）
+	for( int c; bValid && (c = getc(fp)) != EOF; ){
+		if( nFollow ){
+			bValid = nMin <= c && c <= nMax;
+			nMin = 0x80;
+			nMax = 0xBF;
+			--nFollow;
+		}else if( c >= 0x80 ){
+			bMultiByte = true;
+			if( 0xC2 <= c && c <= 0xDF ){
+				nFollow = 1;
+			}else if( 0xE0 <= c && c <= 0xEF ){
+				nFollow = 2;
+				if( c == 0xE0 ) nMin = 0xA0;
+				if( c == 0xED ) nMax = 0x9F;
+			}else if( 0xF0 <= c && c <= 0xF4 ){
+				nFollow = 3;
+				if( c == 0xF0 ) nMin = 0x90;
+				if( c == 0xF4 ) nMax = 0x8F;
+			}else{
+				bValid = false;
+			}
+		}
+	}
+	return bValid && nFollow == 0 && bMultiByte;
+}
+#endif
+
 CTextInputStream::CTextInputStream(const WCHAR* pszPath)
 : CStream(pszPath,L"rb")
 {
@@ -33,6 +73,10 @@ CTextInputStream::CTextInputStream(const WCHAR* pszPath)
 		//UTF-8じゃなければ、ファイルポインタを元に戻す
 		if(!m_bIsUtf8){
 			fseek(GetFp(),0,SEEK_SET);
+#ifdef SAKURA_WINPORT
+			m_bIsUtf8 = IsUtf8WithoutBom(GetFp());
+			fseek(GetFp(),0,SEEK_SET);
+#endif
 		}
 	}
 	else{

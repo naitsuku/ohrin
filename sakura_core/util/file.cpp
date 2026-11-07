@@ -406,6 +406,11 @@ BOOL CheckEXT( const WCHAR* pszPath, const WCHAR* pszExt )
 */
 bool _IS_REL_PATH(const WCHAR* path)
 {
+#ifdef SAKURA_WINPORT
+	if( path[0] == L'/' ){
+		return false;
+	}
+#endif
 	bool ret = true;
 	if( (((L'A' <= path[0] && path[0] <= L'Z') || (L'a' <= path[0] && path[0] <= L'z'))
 		&& path[1] == L':' && path[2] == L'\\')

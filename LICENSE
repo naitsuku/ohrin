@@ -17,3 +17,19 @@ freely, subject to the following restrictions:
 2. Altered source versions must be plainly marked as such, and must not be
    misrepresented as being the original software.
 3. This notice may not be removed or altered from any source distribution.
+
+
+--------------------------------------------------------------------------
+Sakura Editor for Mac (unofficial macOS port)
+
+The macOS port — winport/, sakura_mac/, tests/mac_tests/, tools/porting/ and
+the changes marked SAKURA_WINPORT in sakura_core/ — is:
+
+Copyright (C) 2026, naitsuku
+
+and is distributed under the same zlib License as above. This is an altered
+version of Sakura Editor. It is not the original software and is not
+affiliated with or endorsed by the Sakura Editor Organization.
+
+Third-party software included in the application binary is listed in
+THIRD_PARTY_NOTICES.txt.

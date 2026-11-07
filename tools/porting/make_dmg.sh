@@ -17,8 +17,14 @@ stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT
 
 cp -R "$app" "$stage/SakuraEditor.app"
+# ライセンス（zlib と、Onigmo の BSD・bregonig の Artistic は配布物に全文を付ける）。署名の前にアプリの中へ入れる
+for f in LICENSE THIRD_PARTY_NOTICES.txt; do
+    cp "$root/$f" "$stage/SakuraEditor.app/Contents/Resources/"
+    cp "$root/$f" "$stage/"
+done
+cp "$root/README.md" "$stage/README.md"
 codesign --force --deep --sign - "$stage/SakuraEditor.app"
 ln -s /Applications "$stage/Applications"
 rm -f "$dmg"
-hdiutil create -volname "SakuraEditor $version" -srcfolder "$stage" -format UDZO -ov "$dmg" >/dev/null
+hdiutil create -volname "Sakura Editor for Mac $version" -srcfolder "$stage" -format UDZO -ov "$dmg" >/dev/null
 echo "$dmg"

@@ -1,0 +1,277 @@
+Third-party notices — Sakura Editor for Mac (unofficial)
+サードパーティーのライセンス — サクラエディタ for Mac（非公式）
+========================================================================
+
+The application binary includes the following third-party software.
+アプリ本体には次のソフトウェアが組み込まれています。
+
+1. Onigmo (Oniguruma-mod) — regular expression library
+   https://github.com/k-takata/Onigmo
+   License: BSD 2-Clause (full text in section A below)
+
+2. bregonig — Perl-compatible regular expression wrapper for Onigmo
+   https://github.com/k-takata/bregonig
+   Copyright (C) 2006-2011  K.Takata
+   bregonig may be distributed under either the GNU General Public License
+   or the Artistic License. This application uses it under the terms of the
+   Artistic License (full text in section B below). The source code of
+   bregonig is included unmodified in this repository (externals/bregonig).
+   Parts of bregonig (dbgtrace.h, mem_vc6.h) are under the BSD license in
+   section A.
+
+3. mingw-w64 Windows API headers — used at build time only
+   https://www.mingw-w64.org/
+   The headers are mostly placed in the public domain; some files are under
+   the Zope Public License 2.1. They are not distributed with this
+   application; this note is given as an acknowledgement.
+
+The following are used for development only and are not part of the
+application: GoogleTest (BSD 3-Clause).
+
+Sakura Editor itself is licensed under the zlib License (see LICENSE).
+
+
+========================================================================
+A. Onigmo / Oniguruma / Ruby / bregonig (dbgtrace.h, mem_vc6.h) license
+========================================================================
+
+Onigmo (Oniguruma-mod) LICENSE
+------------------------------
+
+Copyright (c) 2002-2018  K.Kosako  <kkosako0@gmail.com>
+Copyright (c) 2011-2019  K.Takata  <kentkt AT csc DOT jp>
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions
+are met:
+1. Redistributions of source code must retain the above copyright
+   notice, this list of conditions and the following disclaimer.
+2. Redistributions in binary form must reproduce the above copyright
+   notice, this list of conditions and the following disclaimer in the
+   documentation and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+SUCH DAMAGE.
+
+
+
+Oniguruma LICENSE
+-----------------
+
+Copyright (c) 2002-2018  K.Kosako  <kkosako0@gmail.com>
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions
+are met:
+1. Redistributions of source code must retain the above copyright
+   notice, this list of conditions and the following disclaimer.
+2. Redistributions in binary form must reproduce the above copyright
+   notice, this list of conditions and the following disclaimer in the
+   documentation and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+SUCH DAMAGE.
+
+
+
+Ruby BSDL
+---------
+Copyright (C) 1993-2013 Yukihiro Matsumoto. All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions
+are met:
+1. Redistributions of source code must retain the above copyright
+notice, this list of conditions and the following disclaimer.
+2. Redistributions in binary form must reproduce the above copyright
+notice, this list of conditions and the following disclaimer in the
+documentation and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+SUCH DAMAGE.
+
+
+
+dbgtrace.h and mem_vc6.h LICENSE
+--------------------------------
+
+/*
+ * Copyright (C) 2006  K.Takata
+ * All rights reserved.
+ * 
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ *
+ *  1. Redistributions of source code must retain the above copyright
+ *     notice, this list of conditions and the following disclaimer.
+ *  2. Redistributions in binary form must reproduce the above copyright
+ *     notice, this list of conditions and the following disclaimer in the
+ *     documentation and/or other materials provided with the distribution.
+ * 
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT,
+ * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
+ * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
+ * ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
+ */
+
+
+
+========================================================================
+B. The "Perl Artistic License" (bregonig)
+========================================================================
+
+
+
+
+
+
+			 The "Perl Artistic License"
+
+				Preamble
+
+The intent of this document is to state the conditions under which the Perl
+Package may be copied, such that the Copyright Holder maintains some
+semblance of artistic control over its development, while giving Perl users 
+the right to use and distribute Perl in a more-or-less customary fashion, 
+plus the right to make reasonable modifications.
+
+Definitions:
+
+	"Package" refers to the collection of Perl-kit files distributed by the
+	Copyright Holder, and derivatives of that collection of files
+	created through textual modification.
+
+	"Standard Version" refers to such a Package if it has not been
+	modified, or has been modified as specified below.
+
+	"Copyright Holder" is whoever is named in the copyright or
+	copyrights for the Perl package.
+
+	"You" is you, if you're thinking about copying or distributing
+	this Package.
+
+	"Reasonable copying fee" is whatever you can justify on the
+	basis of media cost, duplication charges, time of people involved,
+	and so on.  (You will not be required to justify it to the
+	Copyright Holder, but only to the computing community at large
+	as a market that must bear the fee.)
+
+	"Freely Available" means that no fee is charged for the item
+	itself, though there may be fees involved in handling the item.
+	It also means that recipients of the item may redistribute it
+	under the same conditions they received it.
+
+1. You may make and give away verbatim copies of the source form of the
+Standard Version of this Perl Package without restriction, provided that you
+duplicate all of the original copyright notices and associated disclaimers.
+
+2. You may apply bug fixes, portability fixes and other modifications
+derived from the Public Domain or from the Copyright Holder.  A Package
+modified in such a way shall still be considered the Standard Version.
+
+3. You may otherwise modify your copy of this Perl Package in any way, 
+provided that you insert a prominent notice in each changed file stating how 
+and when you changed that file, and provided that you do at least ONE of the
+following:
+
+    a) place your modifications in the Public Domain or otherwise make them
+    Freely Available, such as by posting said modifications to Usenet or
+    an equivalent medium, or placing the modifications on a major archive
+    site such as uunet.uu.net, or by allowing the Copyright Holder to include
+    your modifications in the Standard Version of the Perl Package.
+
+    b) use the modified Perl Package only within your corporation or 
+	organization.
+
+    c) rename any non-standard executables so the names do not conflict
+    with standard executables, which must also be provided, and provide
+    a separate manual page for each non-standard executable that clearly
+    documents how it differs from the Standard Version.
+
+    d) make other distribution arrangements with the Copyright Holder.
+
+4. You may distribute the programs of this Perl Package in object code or
+executable form, provided that you do at least ONE of the following:
+
+    a) distribute a Standard Version of the executables and library files,
+    together with instructions (in the manual page or equivalent) on where
+    to get the Standard Version.
+
+    b) accompany the distribution with the machine-readable source of
+    the Perl Package with your modifications.
+
+    c) accompany any non-standard executables with their corresponding
+    Standard Version executables, giving the non-standard executables
+    non-standard names, and clearly documenting the differences in manual
+    pages (or equivalent), together with instructions on where to get
+    the Standard Version.
+
+    d) make other distribution arrangements with the Copyright Holder.
+
+5. You may charge a reasonable copying fee for any distribution of this
+Perl Package.  You may charge any fee you choose for support of this Perl 
+Package. You may not charge a fee for this Perl Package itself.  However,
+you may distribute this Perl Package in aggregate with other (possibly
+commercial) programs as part of a larger (possibly commercial) software
+distribution provided that you do not advertise this Perl Package as a
+product of your own.
+
+6. The scripts and library files supplied as input to or produced as
+output from the programs of this Perl Package do not automatically fall
+under the copyright of this Perl Package, but belong to whomever generated
+them, and may be sold commercially, and may be aggregated with this Perl
+Package.
+
+7. C subroutines supplied by you and linked into this Perl Package in order
+to emulate subroutines and variables of the language defined by this Perl
+Package shall not be considered part of this Perl Package, but are the
+equivalent of input as in Paragraph 6, provided these subroutines do
+not change the language in any way that would cause it to fail the
+regression tests for the language.
+
+8. The name of the Copyright Holder may not be used to endorse or promote
+products derived from this software without specific prior written permission.
+
+9. This PERL PACKAGE IS PROVIDED "AS IS" AND WITHOUT ANY EXPRESS OR
+IMPLIED WARRANTIES, INCLUDING, WITHOUT LIMITATION, THE IMPLIED
+WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+
+				The End
+

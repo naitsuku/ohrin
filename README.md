@@ -1,74 +1,84 @@
-﻿# Sakura Editor
+﻿# サクラエディタ for Mac（非公式）
 
-A free text editor for Windows.  
-[![License: Zlib](https://img.shields.io/badge/License-Zlib-lightgrey.svg)](https://opensource.org/licenses/Zlib)
-[![build sakura](https://github.com/sakura-editor/sakura/workflows/build%20sakura/badge.svg)](https://github.com/sakura-editor/sakura/actions?query=workflow%3A%22build+sakura%22)
-[![CodeFactor](https://www.codefactor.io/repository/github/sakura-editor/sakura/badge)](https://www.codefactor.io/repository/github/sakura-editor/sakura)
-[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=sakura-editor_sakura&metric=alert_status)](https://sonarcloud.io/dashboard?id=sakura-editor_sakura)
-[![Github Releases All](https://img.shields.io/github/downloads/sakura-editor/sakura/total.svg)](https://github.com/sakura-editor/sakura/releases "All Releases")
-[![Star History](https://img.shields.io/badge/star-histroy-yellow.svg)](https://star-history.t9t.io/#sakura-editor/sakura)
+Windows 用テキストエディタ [サクラエディタ](https://github.com/sakura-editor/sakura) を macOS で動かす、**非公式**の移植版です。
 
-<!-- 以下は Markdownの参照形式によるリンク の定義です。 -->
-<!-- 参照 https://hail2u.net/blog/coding/markdown-reference-style-links.html -->
+> [!IMPORTANT]
+> これはサクラエディタの公式版ではありません。Sakura Editor Organization とは関係がなく、承認も受けていません。
+> **Mac 版の不具合や要望は、このリポジトリの [Issues](https://github.com/naitsuku/sakura-editor-mac/issues) へお寄せください。**
+> サクラエディタ本家へは報告しないでください。
 
-[Visual Studio 以前のバージョン]: https://visualstudio.microsoft.com/ja/vs/older-downloads/ "Visual Studio 以前のバージョン"
-[Visual Studio 最新版]: https://visualstudio.microsoft.com/ja/downloads/ "Visual Studio 最新版"
-[ライセンスの OSI のページ]: https://opensource.org/license/zlib
-[Visual Studio Community ライセンス]: https://visualstudio.microsoft.com/ja/license-terms/vs2022-ga-community/
-[Markdown をローカルで確認する方法]: https://github.com/sakura-editor/sakura/wiki/markdown-%E3%82%92%E3%83%AD%E3%83%BC%E3%82%AB%E3%83%AB%E3%81%A7%E7%A2%BA%E8%AA%8D%E3%81%99%E3%82%8B%E6%96%B9%E6%B3%95
-[How to extract currently installed Visual Studio component IDs?]: https://stackoverflow.com/questions/52946333/how-to-extract-currently-installed-visual-studio-component-ids
-[Configure Visual Studio across your organization with .vsconfig]: https://devblogs.microsoft.com/setup/configure-visual-studio-across-your-organization-with-vsconfig/
-[インストール構成をインポートまたはエクスポートする]: https://docs.microsoft.com/ja-jp/visualstudio/install/import-export-installation-configurations?view=vs-2019
-[コマンド ライン パラメーターを使用して Visual Studio をインストールする]: https://docs.microsoft.com/ja-jp/visualstudio/install/use-command-line-parameters-to-install-visual-studio?view=vs-2019
-[不足しているコンポーネントを自動的にインストールする]: https://docs.microsoft.com/ja-jp/visualstudio/install/import-export-installation-configurations?view=vs-2019#automatically-install-missing-components
+*English: An unofficial macOS port of [Sakura Editor](https://github.com/sakura-editor/sakura), a Japanese text editor for Windows.
+It is not affiliated with or endorsed by the Sakura Editor Organization. Please report issues of the Mac version here, not upstream.*
 
-<!-- TOC -->
+## 特徴
 
-- [Sakura Editor](#sakura-editor)
-  - [脆弱性の報告方法](#脆弱性の報告方法)
-  - [ダウンロード](#ダウンロード)
-  - [開発情報](#開発情報)
-    - [How to build](#how-to-build)
-    - [Static code analysis](#static-code-analysis)
-  - [変更履歴](#変更履歴)
+- **本家の編集エンジンをそのまま動かします。** `sakura_core/` は本家のフォークで、Win32 API を macOS の AppKit / CoreText で
+  実装した互換層（`winport/`）の上で動きます。折り返し、禁則、矩形選択、検索・置換、Grep、アウトライン解析、
+  タグジャンプなどは本家と同じコードです
+- キー操作は Windows 版の **Ctrl を Cmd に置き換えた**ものです
+- 設定画面（共通設定・タイプ別設定）、印刷と印刷プレビュー、キーボードマクロと JavaScript マクロ（JavaScriptCore）に対応します
+- 開く・保存・フォント選択・印刷パネルは macOS 標準のものを使います
 
-<!-- /TOC -->
+## 動作環境
 
-## 脆弱性の報告方法
+- macOS 13 以降、Apple Silicon（arm64）
+- 開発と確認は macOS 26 で行っています。それより前の macOS では確認していません
 
-https://github.com/sakura-editor/sakura/security/advisories
-から報告を行ってください。
+## インストール
 
+1. [Releases](https://github.com/naitsuku/sakura-editor-mac/releases) から `SakuraEditor-<版>.dmg` をダウンロードします
+2. DMG を開き、`SakuraEditor.app` を「アプリケーション」フォルダーへコピーします
+3. 初回起動時に「開発元を確認できない」旨の警告が出ます（Apple の公証を受けていないため）。
+   「システム設定」→「プライバシーとセキュリティ」の下にある「このまま開く」を押してください
 
-## ダウンロード
+設定は `~/Library/Application Support/sakura/SakuraEditor.ini` に保存されます。
 
-リリース版は [Sakura Editor Portal](https://sakura-editor.github.io/) に置いてあります。
+## 未対応・制限
 
-GitHubで公開しているので [GitHub Actionsのビルドページ](https://github.com/sakura-editor/sakura/actions/workflows/build-sakura.yml?query=branch%3Amaster) より開発中の最新版をダウンロードすることもできます。
+- PPA マクロ、VBScript マクロ、WSH は使えません（JavaScript マクロは JavaScriptCore で動きます）
+- Migemo（ローマ字検索）、英語・中国語の UI、HTML ヘルプ（.chm）は未対応です
+- 外部コマンドの実行（ctags によるタグファイル作成、DIFF など）は未対応です
+- 初めて印刷パネルを開くとき、ネットワークプリンターを探すために macOS がローカルネットワークの許可を求めます
+- 既知の問題は [docs/porting/issues.md](docs/porting/issues.md) にまとめています
 
-## 開発情報
+## ソースからのビルド
 
-### How to build
+必要なもの: Xcode Command Line Tools、CMake 3.20 以降、Ninja、Python 3、Homebrew の `mingw-w64`
+（Win32 のヘッダーだけを使います。Windows 向けのビルドはしません）
 
-`sakura.sln`を開いてビルドできます。  
-詳細は [ビルド方法](./tools/build.md) を参照。
+```bash
+brew install cmake ninja mingw-w64
+git submodule update --init externals/Onigmo externals/bregonig externals/cmigemo
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
+cmake --build build
+ctest --test-dir build --output-on-failure
+open build/bin/SakuraEditor.app
+```
 
-### Static code analysis
+配布用の DMG は `tools/porting/make_dmg.sh` で作ります（Release ビルドの後、`build-release/` に出力）。
 
-サクラエディタプロジェクトではいくつかの静的解析サービスを利用しています。
+## 構成
 
-| サービス | 説明 |
-|---------|------|
-| [CodeFactor](https://www.codefactor.io/repository/github/sakura-editor/sakura) |  C++ のスタイルチェック。[cpplint.py](./tools/CodeFactor/README.md)による字句解析。 |
-| [SonarQube](https://sonarcloud.io/summary/new_code?id=sakura-editor_sakura&branch=master) | 多言語対応の静的解析。Build Wrapper + SonarScannerによるコード品質解析。 |
+```
+sakura_core/   本家のフォーク。Mac 用の変更は #ifdef SAKURA_WINPORT で囲んでいます
+winport/       Win32 互換層（kernel32 / user32 / gdi32 / comctl32 ... を AppKit・CoreText で実装）
+sakura_mac/    アプリの入口と .app バンドル
+tests/mac_tests/  互換層のテストと、本家の単体テストを Mac で走らせる設定
+docs/porting/  移植の計画・進捗・既知の問題・本家の取り込み手順
+```
 
-[![Quality gate](https://sonarcloud.io/api/project_badges/quality_gate?project=sakura-editor_sakura)](https://sonarcloud.io/summary/overall?id=sakura-editor_sakura)
+本家の新しい版は [docs/porting/upstream_sync.md](docs/porting/upstream_sync.md) の手順で取り込みます。
+現在の土台は本家の **v2.4.3** です。
 
-## 変更履歴
+## ライセンス
 
-- 変更履歴は [CHANGELOG.md](https://github.com/sakura-editor/sakura/blob/master/CHANGELOG.md) を参照してください。
-- 最新の `CHANGELOG.md` は [ここからダウンロード](https://ci.appveyor.com/project/sakuraeditor/changelog-sakura/branch/master/artifacts) できます([Markdown をローカルで確認する方法](https://github.com/sakura-editor/sakura/wiki/markdown-%E3%82%92%E3%83%AD%E3%83%BC%E3%82%AB%E3%83%AB%E3%81%A7%E7%A2%BA%E8%AA%8D%E3%81%99%E3%82%8B%E6%96%B9%E6%B3%95)
-で説明している手順でローカルで確認できます)。
-- `CHANGELOG.md` は [PullRequest](https://github.com/sakura-editor/sakura/pulls) から自動的に生成しています。
-  - 具体的には [github-changelog-generator](https://github.com/github-changelog-generator/github-changelog-generator) というソフトを使用して [changelog-sakura](https://github.com/sakura-editor/changelog-sakura) のリポジトリで [appveyor](https://ci.appveyor.com/project/sakuraeditor/changelog-sakura) で生成しています。
-  - 詳細は wiki の [CHANGELOG.mdについて](https://github.com/sakura-editor/sakura/wiki/CHANGELOG.md%E3%81%AB%E3%81%A4%E3%81%84%E3%81%A6) をご覧ください。
+[zlib License](LICENSE) です。サクラエディタ本体の著作権は Sakura Editor Organization にあり、
+macOS 移植部分の著作権は naitsuku にあります。アプリに組み込んでいる第三者のソフトウェア（Onigmo、bregonig）の
+ライセンスは [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt) にあります。
+
+## 謝辞
+
+サクラエディタを長年開発・公開してきた Sakura Editor Organization と、すべてのコントリビューターに感謝します。
+本家のリポジトリは <https://github.com/sakura-editor/sakura> です。
+
+この移植は開発者 1 名が AI（Anthropic の Claude）の支援を受けて作りました。

@@ -1,0 +1,81 @@
+# Sakura Editor for Mac（非公式）のビルド・テスト・リリース
+#
+# - push / pull request: Debug でビルドしてテスト
+# - タグ v*（例: v2.4.3-mac.1）: Release の DMG を作り、下書きのリリースに添付する。
+#   公開はリリースノートを確認してから GitHub の画面で行う
+#
+# 署名はアドホックのみ（公証なし）。Developer ID で署名する場合は Secrets と手順を足す。
+name: macOS
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      # 必要なサブモジュールだけ取る（ctags や vcpkg は Windows 版用で大きい）
+      - name: Submodules
+        run: git submodule update --init --depth 1 externals/Onigmo externals/bregonig externals/cmigemo
+
+      - name: Dependencies
+        run: brew install ninja mingw-w64
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: macos-15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Submodules
+        run: git submodule update --init --depth 1 externals/Onigmo externals/bregonig externals/cmigemo
+
+      - name: Dependencies
+        run: brew install ninja mingw-w64
+
+      - name: DMG
+        id: dmg
+        run: |
+          dmg=$(tools/porting/make_dmg.sh "$PWD/build-release" | tail -1)
+          echo "path=$dmg" >> "$GITHUB_OUTPUT"
+          shasum -a 256 "$dmg" | tee "$dmg.sha256"
+
+      - name: Draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "サクラエディタ for Mac（非公式）${GITHUB_REF_NAME}"
+            echo
+            echo "変更点は CHANGELOG-mac.md を参照してください。"
+            echo
+            echo "公証を受けていないため、初回起動時は「システム設定」→「プライバシーとセキュリティ」で「このまま開く」を押してください。"
+            echo
+            echo "SHA-256:"
+            echo '```'
+            cat "${{ steps.dmg.outputs.path }}.sha256"
+            echo '```'
+          } > notes.md
+          gh release create "$GITHUB_REF_NAME" --draft --title "サクラエディタ for Mac ${GITHUB_REF_NAME}" \
+            --notes-file notes.md "${{ steps.dmg.outputs.path }}" "${{ steps.dmg.outputs.path }}.sha256"

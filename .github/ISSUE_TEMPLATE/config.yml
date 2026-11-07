@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: サクラエディタ本家（Windows 版）
+    url: https://github.com/sakura-editor/sakura
+    about: Windows 版の不具合や新機能の議論は本家へ。Mac 版のことは本家へ報告しないでください。

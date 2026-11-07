@@ -95,11 +95,21 @@ BOOL CSortedTagJumpList::AddParamA( const ACHAR* keyword, const ACHAR* filename,
 	//アイテムを作成する。
 	TagJumpInfo* item = (TagJumpInfo*)malloc( sizeof( TagJumpInfo ) );
 	if( nullptr == item ) return FALSE;
+#ifdef SAKURA_WINPORT
+	// to_wchar は空文字列で nullptr を返す。備考の無い tags 行（"name\tfile\tline;\"\tkind"）で wcslen(nullptr) になる
+	const auto dup = []( const ACHAR* s ){ const WCHAR* w = to_wchar(s); return _wcsdup( w ? w : L"" ); };
+	item->keyword  = dup( keyword );
+	item->filename = dup( filename );
+	item->no       = no;
+	item->type     = type;
+	item->note     = dup( note );
+#else
 	item->keyword  = _wcsdup( to_wchar(keyword) );
 	item->filename = _wcsdup( to_wchar(filename) );
 	item->no       = no;
 	item->type     = type;
 	item->note     = _wcsdup( to_wchar(note) );
+#endif
 	item->depth    = depth;
 	item->next     = nullptr;
 	item->baseDirId = baseDirId;

@@ -56,6 +56,7 @@ add_executable(sakura_mac_tests
     mac_main.cpp
     test-winport-datetime.cpp
     test-winport-gdi.cpp
+    test-winport-window.cpp
     ${CMAKE_SOURCE_DIR}/src/test/resources/printECodeType.cpp
     ${CMAKE_SOURCE_DIR}/src/test/resources/printEEolType.cpp
     ${CMAKE_SOURCE_DIR}/src/test/resources/printEFunctionCode.cpp

@@ -794,6 +794,10 @@ WINBOOL WINAPI SetWindowPos(HWND hWnd, HWND hWndInsertAfter, int X, int Y, int c
 		std::lock_guard lock(UserMutex());
 		const RECT nr{wp.x, wp.y, wp.x + std::max(wp.cx, 0), wp.y + std::max(wp.cy, 0)};
 		changed = !EqualRect(&nr, &w->rect);
+		// Win32 と同じく、変わらなかった分は WM_SIZE / WM_MOVE を送らない。上流には WM_SIZE の処理の中で
+		// 同じ大きさの SetWindowPos を呼ぶ箇所があり（CTabWnd::LayoutTab）、毎回送ると無限再帰になる
+		if (nr.right - nr.left == w->rect.right - w->rect.left && nr.bottom - nr.top == w->rect.bottom - w->rect.top) wp.flags |= SWP_NOSIZE;
+		if (nr.left == w->rect.left && nr.top == w->rect.top) wp.flags |= SWP_NOMOVE;
 		w->rect = nr;
 		if (!(uFlags & SWP_NOZORDER) && w->parent) {
 			auto& sib = reinterpret_cast<Window*>(w->parent)->children;

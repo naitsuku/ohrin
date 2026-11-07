@@ -12,7 +12,7 @@
 	Copyright (C) 2004, genta
 	Copyright (C) 2005, novice, ryoji
 	Copyright (C) 2006, ryoji, Moca
-	Copyright (C) 2018-2022, Sakura Editor Organization
+	Copyright (C) 2018-2026, Sakura Editor Organization
 
 	This source code is designed for sakura editor.
 	Please contact the copyright holder to use this code for other purpose.
@@ -71,23 +71,23 @@ struct CDlgOpenFile_CommonFileDialog final : public IDlgOpenFile
 		const std::vector<LPCWSTR>& vOPENFOLDER
 	) override;
 
-	bool DoModal_GetOpenFileName( WCHAR* pszPath, EFilter eAddFileter ) override;
-	bool DoModal_GetSaveFileName( WCHAR* pszPath ) override;
+	bool DoModal_GetOpenFileName(std::span<WCHAR> szPath, EFilter eAddFileter) override;
+	bool DoModal_GetSaveFileName(std::span<WCHAR> szPath) override;
 	bool DoModalOpenDlg( SLoadInfo* pLoadInfo, std::vector<std::wstring>*, bool bOptions ) override;
 	bool DoModalSaveDlg( SSaveInfo*	pSaveInfo, bool bSimpleMode ) override;
 
 	void DlgOpenFail(void);
 
-	void InitOfn( OPENFILENAME* ofn );
+	void InitOfn(OPENFILENAME* ofn) const;
 
 	static void InitLayout( HWND hwndOpenDlg, HWND hwndDlg, HWND hwndBaseCtrl );
 	static LRESULT APIENTRY OFNHookProcMain( HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam , UINT_PTR uIdSubclass, DWORD_PTR dwRefData );
 	static UINT_PTR CALLBACK OFNHookProc( HWND hdlg, UINT uiMsg, WPARAM wParam, LPARAM lParam );
 
 	//! リトライ機能付き GetOpenFileName
-	bool _GetOpenFileNameRecover( OPENFILENAME* ofn );
+	bool _GetOpenFileNameRecover(OPENFILENAME* ofn) const;
 	//! リトライ機能付き GetOpenFileName
-	bool GetSaveFileNameRecover( OPENFILENAME* ofn );
+	bool GetSaveFileNameRecover(OPENFILENAME* ofn) const;
 
 	HINSTANCE		m_hInstance = nullptr;	/* アプリケーションインスタンスのハンドル */
 	HWND			m_hwndParent = nullptr;	/* オーナーウィンドウのハンドル */
@@ -471,7 +471,7 @@ UINT_PTR CALLBACK CDlgOpenFile_CommonFileDialog::OFNHookProc(
 			{
 				wchar_t szFolder[_MAX_PATH];
 				CDlgOpenFileData* pData = (CDlgOpenFileData*)::GetWindowLongPtr(hdlg, DWLP_USER);
-				lRes = CommDlg_OpenSave_GetFolderPath( pData->m_hwndOpenDlg, szFolder, int(std::size(szFolder)) );
+				CommDlg_OpenSave_GetFolderPath( pData->m_hwndOpenDlg, szFolder, int(std::size(szFolder)) );
 			}
 //			MYTRACE( L"\tlRes=%d\pszFolder=[%ls]\n", lRes, szFolder );
 
@@ -707,8 +707,18 @@ void CDlgOpenFile_CommonFileDialog::Create(
 		拡張子フィルタの管理をCFileExtクラスで行う。
 	@date 2005.02.20 novice 拡張子を省略したら補完する
 */
-bool CDlgOpenFile_CommonFileDialog::DoModal_GetOpenFileName( WCHAR* pszPath, EFilter eAddFilter )
+bool CDlgOpenFile_CommonFileDialog::DoModal_GetOpenFileName(
+	std::span<WCHAR> szPath,
+	EFilter eAddFilter
+)
 {
+	const auto cchPath = std::size(szPath);
+
+	assert(_MAX_PATH <= cchPath);
+	assert(cchPath <= UINT_MAX);
+
+	auto pszPath = std::data(szPath);
+
 	//カレントディレクトリを保存。関数から抜けるときに自動でカレントディレクトリは復元される。
 	CCurrentDirectoryBackupPoint cCurDirBackup;
 
@@ -775,7 +785,9 @@ bool CDlgOpenFile_CommonFileDialog::DoModal_GetOpenFileName( WCHAR* pszPath, EFi
 	}
 	pData->m_ofn.lpstrFile = pszPath;
 	// To Here Jun. 23, 2002 genta
-	pData->m_ofn.nMaxFile = _MAX_PATH;
+
+	pData->m_ofn.nMaxFile = DWORD(cchPath);
+
 	pData->m_ofn.lpstrInitialDir = m_szInitialDir;
 	pData->m_ofn.Flags = OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_HIDEREADONLY;
 	pData->m_ofn.lpstrDefExt = L""; // 2005/02/20 novice 拡張子を省略したら補完する
@@ -801,8 +813,17 @@ bool CDlgOpenFile_CommonFileDialog::DoModal_GetOpenFileName( WCHAR* pszPath, EFi
 		拡張子フィルタの管理をCFileExtクラスで行う。
 	@date 2005.02.20 novice 拡張子を省略したら補完する
 */
-bool CDlgOpenFile_CommonFileDialog::DoModal_GetSaveFileName( WCHAR* pszPath )
+bool CDlgOpenFile_CommonFileDialog::DoModal_GetSaveFileName(
+	std::span<WCHAR> szPath
+)
 {
+	const auto cchPath = std::size(szPath);
+
+	assert(_MAX_PATH <= cchPath);
+	assert(cchPath <= UINT_MAX);
+
+	auto pszPath = std::data(szPath);
+
 	//カレントディレクトリを保存。関数から抜けるときに自動でカレントディレクトリは復元される。
 	CCurrentDirectoryBackupPoint cCurDirBackup;
 
@@ -831,7 +852,9 @@ bool CDlgOpenFile_CommonFileDialog::DoModal_GetSaveFileName( WCHAR* pszPath )
 	pData->m_ofn.hInstance = CSelectLang::getLangRsrcInstance();
 	pData->m_ofn.lpstrFilter = cFileExt.GetExtFilter();
 	pData->m_ofn.lpstrFile = pszPath; // 2005/02/20 novice デフォルトのファイル名は何も設定しない
-	pData->m_ofn.nMaxFile = _MAX_PATH;
+
+	pData->m_ofn.nMaxFile = DWORD(cchPath);
+
 	pData->m_ofn.lpstrInitialDir = m_szInitialDir;
 	pData->m_ofn.Flags = OFN_CREATEPROMPT | OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_HIDEREADONLY | OFN_OVERWRITEPROMPT;
 
@@ -1108,7 +1131,7 @@ void CDlgOpenFile_CommonFileDialog::DlgOpenFail(void)
 	@author ryoji
 	@date 2005.10.29
 */
-void CDlgOpenFile_CommonFileDialog::InitOfn( OPENFILENAME* ofn )
+void CDlgOpenFile_CommonFileDialog::InitOfn(OPENFILENAME* ofn) const
 {
 	memset_raw(ofn, 0, sizeof(*ofn));
 
@@ -1195,7 +1218,7 @@ void CDlgOpenFile_CommonFileDialog::InitLayout( HWND hwndOpenDlg, HWND hwndDlg, 
 	@author Moca
 	@date 2006.09.03 新規作成
 */
-bool CDlgOpenFile_CommonFileDialog::_GetOpenFileNameRecover( OPENFILENAME* ofn )
+bool CDlgOpenFile_CommonFileDialog::_GetOpenFileNameRecover(OPENFILENAME* ofn) const
 {
 	BOOL bRet = ::GetOpenFileName( ofn );
 	if( !bRet  ){
@@ -1212,7 +1235,7 @@ bool CDlgOpenFile_CommonFileDialog::_GetOpenFileNameRecover( OPENFILENAME* ofn )
 	@author Moca
 	@date 2006.09.03 新規作成
 */
-bool CDlgOpenFile_CommonFileDialog::GetSaveFileNameRecover( OPENFILENAME* ofn )
+bool CDlgOpenFile_CommonFileDialog::GetSaveFileNameRecover(OPENFILENAME* ofn) const
 {
 	BOOL bRet = ::GetSaveFileName( ofn );
 	if( !bRet  ){

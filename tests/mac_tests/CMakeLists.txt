@@ -44,6 +44,9 @@ set(TESTS1_ENABLED
     test-cdoctypemanager.cpp
     test-ccommandline.cpp
     test-string_ex.cpp
+    test-cimagelistmgr.cpp
+    test-cmenudrawer.cpp
+    test-detectindentationstyle.cpp
 )
 # 除外中（理由）:
 #   test-statictype.cpp / test-file.cpp / test-csakuraenvironment.cpp

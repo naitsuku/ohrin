@@ -42,6 +42,7 @@ struct ThreadObject : KernelObject {
 	bool finished = false;
 	DWORD exitCode = STILL_ACTIVE;
 	DWORD threadId = 0;
+	DWORD suspendCount = 0;	//!< CREATE_SUSPENDED。0 になるまで本体を始めない
 	bool Wait(unsigned long timeoutMs) override
 	{
 		std::unique_lock lock(m);
@@ -108,10 +109,12 @@ void DestroyProcessData(DWORD key)
 	for (void* p : storage) ::operator delete(p);
 }
 
-ThreadObject* Spawn(std::function<DWORD()> body, DWORD processId, const std::wstring& commandLine, bool newProcess)
+ThreadObject* Spawn(std::function<DWORD()> body, DWORD processId, const std::wstring& commandLine, bool newProcess,
+                    bool suspended = false)
 {
 	auto obj = new ThreadObject;
 	obj->refs = 2;
+	obj->suspendCount = suspended ? 1 : 0;
 	std::mutex started;
 	std::condition_variable startedCv;
 	bool ready = false;
@@ -125,6 +128,10 @@ ThreadObject* Spawn(std::function<DWORD()> body, DWORD processId, const std::wst
 			ready = true;
 		}
 		startedCv.notify_all();
+		{
+			std::unique_lock lock(obj->m);
+			obj->cv.wait(lock, [obj] { return obj->suspendCount == 0; });
+		}
 		const DWORD code = body();
 		if (newProcess) DestroyProcessData(tid);
 		obj->Finish(code);
@@ -212,14 +219,14 @@ void* ProcessSingleton(const void* tag, void* (*create)(), void (*finalize)(void
 	return value;
 }
 
-HANDLE StartVirtualProcess(const std::wstring& arguments)
+HANDLE StartVirtualProcess(const std::wstring& arguments, bool suspended = false)
 {
 	++g_liveProcesses;
 	const std::wstring cmdLine = L"\"" + ExecutablePath() + L"\" " + arguments;
 	return Spawn([arguments]() -> DWORD {
 		std::wstring args = arguments;
 		return static_cast<DWORD>(wWinMain(GetModuleHandleW(nullptr), nullptr, args.data(), SW_SHOWDEFAULT));
-	}, 0, cmdLine, true);
+	}, 0, cmdLine, true, suspended);
 }
 
 namespace {
@@ -270,7 +277,7 @@ void WINAPI GetStartupInfoW(LPSTARTUPINFOW lpStartupInfo)
 }
 
 WINBOOL WINAPI CreateProcessW(LPCWSTR lpApplicationName, LPWSTR lpCommandLine, LPSECURITY_ATTRIBUTES, LPSECURITY_ATTRIBUTES,
-                              WINBOOL, DWORD, LPVOID, LPCWSTR, LPSTARTUPINFOW, LPPROCESS_INFORMATION lpProcessInformation)
+                              WINBOOL, DWORD dwCreationFlags, LPVOID, LPCWSTR, LPSTARTUPINFOW, LPPROCESS_INFORMATION lpProcessInformation)
 {
 	const std::wstring cmd = lpCommandLine ? lpCommandLine : L"";
 	if (!IsSelf(lpApplicationName, cmd)) {
@@ -279,7 +286,8 @@ WINBOOL WINAPI CreateProcessW(LPCWSTR lpApplicationName, LPWSTR lpCommandLine, L
 		SetLastError(ERROR_FILE_NOT_FOUND);
 		return FALSE;
 	}
-	HANDLE h = StartVirtualProcess(StripProgramName(cmd));
+	// CREATE_SUSPENDED: 呼び出し元が初期化完了イベントを作ってから ResumeThread で始める（v2.4.3 の OpenNewEditor）
+	HANDLE h = StartVirtualProcess(StripProgramName(cmd), (dwCreationFlags & CREATE_SUSPENDED) != 0);
 	auto obj = static_cast<ThreadObject*>(ObjectFromHandle(h));
 	if (lpProcessInformation) {
 		++obj->refs;  // hProcess と hThread の 2 つを返す
@@ -300,6 +308,20 @@ WINBOOL WINAPI GetExitCodeProcess(HANDLE hProcess, LPDWORD lpExitCode)
 	std::lock_guard lock(obj->m);
 	*lpExitCode = obj->exitCode;
 	return TRUE;
+}
+
+DWORD WINAPI ResumeThread(HANDLE hThread)
+{
+	auto obj = dynamic_cast<ThreadObject*>(ObjectFromHandle(hThread));
+	if (!obj) { SetLastError(ERROR_INVALID_HANDLE); return static_cast<DWORD>(-1); }
+	DWORD previous;
+	{
+		std::lock_guard lock(obj->m);
+		previous = obj->suspendCount;
+		if (obj->suspendCount) --obj->suspendCount;
+	}
+	obj->cv.notify_all();
+	return previous;
 }
 
 WINBOOL WINAPI GetExitCodeThread(HANDLE hThread, LPDWORD lpExitCode) { return GetExitCodeProcess(hThread, lpExitCode); }

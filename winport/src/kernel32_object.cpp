@@ -211,6 +211,26 @@ DWORD WINAPI WaitForSingleObject(HANDLE hHandle, DWORD dwMilliseconds)
 	return obj->Wait(dwMilliseconds) ? WAIT_OBJECT_0 : WAIT_TIMEOUT;
 }
 
+DWORD WINAPI WaitForMultipleObjects(DWORD nCount, const HANDLE* lpHandles, WINBOOL bWaitAll, DWORD dwMilliseconds)
+{
+	// 種類の違うオブジェクトをまとめて待つ仕組みは無いので、短い間隔で見て回る
+	const auto start = std::chrono::steady_clock::now();
+	for (;;) {
+		bool all = nCount > 0;
+		for (DWORD i = 0; i < nCount; ++i) {
+			auto obj = winport::ObjectFromHandle(lpHandles[i]);
+			if (!obj) { SetLastError(ERROR_INVALID_HANDLE); return WAIT_FAILED; }
+			const bool signaled = obj->Wait(0);
+			if (signaled && !bWaitAll) return WAIT_OBJECT_0 + i;
+			all = all && signaled;
+		}
+		if (bWaitAll && all) return WAIT_OBJECT_0;
+		if (dwMilliseconds != INFINITE &&
+		    std::chrono::steady_clock::now() - start >= std::chrono::milliseconds(dwMilliseconds)) return WAIT_TIMEOUT;
+		std::this_thread::sleep_for(std::chrono::milliseconds(2));
+	}
+}
+
 void WINAPI Sleep(DWORD dwMilliseconds)
 {
 	std::this_thread::sleep_for(std::chrono::milliseconds(dwMilliseconds));

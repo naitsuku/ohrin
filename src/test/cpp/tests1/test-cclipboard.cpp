@@ -24,81 +24,14 @@
 
 #include "cxx/com_pointer.hpp"
 
+#include "testing/HResultEq.hpp"
+
 using ::testing::_;
 using ::testing::Invoke;
 using ::testing::Return;
 
 using namespace std::literals::string_literals;
 using namespace std::literals::string_view_literals;
-
-namespace testing {
-
-inline std::wstring HResultName(HRESULT hr)
-{
-    switch (hr) {
-    case S_OK: return L"S_OK";
-    case S_FALSE: return L"S_FALSE";
-    case E_FAIL: return L"E_FAIL";
-    case E_INVALIDARG: return L"E_INVALIDARG";
-    case E_ACCESSDENIED: return L"E_ACCESSDENIED";
-    case E_POINTER: return L"E_POINTER";
-    case E_OUTOFMEMORY: return L"E_OUTOFMEMORY";
-    case E_NOTIMPL: return L"E_NOTIMPL";
-    case E_NOINTERFACE: return L"E_NOINTERFACE";
-    case E_UNEXPECTED: return L"E_UNEXPECTED";
-    default: break;
-    }
-
-	return L"";
-}
-
-inline std::wstring FormatHResultMessage(HRESULT hr)
-{
-	_com_error err{ hr };
-	const auto msg = err.ErrorMessage();
-	return msg ? msg : L"";
-}
-
-inline std::wstring DescribeHResult(HRESULT hr)
-{
-    const std::wstring wname = HResultName(hr);
-    const std::wstring wmsg  = FormatHResultMessage(hr);
-
-	if (wname.empty() && wmsg.empty()) {
-		return std::format(L"(0x{:X})", static_cast<unsigned long>(hr));
-	}
-
-	if (wmsg.empty()) {
-		return std::format(LR"((0x{:X}) "{}")", static_cast<unsigned long>(hr), wmsg);
-	}
-
-	return std::format(LR"({}(0x{:X}) "{}")", wname, static_cast<unsigned long>(hr), wmsg);
-}
-
-inline ::testing::AssertionResult HResultEq(
-    HRESULT actual,
-    HRESULT expected,
-    const char* actual_expr,
-	const char* expected_expr [[maybe_unused]]
-)
-{
-    if (actual == expected) {
-        return ::testing::AssertionSuccess();
-    }
-
-    return ::testing::AssertionFailure()
-        << actual_expr << " returned " << std::data(DescribeHResult(actual))
-        << ", expected " << std::data(DescribeHResult(expected));
-}
-
-} // namespace testing
-
-#define EXPECT_HRESULT_EQ(actual, expected) \
-    EXPECT_PRED_FORMAT2(                    \
-        [](const char* a, const char* e, auto av, auto ev) { \
-            return testing::HResultEq(av, ev, a, e);             \
-        },                                                   \
-        actual, expected)
 
 // グローバルメモリに書き込まれた特定の Unicode 文字列にマッチする述語関数
 MATCHER_P(WideStringInGlobalMemory, expected_string, "") {
@@ -116,6 +49,33 @@ MATCHER_P(AnsiStringInGlobalMemory, expected_string, "") {
 MATCHER_P(SakuraFormatInGlobalMemory, expected_string, "") {
 	cxx::GlobalSakura actual{ arg };
 	return actual.wstring() == expected_string;
+}
+
+// サクラ独自形式(SAKURAClipW)のバイナリレイアウトは、
+// Win32/x64/ARM64 のどのビルドでも、また過去バージョンとの間でも一致していなければならない。
+// 長さフィールドをポインタ幅に依存する型にすると、
+// 異なるビルド間でのコピー＆ペーストが壊れる。(issue #2325)
+static_assert(sizeof(CClipboard::SAKURAClipW_LengthFieldType) == 4);
+
+// グローバルメモリに書き込まれたサクラ独自形式データのバイナリレイアウトにマッチする述語関数
+MATCHER_P(SakuraFormatLayoutInGlobalMemory, expected_string, "") {
+	const std::wstring_view expected = expected_string;
+	const cxx::GlobalData<BYTE> mem{ arg };
+	const auto bytes = mem.data();
+	CClipboard::SAKURAClipW_LengthFieldType length = 0;
+	if (bytes.size() < sizeof(length) + expected.length() * sizeof(wchar_t)) return false;
+	std::memcpy(&length, bytes.data(), sizeof(length));
+	if (size_t(length) != expected.length()) return false;
+	return 0 == std::memcmp(bytes.data() + sizeof(length), expected.data(), expected.length() * sizeof(wchar_t));
+}
+
+// サクラ独自形式データのバイト列を組み立てる（32bit版・旧バージョンが書き込む形式）
+static std::vector<BYTE> MakeSakuraFormatBytes(std::wstring_view text, int32_t storedLength)
+{
+	std::vector<BYTE> bytes(sizeof(storedLength) + (text.length() + 1) * sizeof(wchar_t), 0);
+	std::memcpy(bytes.data(), &storedLength, sizeof(storedLength));
+	std::memcpy(bytes.data() + sizeof(storedLength), text.data(), text.length() * sizeof(wchar_t));
+	return bytes;
 }
 
 // グローバルメモリに書き込まれた特定のバイト値にマッチする述語関数
@@ -147,8 +107,8 @@ struct MockCClipboard : public CClipboard {
 	{
 		ON_CALL(*this, OpenClipboard(_)).WillByDefault(Return(TRUE));
 		ON_CALL(*this, CloseClipboard()).WillByDefault(Return(TRUE));
-		ON_CALL(*this, GlobalAlloc(_, _)).WillByDefault(Invoke(&::GlobalAlloc ));
-		ON_CALL(*this, GlobalLock(_)).WillByDefault(Invoke(&::GlobalLock));
+		ON_CALL(*this, GlobalAlloc(_, _)).WillByDefault(&::GlobalAlloc);
+		ON_CALL(*this, GlobalLock(_)).WillByDefault(&::GlobalLock);
 	}
 };
 
@@ -257,6 +217,17 @@ TEST(CClipboard, SetText1) {
 	EXPECT_TRUE(clipboard.SetText(text.data(), text.length(), false, false, -1));
 }
 
+// SetText のテスト。サクラ独自形式のバイナリレイアウトを検証する。
+// 長さフィールドは 32bit 固定でなければならない。(issue #2325)
+TEST(CClipboard, SetTextSakuraFormatLayout) {
+	constexpr std::wstring_view text = L"てすと";
+	const CLIPFORMAT sakuraFormat = CClipboard::GetSakuraFormat();
+	MockCClipboard clipboard;
+	EXPECT_CALL(clipboard, SetClipboardData(CF_UNICODETEXT, _));
+	EXPECT_CALL(clipboard, SetClipboardData(sakuraFormat, SakuraFormatLayoutInGlobalMemory(text)));
+	EXPECT_TRUE(clipboard.SetText(text.data(), text.length(), false, false, -1));
+}
+
 // SetText のテスト（CF_UNICODETEXTのみ・矩形選択あり・行選択なし）
 TEST(CClipboard, SetText2) {
 	constexpr std::wstring_view text = L"てすと";
@@ -264,6 +235,9 @@ TEST(CClipboard, SetText2) {
 	ON_CALL(clipboard, GlobalAlloc(_, _)).WillByDefault(::GlobalAlloc);
 	EXPECT_CALL(clipboard, SetClipboardData(CF_UNICODETEXT, WideStringInGlobalMemory(text)));
 	EXPECT_CALL(clipboard, SetClipboardData(::RegisterClipboardFormat(L"MSDEVColumnSelect"), ByteValueInGlobalMemory(0)));
+	EXPECT_CALL(clipboard, GlobalAlloc(_, _))
+		.Times(1)
+		.WillOnce(testing::DoDefault());
 	EXPECT_FALSE(clipboard.SetText(text.data(), text.length(), true, false, CF_UNICODETEXT));
 }
 
@@ -276,6 +250,10 @@ TEST(CClipboard, SetText3) {
 	EXPECT_CALL(clipboard, SetClipboardData(sakuraFormat, SakuraFormatInGlobalMemory(text)));
 	EXPECT_CALL(clipboard, SetClipboardData(::RegisterClipboardFormat(L"MSDEVLineSelect"), ByteValueInGlobalMemory(1)));
 	EXPECT_CALL(clipboard, SetClipboardData(::RegisterClipboardFormat(L"VisualStudioEditorOperationsLineCutCopyClipboardTag"), ByteValueInGlobalMemory(1)));
+	EXPECT_CALL(clipboard, GlobalAlloc(_, _))
+		.Times(2)
+		.WillOnce(testing::DoDefault())
+		.WillOnce(testing::DoDefault());
 	EXPECT_FALSE(clipboard.SetText(text.data(), text.length(), false, true, sakuraFormat));
 }
 
@@ -293,6 +271,9 @@ TEST(CClipboard, SetText5) {
 	constexpr std::wstring_view text = L"てすと";
 	MockCClipboard clipboard;
 	ON_CALL(clipboard, GlobalAlloc(_, 1)).WillByDefault(Return(nullptr));
+	EXPECT_CALL(clipboard, GlobalAlloc(_, _))
+		.Times(1)
+		.WillOnce(testing::DoDefault());
 	EXPECT_FALSE(clipboard.SetText(text.data(), text.length(), true, false, 0));
 }
 
@@ -301,6 +282,10 @@ TEST(CClipboard, SetText6) {
 	constexpr std::wstring_view text = L"てすと";
 	MockCClipboard clipboard;
 	ON_CALL(clipboard, GlobalAlloc(_, 1)).WillByDefault(Return(nullptr));
+	EXPECT_CALL(clipboard, GlobalAlloc(_, _))
+		.Times(2)
+		.WillOnce(testing::DoDefault())
+		.WillOnce(testing::DoDefault());
 	EXPECT_FALSE(clipboard.SetText(text.data(), text.length(), false, true, 0));
 }
 
@@ -330,6 +315,12 @@ protected:
 TEST_F(CClipboardGetText, NoSpecifiedFormat1) {
 	ON_CALL(clipboard, IsClipboardFormatAvailable(sakuraFormat)).WillByDefault(Return(TRUE));
 	ON_CALL(clipboard, GetClipboardData(sakuraFormat)).WillByDefault(Return(sakuraMemory.Get()));
+	EXPECT_CALL(clipboard, IsClipboardFormatAvailable(_))
+		.Times(1)
+		.WillOnce(testing::DoDefault());
+	EXPECT_CALL(clipboard, GetClipboardData(_))
+		.Times(1)
+		.WillOnce(testing::DoDefault());
 	EXPECT_TRUE(clipboard.GetText(&buffer, nullptr, nullptr, eol, -1));
 	EXPECT_STREQ(buffer.GetStringPtr(), sakuraText.data());
 }
@@ -338,6 +329,12 @@ TEST_F(CClipboardGetText, NoSpecifiedFormat1) {
 TEST_F(CClipboardGetText, NoSpecifiedFormat2) {
 	ON_CALL(clipboard, IsClipboardFormatAvailable(sakuraFormat)).WillByDefault(Return(FALSE));
 	ON_CALL(clipboard, GetClipboardData(CF_UNICODETEXT)).WillByDefault(Return(unicodeMemory.Get()));
+	EXPECT_CALL(clipboard, IsClipboardFormatAvailable(_))
+		.Times(1)
+		.WillOnce(testing::DoDefault());
+	EXPECT_CALL(clipboard, GetClipboardData(_))
+		.Times(1)
+		.WillOnce(testing::DoDefault());
 	EXPECT_TRUE(clipboard.GetText(&buffer, nullptr, nullptr, eol, -1));
 	EXPECT_STREQ(buffer.GetStringPtr(), unicodeText.data());
 }
@@ -347,6 +344,13 @@ TEST_F(CClipboardGetText, NoSpecifiedFormat3) {
 	ON_CALL(clipboard, IsClipboardFormatAvailable(sakuraFormat)).WillByDefault(Return(TRUE));
 	ON_CALL(clipboard, GetClipboardData(sakuraFormat)).WillByDefault(Return(nullptr));
 	ON_CALL(clipboard, GetClipboardData(CF_UNICODETEXT)).WillByDefault(Return(unicodeMemory.Get()));
+	EXPECT_CALL(clipboard, IsClipboardFormatAvailable(_))
+		.Times(1)
+		.WillOnce(testing::DoDefault());
+	EXPECT_CALL(clipboard, GetClipboardData(_))
+		.Times(2)
+		.WillOnce(testing::DoDefault())
+		.WillOnce(testing::DoDefault());
 	EXPECT_TRUE(clipboard.GetText(&buffer, nullptr, nullptr, eol, -1));
 	EXPECT_STREQ(buffer.GetStringPtr(), unicodeText.data());
 }
@@ -356,6 +360,13 @@ TEST_F(CClipboardGetText, NoSpecifiedFormat4) {
 	ON_CALL(clipboard, IsClipboardFormatAvailable(sakuraFormat)).WillByDefault(Return(FALSE));
 	ON_CALL(clipboard, GetClipboardData(CF_UNICODETEXT)).WillByDefault(Return(nullptr));
 	ON_CALL(clipboard, GetClipboardData(CF_OEMTEXT)).WillByDefault(Return(oemMemory.Get()));
+	EXPECT_CALL(clipboard, IsClipboardFormatAvailable(_))
+		.Times(1)
+		.WillOnce(testing::DoDefault());
+	EXPECT_CALL(clipboard, GetClipboardData(_))
+		.Times(2)
+		.WillOnce(testing::DoDefault())
+		.WillOnce(testing::DoDefault());
 	EXPECT_TRUE(clipboard.GetText(&buffer, nullptr, nullptr, eol, -1));
 	EXPECT_STREQ(buffer.GetStringPtr(), L"CF_OEMTEXT");
 }
@@ -369,6 +380,15 @@ TEST_F(CClipboardGetText, NoSpecifiedFormat5) {
 	ON_CALL(clipboard, GetClipboardData(CF_OEMTEXT)).WillByDefault(Return(nullptr));
 	ON_CALL(clipboard, IsClipboardFormatAvailable(CF_HDROP)).WillByDefault(Return(TRUE));
 	ON_CALL(clipboard, GetClipboardData(CF_HDROP)).WillByDefault(Return(mem.Get()));
+	EXPECT_CALL(clipboard, IsClipboardFormatAvailable(_))
+		.Times(2)
+		.WillOnce(testing::DoDefault())
+		.WillOnce(testing::DoDefault());
+	EXPECT_CALL(clipboard, GetClipboardData(_))
+		.Times(3)
+		.WillOnce(testing::DoDefault())
+		.WillOnce(testing::DoDefault())
+		.WillOnce(testing::DoDefault());
 	EXPECT_TRUE(clipboard.GetText(&buffer, nullptr, nullptr, eol, -1));
 	EXPECT_STREQ(buffer.GetStringPtr(), L"CF_HDROP");
 }
@@ -379,6 +399,14 @@ TEST_F(CClipboardGetText, NoSpecifiedFormat6) {
 	ON_CALL(clipboard, GetClipboardData(CF_UNICODETEXT)).WillByDefault(Return(nullptr));
 	ON_CALL(clipboard, GetClipboardData(CF_OEMTEXT)).WillByDefault(Return(nullptr));
 	ON_CALL(clipboard, IsClipboardFormatAvailable(CF_HDROP)).WillByDefault(Return(FALSE));
+	EXPECT_CALL(clipboard, IsClipboardFormatAvailable(_))
+		.Times(2)
+		.WillOnce(testing::DoDefault())
+		.WillOnce(testing::DoDefault());
+	EXPECT_CALL(clipboard, GetClipboardData(_))
+		.Times(2)
+		.WillOnce(testing::DoDefault())
+		.WillOnce(testing::DoDefault());
 	EXPECT_FALSE(clipboard.GetText(&buffer, nullptr, nullptr, eol, -1));
 }
 
@@ -388,6 +416,12 @@ TEST_F(CClipboardGetText, NoSpecifiedFormat6) {
 TEST_F(CClipboardGetText, SakuraFormatSuccess) {
 	ON_CALL(clipboard, IsClipboardFormatAvailable(sakuraFormat)).WillByDefault(Return(TRUE));
 	ON_CALL(clipboard, GetClipboardData(sakuraFormat)).WillByDefault(Return(sakuraMemory.Get()));
+	EXPECT_CALL(clipboard, IsClipboardFormatAvailable(_))
+		.Times(1)
+		.WillOnce(testing::DoDefault());
+	EXPECT_CALL(clipboard, GetClipboardData(_))
+		.Times(1)
+		.WillOnce(testing::DoDefault());
 	EXPECT_TRUE(clipboard.GetText(&buffer, nullptr, nullptr, eol, sakuraFormat));
 	EXPECT_STREQ(buffer.GetStringPtr(), sakuraText.data());
 }
@@ -395,12 +429,74 @@ TEST_F(CClipboardGetText, SakuraFormatSuccess) {
 // サクラ形式が指定されているが取得に失敗した場合。
 TEST_F(CClipboardGetText, SakuraFormatFailure) {
 	ON_CALL(clipboard, IsClipboardFormatAvailable(sakuraFormat)).WillByDefault(Return(FALSE));
+	EXPECT_CALL(clipboard, IsClipboardFormatAvailable(_))
+		.Times(1)
+		.WillOnce(testing::DoDefault());
 	EXPECT_FALSE(clipboard.GetText(&buffer, nullptr, nullptr, eol, sakuraFormat));
+}
+
+// 長さフィールドが4バイトで書かれたサクラ形式データを読めることを確認する。
+// 他のビット数のビルドや過去バージョンが書き込んだデータを読む状況に相当する。(issue #2325)
+TEST_F(CClipboardGetText, SakuraFormatBinaryLayout) {
+	constexpr std::wstring_view text = L"サクラ";
+	const auto bytes = MakeSakuraFormatBytes(text, int32_t(text.length()));
+	const cxx::GlobalData<BYTE> mem(int(bytes.size()));
+	ASSERT_TRUE(mem.SetData(bytes));
+	ON_CALL(clipboard, IsClipboardFormatAvailable(sakuraFormat)).WillByDefault(Return(TRUE));
+	ON_CALL(clipboard, GetClipboardData(sakuraFormat)).WillByDefault(Return(mem.Get()));
+	EXPECT_CALL(clipboard, IsClipboardFormatAvailable(_))
+		.Times(1)
+		.WillOnce(testing::DoDefault());
+	EXPECT_CALL(clipboard, GetClipboardData(_))
+		.Times(1)
+		.WillOnce(testing::DoDefault());
+	EXPECT_TRUE(clipboard.GetText(&buffer, nullptr, nullptr, eol, sakuraFormat));
+	EXPECT_EQ(text, std::wstring_view(buffer.GetStringPtr(), buffer.GetStringLength()));
+}
+
+// 長さフィールドが実データより大きい壊れたデータを読んでも、確保領域外を参照しない。
+TEST_F(CClipboardGetText, SakuraFormatBrokenLength) {
+	constexpr std::wstring_view text = L"サクラ";
+	const auto bytes = MakeSakuraFormatBytes(text, 0x40000000);
+	const cxx::GlobalData<BYTE> mem(int(bytes.size()));
+	ASSERT_TRUE(mem.SetData(bytes));
+	ON_CALL(clipboard, IsClipboardFormatAvailable(sakuraFormat)).WillByDefault(Return(TRUE));
+	ON_CALL(clipboard, GetClipboardData(sakuraFormat)).WillByDefault(Return(mem.Get()));
+	EXPECT_CALL(clipboard, IsClipboardFormatAvailable(_))
+		.Times(1)
+		.WillOnce(testing::DoDefault());
+	EXPECT_CALL(clipboard, GetClipboardData(_))
+		.Times(1)
+		.WillOnce(testing::DoDefault());
+	EXPECT_TRUE(clipboard.GetText(&buffer, nullptr, nullptr, eol, sakuraFormat));
+	// 終端ヌルを含む、確保されている文字数で頭打ちになる
+	EXPECT_EQ(text.length() + 1, size_t(buffer.GetStringLength()));
+}
+
+// 長さフィールドが負の壊れたデータを読んでも、確保領域外を参照しない。
+TEST_F(CClipboardGetText, SakuraFormatNegativeLength) {
+	constexpr std::wstring_view text = L"サクラ";
+	const auto bytes = MakeSakuraFormatBytes(text, -1);
+	const cxx::GlobalData<BYTE> mem(int(bytes.size()));
+	ASSERT_TRUE(mem.SetData(bytes));
+	ON_CALL(clipboard, IsClipboardFormatAvailable(sakuraFormat)).WillByDefault(Return(TRUE));
+	ON_CALL(clipboard, GetClipboardData(sakuraFormat)).WillByDefault(Return(mem.Get()));
+	EXPECT_CALL(clipboard, IsClipboardFormatAvailable(_))
+		.Times(1)
+		.WillOnce(testing::DoDefault());
+	EXPECT_CALL(clipboard, GetClipboardData(_))
+		.Times(1)
+		.WillOnce(testing::DoDefault());
+	EXPECT_TRUE(clipboard.GetText(&buffer, nullptr, nullptr, eol, sakuraFormat));
+	EXPECT_EQ(0, buffer.GetStringLength());
 }
 
 // CF_UNICODETEXTを指定して取得する。
 TEST_F(CClipboardGetText, UnicodeTextSucces) {
 	ON_CALL(clipboard, GetClipboardData(CF_UNICODETEXT)).WillByDefault(Return(unicodeMemory.Get()));
+	EXPECT_CALL(clipboard, GetClipboardData(_))
+		.Times(1)
+		.WillOnce(testing::DoDefault());
 	EXPECT_TRUE(clipboard.GetText(&buffer, nullptr, nullptr, eol, CF_UNICODETEXT));
 	EXPECT_STREQ(buffer.GetStringPtr(), unicodeText.data());
 }
@@ -408,12 +504,18 @@ TEST_F(CClipboardGetText, UnicodeTextSucces) {
 // CF_UNICODETEXTが指定されているが取得に失敗した場合。
 TEST_F(CClipboardGetText, UnicodeTextFailure) {
 	ON_CALL(clipboard, GetClipboardData(CF_UNICODETEXT)).WillByDefault(Return(nullptr));
+	EXPECT_CALL(clipboard, GetClipboardData(_))
+		.Times(1)
+		.WillOnce(testing::DoDefault());
 	EXPECT_FALSE(clipboard.GetText(&buffer, nullptr, nullptr, eol, CF_UNICODETEXT));
 }
 
 // CF_OEMTEXTを指定して取得する。
 TEST_F(CClipboardGetText, OemTextSuccess) {
 	ON_CALL(clipboard, GetClipboardData(CF_OEMTEXT)).WillByDefault(Return(oemMemory.Get()));
+	EXPECT_CALL(clipboard, GetClipboardData(_))
+		.Times(1)
+		.WillOnce(testing::DoDefault());
 	EXPECT_TRUE(clipboard.GetText(&buffer, nullptr, nullptr, eol, CF_OEMTEXT));
 	EXPECT_STREQ(buffer.GetStringPtr(), L"CF_OEMTEXT");
 }
@@ -421,6 +523,9 @@ TEST_F(CClipboardGetText, OemTextSuccess) {
 // CF_OEMTEXTが指定されているが取得に失敗した場合。
 TEST_F(CClipboardGetText, OemTextFailure) {
 	ON_CALL(clipboard, GetClipboardData(CF_OEMTEXT)).WillByDefault(Return(nullptr));
+	EXPECT_CALL(clipboard, GetClipboardData(_))
+		.Times(1)
+		.WillOnce(testing::DoDefault());
 	EXPECT_FALSE(clipboard.GetText(&buffer, nullptr, nullptr, eol, CF_OEMTEXT));
 }
 
@@ -431,6 +536,12 @@ TEST_F(CClipboardGetText, HDropSuccessSingleFile) {
 	auto mem = cxx::MakeDropFiles(files);
 	ON_CALL(clipboard, IsClipboardFormatAvailable(CF_HDROP)).WillByDefault(Return(TRUE));
 	ON_CALL(clipboard, GetClipboardData(CF_HDROP)).WillByDefault(Return(mem.Get()));
+	EXPECT_CALL(clipboard, IsClipboardFormatAvailable(_))
+		.Times(1)
+		.WillOnce(testing::DoDefault());
+	EXPECT_CALL(clipboard, GetClipboardData(_))
+		.Times(1)
+		.WillOnce(testing::DoDefault());
 	EXPECT_TRUE(clipboard.GetText(&buffer, nullptr, nullptr, eol, CF_HDROP));
 	EXPECT_STREQ(buffer.GetStringPtr(), L"file");
 }
@@ -446,6 +557,12 @@ TEST_F(CClipboardGetText, HDropSuccessMultipleFiles) {
 	EXPECT_THAT(mem.data(), testing::SizeIs(Eq(files.size())));
 	ON_CALL(clipboard, IsClipboardFormatAvailable(CF_HDROP)).WillByDefault(Return(TRUE));
 	ON_CALL(clipboard, GetClipboardData(CF_HDROP)).WillByDefault(Return(mem.Get()));
+	EXPECT_CALL(clipboard, IsClipboardFormatAvailable(_))
+		.Times(1)
+		.WillOnce(testing::DoDefault());
+	EXPECT_CALL(clipboard, GetClipboardData(_))
+		.Times(1)
+		.WillOnce(testing::DoDefault());
 	EXPECT_TRUE(clipboard.GetText(&buffer, nullptr, nullptr, eol, CF_HDROP));
 	EXPECT_STREQ(buffer.GetStringPtr(), L"file1\r\nfile2\r\n");
 }
@@ -454,12 +571,29 @@ TEST_F(CClipboardGetText, HDropSuccessMultipleFiles) {
 TEST_F(CClipboardGetText, HDropFailure) {
 	ON_CALL(clipboard, IsClipboardFormatAvailable(CF_HDROP)).WillByDefault(Return(TRUE));
 	ON_CALL(clipboard, GetClipboardData(CF_HDROP)).WillByDefault(Return(nullptr));
+	EXPECT_CALL(clipboard, IsClipboardFormatAvailable(_))
+		.Times(1)
+		.WillOnce(testing::DoDefault());
+	EXPECT_CALL(clipboard, GetClipboardData(_))
+		.Times(1)
+		.WillOnce(testing::DoDefault());
 	EXPECT_FALSE(clipboard.GetText(&buffer, nullptr, nullptr, eol, CF_HDROP));
 }
 
 // 矩形選択マーク取得のテスト。
 TEST_F(CClipboardGetText, ColumnSelectIsFalse) {
 	ON_CALL(clipboard, EnumClipboardFormats(0)).WillByDefault(Return(0));
+	EXPECT_CALL(clipboard, EnumClipboardFormats(_))
+		.Times(1)
+		.WillOnce(testing::DoDefault());
+	EXPECT_CALL(clipboard, IsClipboardFormatAvailable(_))
+		.Times(2)
+		.WillOnce(testing::DoDefault())
+		.WillOnce(testing::DoDefault());
+	EXPECT_CALL(clipboard, GetClipboardData(_))
+		.Times(2)
+		.WillOnce(testing::DoDefault())
+		.WillOnce(testing::DoDefault());
 	bool column;
 	clipboard.GetText(&buffer, &column, nullptr, eol);
 	EXPECT_FALSE(column);
@@ -468,6 +602,17 @@ TEST_F(CClipboardGetText, ColumnSelectIsFalse) {
 TEST_F(CClipboardGetText, ColumnSelectIsTrue) {
 	UINT format = RegisterClipboardFormatW(L"MSDEVColumnSelect");
 	ON_CALL(clipboard, EnumClipboardFormats(0)).WillByDefault(Return(format));
+	EXPECT_CALL(clipboard, EnumClipboardFormats(_))
+		.Times(1)
+		.WillOnce(testing::DoDefault());
+	EXPECT_CALL(clipboard, IsClipboardFormatAvailable(_))
+		.Times(2)
+		.WillOnce(testing::DoDefault())
+		.WillOnce(testing::DoDefault());
+	EXPECT_CALL(clipboard, GetClipboardData(_))
+		.Times(2)
+		.WillOnce(testing::DoDefault())
+		.WillOnce(testing::DoDefault());
 	bool column;
 	clipboard.GetText(&buffer, &column, nullptr, eol);
 	EXPECT_TRUE(column);
@@ -476,6 +621,17 @@ TEST_F(CClipboardGetText, ColumnSelectIsTrue) {
 // 行選択マーク取得のテスト。
 TEST_F(CClipboardGetText, LineSelectIsFalse) {
 	ON_CALL(clipboard, EnumClipboardFormats(0)).WillByDefault(Return(0));
+	EXPECT_CALL(clipboard, EnumClipboardFormats(_))
+		.Times(1)
+		.WillOnce(testing::DoDefault());
+	EXPECT_CALL(clipboard, IsClipboardFormatAvailable(_))
+		.Times(2)
+		.WillOnce(testing::DoDefault())
+		.WillOnce(testing::DoDefault());
+	EXPECT_CALL(clipboard, GetClipboardData(_))
+		.Times(2)
+		.WillOnce(testing::DoDefault())
+		.WillOnce(testing::DoDefault());
 	bool line;
 	clipboard.GetText(&buffer, &line, nullptr, eol);
 	EXPECT_FALSE(line);
@@ -484,6 +640,17 @@ TEST_F(CClipboardGetText, LineSelectIsFalse) {
 TEST_F(CClipboardGetText, LineSelectIsTrue1) {
 	UINT format = RegisterClipboardFormatW(L"MSDEVLineSelect");
 	ON_CALL(clipboard, EnumClipboardFormats(0)).WillByDefault(Return(format));
+	EXPECT_CALL(clipboard, EnumClipboardFormats(_))
+		.Times(1)
+		.WillOnce(testing::DoDefault());
+	EXPECT_CALL(clipboard, IsClipboardFormatAvailable(_))
+		.Times(2)
+		.WillOnce(testing::DoDefault())
+		.WillOnce(testing::DoDefault());
+	EXPECT_CALL(clipboard, GetClipboardData(_))
+		.Times(2)
+		.WillOnce(testing::DoDefault())
+		.WillOnce(testing::DoDefault());
 	bool line;
 	clipboard.GetText(&buffer, nullptr, &line, eol);
 	EXPECT_TRUE(line);
@@ -492,6 +659,17 @@ TEST_F(CClipboardGetText, LineSelectIsTrue1) {
 TEST_F(CClipboardGetText, LineSelectIsTrue2) {
 	UINT format = RegisterClipboardFormatW(L"VisualStudioEditorOperationsLineCutCopyClipboardTag");
 	ON_CALL(clipboard, EnumClipboardFormats(0)).WillByDefault(Return(format));
+	EXPECT_CALL(clipboard, EnumClipboardFormats(_))
+		.Times(1)
+		.WillOnce(testing::DoDefault());
+	EXPECT_CALL(clipboard, IsClipboardFormatAvailable(_))
+		.Times(2)
+		.WillOnce(testing::DoDefault())
+		.WillOnce(testing::DoDefault());
+	EXPECT_CALL(clipboard, GetClipboardData(_))
+		.Times(2)
+		.WillOnce(testing::DoDefault())
+		.WillOnce(testing::DoDefault());
 	bool line;
 	clipboard.GetText(&buffer, nullptr, &line, eol);
 	EXPECT_TRUE(line);
@@ -502,6 +680,14 @@ TEST_F(CClipboardGetText, LineSelectIsTrue2) {
 TEST_F(CClipboardGetText, GetClipboardByFormatSuccess) {
 	ON_CALL(clipboard, IsClipboardFormatAvailable(CF_UNICODETEXT)).WillByDefault(Return(TRUE));
 	ON_CALL(clipboard, GetClipboardData(CF_UNICODETEXT)).WillByDefault(Return(unicodeMemory.Get()));
+	EXPECT_CALL(clipboard, IsClipboardFormatAvailable(_))
+		.Times(3)
+		.WillOnce(testing::DoDefault())
+		.WillOnce(testing::DoDefault())
+		.WillOnce(testing::DoDefault());
+	EXPECT_CALL(clipboard, GetClipboardData(_))
+		.Times(1)
+		.WillOnce(testing::DoDefault());
 	EXPECT_TRUE(clipboard.GetClipboardByFormat(buffer, L"CF_UNICODETEXT", -2, 0, eol));
 	EXPECT_STREQ(buffer.GetStringPtr(), unicodeText.data());
 }
@@ -511,6 +697,14 @@ TEST_F(CClipboardGetText, GetClipboardByFormatFailure1) {
 	buffer.SetString(L"dummy");
 	ON_CALL(clipboard, IsClipboardFormatAvailable(CF_UNICODETEXT)).WillByDefault(Return(TRUE));
 	ON_CALL(clipboard, GetClipboardData(_)).WillByDefault(Return(nullptr));
+	EXPECT_CALL(clipboard, IsClipboardFormatAvailable(_))
+		.Times(3)
+		.WillOnce(testing::DoDefault())
+		.WillOnce(testing::DoDefault())
+		.WillOnce(testing::DoDefault());
+	EXPECT_CALL(clipboard, GetClipboardData(_))
+		.Times(1)
+		.WillOnce(testing::DoDefault());
 	EXPECT_FALSE(clipboard.GetClipboardByFormat(buffer, L"CF_UNICODETEXT", -2, 0, eol));
 	EXPECT_STREQ(buffer.GetStringPtr(), L"");
 }
@@ -519,6 +713,9 @@ TEST_F(CClipboardGetText, GetClipboardByFormatFailure1) {
 TEST_F(CClipboardGetText, GetClipboardByFormatFailure2) {
 	buffer.SetString(L"dummy");
 	ON_CALL(clipboard, IsClipboardFormatAvailable(CF_UNICODETEXT)).WillByDefault(Return(FALSE));
+	EXPECT_CALL(clipboard, IsClipboardFormatAvailable(_))
+		.Times(1)
+		.WillOnce(testing::DoDefault());
 	EXPECT_FALSE(clipboard.GetClipboardByFormat(buffer, L"CF_UNICODETEXT", -2, 0, eol));
 	EXPECT_STREQ(buffer.GetStringPtr(), L"");
 }
@@ -565,6 +762,8 @@ TEST(CClipboard, IsIncludeClipboardFormat1) {
 	for (auto format : KNOWN_FORMATS) {
 		MockCClipboard clipboard;
 		ON_CALL(clipboard, IsClipboardFormatAvailable(format.id)).WillByDefault(Return(TRUE));
+		EXPECT_CALL(clipboard, IsClipboardFormatAvailable(_))
+			.WillOnce(testing::DoDefault());
 		EXPECT_TRUE(clipboard.IsIncludeClipboardFormat(format.name));
 	}
 }
@@ -573,6 +772,8 @@ TEST(CClipboard, IsIncludeClipboardFormat1) {
 TEST(CClipboard, IsIncludeClipboardFormat2) {
 	MockCClipboard clipboard;
 	ON_CALL(clipboard, IsClipboardFormatAvailable(12345)).WillByDefault(Return(TRUE));
+	EXPECT_CALL(clipboard, IsClipboardFormatAvailable(_))
+		.WillOnce(testing::DoDefault());
 	EXPECT_TRUE(clipboard.IsIncludeClipboardFormat(L"12345"));
 }
 
@@ -582,6 +783,8 @@ TEST(CClipboard, IsIncludeClipboardFormat3) {
 
 	MockCClipboard clipboard;
 	ON_CALL(clipboard, IsClipboardFormatAvailable(format)).WillByDefault(Return(TRUE));
+	EXPECT_CALL(clipboard, IsClipboardFormatAvailable(_))
+		.WillOnce(testing::DoDefault());
 	EXPECT_TRUE(clipboard.IsIncludeClipboardFormat(UNITTEST_FORMAT_NAME));
 }
 
@@ -589,12 +792,16 @@ TEST(CClipboard, IsIncludeClipboardFormat3) {
 TEST(CClipboard, IsIncludeClipboardFormat4) {
 	MockCClipboard clipboard;
 	ON_CALL(clipboard, IsClipboardFormatAvailable(12345)).WillByDefault(Return(FALSE));
+	EXPECT_CALL(clipboard, IsClipboardFormatAvailable(_))
+		.WillOnce(testing::DoDefault());
 	EXPECT_FALSE(clipboard.IsIncludeClipboardFormat(L"12345"));
 }
 
 // フォーマット文字列が空だった場合は失敗する。
 TEST(CClipboard, IsIncludeClipboardFormat5) {
 	MockCClipboard clipboard;
+	EXPECT_CALL(clipboard, IsClipboardFormatAvailable(_))
+		.WillOnce(testing::DoDefault());
 	EXPECT_FALSE(clipboard.IsIncludeClipboardFormat(L""));
 }
 
@@ -617,6 +824,9 @@ TEST(CClipboard, SetClipboardByFormat3) {
 	MockCClipboard clipboard;
 	ON_CALL(clipboard, GlobalAlloc(_, _)).WillByDefault(::GlobalAlloc);
 	EXPECT_CALL(clipboard, SetClipboardData(12345, BytesInGlobalMemory("\x00\x01\xfe\xff", 4)));
+	EXPECT_CALL(clipboard, GlobalAlloc(_, _))
+		.Times(1)
+		.WillOnce(testing::DoDefault());
 	EXPECT_TRUE(clipboard.SetClipboardByFormat({L"\x00\x01\xfe\xff", 4}, L"12345", -1, 0));
 }
 
@@ -634,6 +844,9 @@ TEST(CClipboard, SetClipboardByFormat5) {
 	MockCClipboard clipboard;
 	ON_CALL(clipboard, GlobalAlloc(_, _)).WillByDefault(::GlobalAlloc);
 	EXPECT_CALL(clipboard, SetClipboardData(12345, WideStringInGlobalMemory(L"テスト")));
+	EXPECT_CALL(clipboard, GlobalAlloc(_, _))
+		.Times(1)
+		.WillOnce(testing::DoDefault());
 	EXPECT_TRUE(clipboard.SetClipboardByFormat({L"テスト", 3}, L"12345", 3, -1));
 }
 
@@ -662,6 +875,9 @@ TEST(CClipboard, SetClipboardByFormat7) {
 TEST(CClipboard, SetClipboardByFormat8) {
 	MockCClipboard clipboard;
 	ON_CALL(clipboard, GlobalAlloc(_, _)).WillByDefault(Return(nullptr));
+	EXPECT_CALL(clipboard, GlobalAlloc(_, _))
+		.Times(1)
+		.WillOnce(testing::DoDefault());
 	EXPECT_FALSE(clipboard.SetClipboardByFormat({L"テスト", 3}, L"12345", 3, -1));
 }
 
@@ -680,6 +896,9 @@ TEST(CClipboard, GetClipboardByFormat2) {
 	CNativeW buffer(L"dummy");
 	CEol eol(EEolType::cr_and_lf);
 	ON_CALL(clipboard, IsClipboardFormatAvailable(12345)).WillByDefault(Return(FALSE));
+	EXPECT_CALL(clipboard, IsClipboardFormatAvailable(_))
+		.Times(1)
+		.WillOnce(testing::DoDefault());
 	EXPECT_FALSE(clipboard.GetClipboardByFormat(buffer, L"12345", -1, 0, eol));
 	EXPECT_STREQ(buffer.GetStringPtr(), L"");
 }
@@ -691,6 +910,12 @@ TEST(CClipboard, GetClipboardByFormat3) {
 	CEol eol(EEolType::cr_and_lf);
 	ON_CALL(clipboard, IsClipboardFormatAvailable(12345)).WillByDefault(Return(TRUE));
 	ON_CALL(clipboard, GetClipboardData(12345)).WillByDefault(Return(nullptr));
+	EXPECT_CALL(clipboard, IsClipboardFormatAvailable(_))
+		.Times(1)
+		.WillOnce(testing::DoDefault());
+	EXPECT_CALL(clipboard, GetClipboardData(_))
+		.Times(1)
+		.WillOnce(testing::DoDefault());
 	EXPECT_FALSE(clipboard.GetClipboardByFormat(buffer, L"12345", -1, 0, eol));
 	EXPECT_STREQ(buffer.GetStringPtr(), L"");
 }
@@ -703,6 +928,15 @@ TEST(CClipboard, GetClipboardByFormat4) {
 	ON_CALL(clipboard, IsClipboardFormatAvailable(12345)).WillByDefault(Return(TRUE));
 	ON_CALL(clipboard, GetClipboardData(12345)).WillByDefault(Return((HANDLE)67890));
 	ON_CALL(clipboard, GlobalLock((HANDLE)67890)).WillByDefault(Return(nullptr));
+	EXPECT_CALL(clipboard, IsClipboardFormatAvailable(_))
+		.Times(1)
+		.WillOnce(testing::DoDefault());
+	EXPECT_CALL(clipboard, GetClipboardData(_))
+		.Times(1)
+		.WillOnce(testing::DoDefault());
+	EXPECT_CALL(clipboard, GlobalLock(_))
+		.Times(1)
+		.WillOnce(testing::DoDefault());
 	EXPECT_FALSE(clipboard.GetClipboardByFormat(buffer, L"12345", -1, 0, eol));
 	EXPECT_STREQ(buffer.GetStringPtr(), L"");
 }
@@ -719,6 +953,15 @@ TEST(CClipboard, GetClipboardByFormat5) {
 	ON_CALL(clipboard, IsClipboardFormatAvailable(12345)).WillByDefault(Return(TRUE));
 	ON_CALL(clipboard, GetClipboardData(12345)).WillByDefault(Return(memory.Get()));
 	ON_CALL(clipboard, GlobalLock(_)).WillByDefault(::GlobalLock);
+	EXPECT_CALL(clipboard, IsClipboardFormatAvailable(_))
+		.Times(1)
+		.WillOnce(testing::DoDefault());
+	EXPECT_CALL(clipboard, GetClipboardData(_))
+		.Times(1)
+		.WillOnce(testing::DoDefault());
+	EXPECT_CALL(clipboard, GlobalLock(_))
+		.Times(1)
+		.WillOnce(testing::DoDefault());
 	EXPECT_TRUE(clipboard.GetClipboardByFormat(buffer, L"12345", -1, 0, eol));
 	EXPECT_STREQ(buffer.GetStringPtr(), L"\x00\xff");
 }
@@ -734,6 +977,15 @@ TEST(CClipboard, GetClipboardByFormat6) {
 	ON_CALL(clipboard, IsClipboardFormatAvailable(12345)).WillByDefault(Return(TRUE));
 	ON_CALL(clipboard, GetClipboardData(12345)).WillByDefault(Return(memory.Get()));
 	ON_CALL(clipboard, GlobalLock(_)).WillByDefault(::GlobalLock);
+	EXPECT_CALL(clipboard, IsClipboardFormatAvailable(_))
+		.Times(1)
+		.WillOnce(testing::DoDefault());
+	EXPECT_CALL(clipboard, GetClipboardData(_))
+		.Times(1)
+		.WillOnce(testing::DoDefault());
+	EXPECT_CALL(clipboard, GlobalLock(_))
+		.Times(1)
+		.WillOnce(testing::DoDefault());
 	EXPECT_TRUE(clipboard.GetClipboardByFormat(buffer, L"12345", 3, 2, eol));
 	EXPECT_STREQ(buffer.GetStringPtr(), L"テスト");
 }
@@ -1078,5 +1330,74 @@ TEST(CEnumFORMATETC, test001)
 	//生ポインタなのでReleaseして解放する
 	EXPECT_THAT(target->Release(), 0UL);
 }
+/*!
+ * SetText（矩形選択あり）のテスト。
+ *
+ * 矩形選択時は MSDEVColumnSelect 形式が追加され、フォーマット数が 4 になる。
+ * SetText 内のフォーマット数算出とインデックス操作に対する回帰テスト。
+ */
+TEST(CopiedTextData, SetTextColumnSelect)
+{
+	const auto target = std::make_unique<CDataObject>(L"abc", 3, TRUE);
+
+	// CF_UNICODETEXT / CF_TEXT / サクラ形式 / MSDEVColumnSelect の 4 形式になる
+	cxx::com_pointer<IEnumFORMATETC> pEnumFormatEtc = nullptr;
+	EXPECT_HRESULT_SUCCEEDED(target->EnumFormatEtc(DATADIR_GET, &pEnumFormatEtc));
+	EXPECT_THAT(pEnumFormatEtc, NotNull());
+
+	// 4個すべてスキップできる
+	EXPECT_HRESULT_SUCCEEDED(pEnumFormatEtc->Skip(4));
+
+	// 5個目は無いのでスキップに失敗する
+	EXPECT_HRESULT_EQ(pEnumFormatEtc->Skip(1), S_FALSE);
+
+	// MSDEVColumnSelect 形式には 1バイトの 0 が格納される
+	const CLIPFORMAT columnFormat = (CLIPFORMAT)::RegisterClipboardFormat(L"MSDEVColumnSelect");
+	FORMATETC format = { columnFormat, nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL };
+	STGMEDIUM medium = {};
+	EXPECT_HRESULT_SUCCEEDED(target->GetData(&format, &medium));
+	EXPECT_THAT(medium.tymed, TYMED_HGLOBAL);
+	EXPECT_THAT(medium.hGlobal, ByteValueInGlobalMemory(BYTE(0)));
+}
+
+/*!
+ * GetData（サクラ独自形式）のテスト。
+ *
+ * SAKURAClipW のバイナリレイアウトを検証する。
+ * 先頭が固定幅の長さフィールド、続いて本文の wchar_t 列が並ぶ。(issue #2325)
+ *
+ * ※ CDataObject::SetText は終端ヌルを書き込まないため、
+ *    終端ヌルの存在を前提とする cxx::GlobalSakura ではなくバイト列で検証する。
+ */
+TEST(CopiedTextData, GetDataSakuraFormatLayout)
+{
+	const auto text = L"abc"s;
+	const auto target = std::make_unique<CDataObject>(text.data(), text.size(), FALSE);
+
+	const CLIPFORMAT sakuraFormat = CClipboard::GetSakuraFormat();
+	FORMATETC format = { sakuraFormat, nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL };
+	STGMEDIUM medium = {};
+	EXPECT_HRESULT_SUCCEEDED(target->GetData(&format, &medium));
+	EXPECT_THAT(medium.tymed, TYMED_HGLOBAL);
+	EXPECT_THAT(medium.hGlobal, SakuraFormatLayoutInGlobalMemory(text));
+}
+
+/*!
+ * GetData（CF_TEXT）のテスト。
+ *
+ * ANSI 変換された文字列が取得できることを確認する。
+ */
+TEST(CopiedTextData, GetDataAnsiText)
+{
+	const auto text = L"abc"s;
+	const auto target = std::make_unique<CDataObject>(text.data(), text.size(), FALSE);
+
+	FORMATETC format = { CF_TEXT, nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL };
+	STGMEDIUM medium = {};
+	EXPECT_HRESULT_SUCCEEDED(target->GetData(&format, &medium));
+	EXPECT_THAT(medium.tymed, TYMED_HGLOBAL);
+	EXPECT_THAT(medium.hGlobal, AnsiStringInGlobalMemory("abc"s));
+}
 
 } //namespace ole
+

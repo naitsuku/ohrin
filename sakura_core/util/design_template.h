@@ -7,7 +7,7 @@
 */
 /*
 	Copyright (C) 2008, kobake
-	Copyright (C) 2018-2022, Sakura Editor Organization
+	Copyright (C) 2018-2026, Sakura Editor Organization
 
 	SPDX-License-Identifier: Zlib
 */
@@ -16,7 +16,11 @@
 #pragma once
 
 #include <algorithm>
+#include <concepts>
+#include <memory>
+#include <mutex>
 #include <stdexcept>
+#include <type_traits>
 #include <vector>
 
 #include "debug/Debug2.h"
@@ -83,6 +87,127 @@ public:
 protected:
 	TSingleton(){}
 	DISALLOW_COPY_AND_ASSIGN(TSingleton);
+};
+
+/*!
+ * @brief サクラエディタの変則Singletonパターン。
+ *
+ * TSingletonを元に作成。
+ * 生成したインスタンスをリセットできるようにしてある。
+ */
+template <class T>
+class TSakuraSingleton {
+private:
+	using Me = TSakuraSingleton<T>;
+
+#ifdef SAKURA_WINPORT
+	// [winport] 1 スレッド = 1 仮想プロセスなので、static では全エディターで 1 つを共有してしまい、
+	// あるエディターの resetInstance が他のエディターの CEditApp を壊す。インスタンスは仮想プロセスごとに持つ
+	struct Holder {
+		std::unique_ptr<T> instance;
+		std::recursive_mutex mutex;
+	};
+	static Holder& GetHolder()
+	{
+		static thread_local Holder* cached = nullptr;
+		if (!cached) {
+			static char tag;
+			cached = static_cast<Holder*>(winport::ProcessSingleton(&tag,
+				[]() -> void* { return new Holder; },
+				[](void* p) { static_cast<Holder*>(p)->~Holder(); }));
+		}
+		return *cached;
+	}
+	//! 関数内 static だったころ（TSingleton）と同じく、コンストラクタの前に 0 で埋める
+	static T* NewZeroed()
+	{
+		void* m = ::operator new(sizeof(T));
+		std::memset(m, 0, sizeof(T));
+		return new (m) T;
+	}
+#define gm_Mutex GetHolder().mutex
+#define gm_Instance GetHolder().instance
+#else
+	//! 生成済みインスタンス
+	static inline std::unique_ptr<T> gm_Instance = nullptr;
+
+	//! インスタンス生成用の排他制御用ミューテックス
+	static inline std::mutex gm_Mutex;
+#endif
+
+public:
+	/*!
+	 * @brief インスタンスポインタを取得する
+	 *
+	 * @returns インスタンスポインタ
+	 * @note インスタンスが未生成の場合は生成する
+	 */
+	static T* getInstance()
+	{
+		static_assert(
+			std::default_initializable<T> && !std::is_array_v<T>,
+			"T must be publicly default-initializable and must not be an array"
+		);
+
+		std::unique_lock lock{ gm_Mutex };
+
+		if (!gm_Instance) {
+#ifdef SAKURA_WINPORT
+			gm_Instance.reset(NewZeroed());
+#else
+			gm_Instance = std::make_unique<T>();
+#endif
+		}
+
+		return gm_Instance.get();
+	}
+
+	/*!
+	 * @brief インスタンスを破棄する
+	 *
+	 * @note 取得したポインタを破棄後に使用しないこと
+	 */
+	static void resetInstance()
+	{
+		std::unique_lock lock{ gm_Mutex };
+
+		gm_Instance.reset();
+	}
+
+	/*!
+	 * @brief インスタンスを設定する
+	 *
+	 * @note テスト用にモックを注入して疑似DIを実現する
+	 * @note 古い設計と根本的に考え方が異なるため、注意。
+	 */
+	template <class U>
+	static void setInstance()
+	{
+		static_assert(
+			std::has_virtual_destructor_v<T> &&
+			std::is_nothrow_destructible_v<T>,
+			"T must have a virtual noexcept destructor"
+		);
+
+		std::unique_lock lock{ gm_Mutex };
+
+		gm_Instance = std::make_unique<U>();
+	}
+
+#ifdef SAKURA_WINPORT
+#undef gm_Mutex
+#undef gm_Instance
+#endif
+
+protected:
+	TSakuraSingleton() = default;
+
+public:
+	TSakuraSingleton(const Me&) = delete;
+	Me& operator = (const Me&) = delete;
+
+	TSakuraSingleton(Me&&) = delete;
+	Me& operator = (Me&&) = delete;
 };
 
 /*!

@@ -20,6 +20,8 @@
 
 std::filesystem::path GetTempFilePathWithExt(std::wstring_view prefix, std::wstring_view extension);
 
+#if defined(_MSC_VER) &&  defined(_DEBUG)
+
 namespace macro {
 
 std::filesystem::path find_dll_in_the_path(const std::filesystem::path& dllname)
@@ -70,12 +72,14 @@ std::filesystem::path find_dll_in_the_path(const std::filesystem::path& dllname)
 	return "";
 }
 
-struct MacroMgrTest : public ::testing::Test, public window::EditorTestSuite {
+struct MacroMgrTest : public ::testing::Test, public window::EditorTestSuite, public window::UiaTestSuite {
 	/*!
 	 * テストスイートの開始前に1回だけ呼ばれる関数
 	 */
 	static void SetUpTestSuite()
 	{
+		SetUpUiaTestSuite();
+
 		SetUpEditor();
 	}
 
@@ -85,6 +89,8 @@ struct MacroMgrTest : public ::testing::Test, public window::EditorTestSuite {
 	static void TearDownTestSuite()
 	{
 		TearDownEditor();
+
+		TearDownUiaTestSuite();
 	}
 };
 
@@ -120,12 +126,14 @@ TEST_F(MacroMgrTest, CKeyMacroMgr001)
 
 	EXPECT_THAT(mgr->ExecKeyMacro(&pcEditWnd->GetActiveView(), 0), IsTrue());
 
-	std::filesystem::remove(path);
+	std::error_code ec;
+
+	std::filesystem::remove(path, ec);
 
 	// 保存するだけ
 	EXPECT_THAT(((CKeyMacroMgr*)mgr.get())->SaveKeyMacro(unusedArg1, path.c_str()), IsTrue());
 
-	std::filesystem::remove(path);
+	std::filesystem::remove(path, ec);
 
 	// 引数が足りない
 	fs = std::wofstream(path);
@@ -136,7 +144,7 @@ TEST_F(MacroMgrTest, CKeyMacroMgr001)
 
 	EXPECT_THAT(mgr->ExecKeyMacro(&pcEditWnd->GetActiveView(), 0), IsFalse());
 
-	std::filesystem::remove(path);
+	std::filesystem::remove(path, ec);
 
 	// 構文エラー
 	fs = std::wofstream(path);
@@ -145,7 +153,7 @@ TEST_F(MacroMgrTest, CKeyMacroMgr001)
 
 	EXPECT_THAT(mgr->LoadKeyMacro(unusedArg1, path.c_str()), IsFalse());
 
-	std::filesystem::remove(path);
+	std::filesystem::remove(path, ec);
 
 	// 未定義のマクロコマンド
 	fs = std::wofstream(path);
@@ -154,7 +162,7 @@ TEST_F(MacroMgrTest, CKeyMacroMgr001)
 
 	EXPECT_THAT(mgr->LoadKeyMacro(unusedArg1, path.c_str()), IsFalse());
 
-	std::filesystem::remove(path);
+	std::filesystem::remove(path, ec);
 
 	// 引数が足りなくてHandleCommandがfalseを返すケースの確認
 	EXPECT_THAT(mgr->LoadKeyMacroStr(unusedArg1, L"S_Char()"), IsTrue());
@@ -274,7 +282,9 @@ TEST_F(MacroMgrTest, CPPAMacroMgr001)
 
 	EXPECT_THAT(mgr->LoadKeyMacro(unusedArg1, path.c_str()), IsTrue());
 
-	std::filesystem::remove(path);
+	std::error_code ec;
+
+	std::filesystem::remove(path, ec);
 
 	EXPECT_THAT(mgr->ExecKeyMacro(&pcEditWnd->GetActiveView(), 0), IsTrue());
 
@@ -316,7 +326,9 @@ TEST_F(MacroMgrTest, CPythonMacroManager001)
 
 	EXPECT_THAT(mgr->ExecKeyMacro(&pcEditWnd->GetActiveView(), 0), IsFalse());
 
-	std::filesystem::remove(badDllPath);
+	std::error_code ec;
+
+	std::filesystem::remove(badDllPath, ec);
 
 	// x86_64環境であれば、実際に python3.dll を読み込むテストを行う
 #if defined(_M_AMD64) && !defined(__MINGW32__)
@@ -348,7 +360,7 @@ TEST_F(MacroMgrTest, CPythonMacroManager001)
 
 	EXPECT_THAT(mgr->ExecKeyMacro(&pcEditWnd->GetActiveView(), 0), IsTrue());
 
-	std::filesystem::remove(path);
+	std::filesystem::remove(path, ec);
 
 	::SetDllDirectoryW(L"");
 
@@ -390,7 +402,9 @@ TEST_F(MacroMgrTest, CWSHMacroManager001)
 
 	EXPECT_THAT(mgr->LoadKeyMacro(unusedArg1, path.c_str()), IsTrue());
 
-	std::filesystem::remove(path);
+	std::error_code ec;
+
+	std::filesystem::remove(path, ec);
 
 	EXPECT_THAT(mgr->ExecKeyMacro(&pcEditWnd->GetActiveView(), 0), IsTrue());
 
@@ -548,3 +562,5 @@ TEST(CSMacroMgr, GetFuncInfoByName101)
 }
 
 } // namespace macro
+
+#endif // if defined(_MSC_VER) &&  defined(_DEBUG)

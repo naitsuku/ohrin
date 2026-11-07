@@ -155,8 +155,8 @@ void ActivateFrameWindow( HWND hwnd )
 {
 	// 編集ウィンドウでタブまとめ表示の場合は表示位置を復元する
 	DLLSHAREDATA* pShareData = &GetDllShareData();
-	if( pShareData->m_Common.m_sTabBar.m_bDispTabWnd && !pShareData->m_Common.m_sTabBar.m_bDispTabWndMultiWin ) {
-		if( IsSakuraMainWindow( hwnd ) ){
+	if (pShareData->m_Common.m_sTabBar.m_bDispTabWnd && !pShareData->m_Common.m_sTabBar.m_bDispTabWndMultiWin &&
+		IsSakuraMainWindow(hwnd)) {
 			if( pShareData->m_sFlags.m_bEditWndChanging )
 				return;	// 切替の最中(busy)は要求を無視する
 			pShareData->m_sFlags.m_bEditWndChanging = TRUE;	// 編集ウィンドウ切替中ON	2007.04.03 ryoji
@@ -172,7 +172,7 @@ void ActivateFrameWindow( HWND hwnd )
 				10000,
 				&dwResult
 			);
-		}
+
 	}
 
 	// 対象がdisableのときは最近のポップアップをフォアグラウンド化する
@@ -233,6 +233,51 @@ bool EnableDlgItem(HWND hWndDlg, int nIDDlgItem, bool nEnable)
 }
 
 /*!
+ * @brief ダイアログボックス項目のテキストを取得する
+ */
+SGetTextResult GetDlgItemTextW(HWND hWndDlg, int nIDDlgItem)
+{
+	// コントロールが存在しない場合は失敗とする
+	if (!::GetDlgItem(hWndDlg, nIDDlgItem)) return SGetTextResult{};
+
+	// 必要な文字数を確認する
+	const auto cchRequired = static_cast<int>(::SendDlgItemMessageW(hWndDlg, nIDDlgItem, WM_GETTEXTLENGTH, 0L, 0L));
+	if (!cchRequired) return SGetTextResult{ std::wstring() };
+
+	// バッファを確保する
+	std::wstring buffer(cchRequired, L'\0');
+
+	// 文字列を取得する
+	const auto actualCopied = ::GetDlgItemTextW(hWndDlg, nIDDlgItem, std::data(buffer), cchRequired + 1);
+	buffer.resize(actualCopied);
+
+	// バッファを所有権ごと呼出元に返す
+	return SGetTextResult{ std::move(buffer) };
+}
+
+/*!
+ * @brief ダイアログボックス項目のテキストを取得する
+ */
+SGetTextResult	GetDlgItemTextW(HWND hWndDlg, int nIDDlgItem, std::span<WCHAR> buffer)
+{
+	// コントロールが存在しない場合は失敗とする
+	if (!::GetDlgItem(hWndDlg, nIDDlgItem)) return SGetTextResult{};
+
+	// 必要な文字数を確認する
+	const auto cchRequired = static_cast<int>(::SendDlgItemMessageW(hWndDlg, nIDDlgItem, WM_GETTEXTLENGTH, 0L, 0L));
+	if (!cchRequired) return SGetTextResult{ std::wstring() };
+
+	// バッファが足りない場合は失敗とする
+	if (std::ssize(buffer) <= cchRequired) return SGetTextResult{};
+
+	// 文字列を取得する
+	const auto actualCopied = ::GetDlgItemTextW(hWndDlg, nIDDlgItem, std::data(buffer), static_cast<int>(std::ssize(buffer)));
+
+	// バッファ参照を呼出元に返す
+	return SGetTextResult{ std::wstring_view(std::data(buffer), actualCopied) };
+}
+
+/*!
  * @brief トラックバーの現在位置を取得する
  */
 WORD GetTrackBarPos(HWND hWndDlg, int nIDDlgItem)
@@ -246,6 +291,26 @@ WORD GetTrackBarPos(HWND hWndDlg, int nIDDlgItem)
 int GetUpDownPos(HWND hWndDlg, int nIDDlgItem)
 {
 	return int(::SendDlgItemMessageW(hWndDlg, nIDDlgItem, UDM_GETPOS, 0L, 0L));
+}
+
+/*!
+ * @brief ウィンドウのテキストを取得する
+ */
+SGetTextResult GetWindowTextW(HWND hWnd)
+{
+	// 必要な文字数を確認する
+	const auto cchRequired = ::GetWindowTextLengthW(hWnd);
+	if (!cchRequired) return SGetTextResult{ std::wstring() };
+
+	// バッファを確保する
+	std::wstring buffer(cchRequired, L'\0');
+
+	// 文字列を取得する
+	const auto actualCopied = ::GetWindowTextW(hWnd, std::data(buffer), cchRequired + 1);
+	buffer.resize(actualCopied);
+
+	// バッファを所有権ごと呼出元に返す
+	return SGetTextResult{ std::move(buffer) };
 }
 
 /*!
@@ -271,6 +336,17 @@ bool IsDlgItemEnabled(HWND hWndDlg, int nIDDlgItem)
 		ret = ::IsWindowEnabled(hWndCtl);
 	}
 	return ret;
+}
+
+/*!
+ * @brief ダイアログボックス項目のテキストを設定する
+ */
+bool SetDlgItemTextW(HWND hWndDlg, int nIDDlgItem, std::wstring_view text)
+{
+	// コントロールが存在しない場合は失敗とする
+	if (!::GetDlgItem(hWndDlg, nIDDlgItem)) return false;
+
+	return ::SetDlgItemTextW(hWndDlg, nIDDlgItem, std::data(text));
 }
 
 /*!

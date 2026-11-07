@@ -1,5 +1,24 @@
 # 移植作業進捗ログ
 
+## 2026-11-08 — 上流 v2.4.3 の取り込み
+
+- [x] **v2.4.3 を merge**（それまでの土台は 2026-04-29 の master）。衝突は 2 件: CMenuDrawer は上流が同じ不具合（`tbd[i]`）を
+  直していたので上流側を採り ifdef を消した。CLAUDE.md は上流にも追加されたので、こちら（移植の方針）を残した
+- [x] ビルド修正: CImpExpManager の `path::native()` を wstring として返す箇所（I-101 と同じ）。
+  リンクエラー 2 件: `WaitForMultipleObjects`（制御プロセスの起動待ち）と `ResumeThread`
+- [x] **CREATE_SUSPENDED に対応**: v2.4.3 の OpenNewEditor は、エディターを止めた状態で作り、初期化完了イベントを作ってから
+  ResumeThread する。エディター側は OpenEventW で開くので、本当に止めないとイベントが無く 15 秒待って失敗する
+- [x] **TSakuraSingleton を仮想プロセスごとに**（I-126）: v2.4.3 は CEditApp など 13 クラスを、static の unique_ptr に持つ
+  新しいシングルトンへ移した。互換層では全エディターで共有され、~CNormalProcess の resetInstance が他のエディターの
+  CEditApp を壊して、エディターのスレッドが終了処理で止まり**全ウィンドウのメニューが空**になった
+- [x] 上流が追加したテスト 3 ファイル（CImageListMgr、CMenuDrawer、DetectIndentationStyle）を有効にした。テストは 820 件
+- [x] 版番号を上流の version.cmake から読む（2.4.3）。取り込み手順を `docs/porting/upstream_sync.md` に書いた
+- 確認: テスト 820 件（通常・ASan）。アプリでメニュー、新規作成、新規ウィンドウ、3 ファイルを渡して起動（上流の同期オープン）、
+  アウトライン、コピー・貼り付け・保存（サロゲートペアを含む）、改行コード混在の確認、Cmd+Q の終了コード 0。
+  ASan のアプリで起動 → 新規作成 → アウトライン → Cmd+Q を 3 回通して検出なし
+- 未確認（v2.4.3 で上流が変えたが画面で見ていない）: 印刷、各ダイアログ、インポート／エクスポート（CImpExpManager）、
+  ドラッグ＆ドロップ（CDropTarget）、マクロ（CMacroFactory が TSakuraSingleton に移った）
+
 ## 2026-11-08 — 未確認項目の確認（印刷・ダイアログ）と ASan で見つけた不具合
 
 - [x] **終了時のメモリ破壊を修正**: Cmd+Q でときどき SIGSEGV（AppKit のメニュー項目処理の中、無効なポインタ）。ASan ビルドで

@@ -48,6 +48,7 @@ add_library(winport STATIC
     src/kernel32.cpp
     src/kernel32_file.cpp
     src/kernel32_object.cpp
+    src/oleaut32.cpp
     src/process.cpp
     src/resource.cpp
     src/shell_ole.cpp

@@ -644,6 +644,11 @@ CDlgOpenFile_CommonFileDialog::CDlgOpenFile_CommonFileDialog()
 	/* 共有データ構造体のアドレスを返す */
 	m_pShareData = &GetDllShareData();
 
+#ifdef SAKURA_WINPORT
+	// mac の実行ファイルは .app の中（Contents/MacOS）なので、そこではなく設定フォルダー（ini の場所）にする
+	// （GetInidir は末尾に \ を付けるので使わない）
+	wcscpy( m_szInitialDir, GetIniFileName().parent_path().wstring().c_str() );
+#else
 	WCHAR	szFile[_MAX_PATH + 1];
 	WCHAR	szDrive[_MAX_DRIVE];
 	WCHAR	szDir[_MAX_DIR];
@@ -654,6 +659,7 @@ CDlgOpenFile_CommonFileDialog::CDlgOpenFile_CommonFileDialog()
 	_wsplitpath_s( szFile, szDrive, std::size(szDrive), szDir, std::size(szDir), nullptr, 0, nullptr, 0 );
 	wcscpy( m_szInitialDir, szDrive );
 	wcscat( m_szInitialDir, szDir );
+#endif
 
 	return;
 }

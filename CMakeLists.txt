@@ -8,6 +8,9 @@ cmake_minimum_required(VERSION 3.16)
 # ============================================================
 if(APPLE)
     cmake_minimum_required(VERSION 3.20)
+    # 対応 OS の下限（Info.plist の LSMinimumSystemVersion と揃える）。std::format の浮動小数点が 13.3 から。
+    # 未指定だとビルド機の SDK の版になり、古い macOS で起動できなくなる。project() より前に置く
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "13.3" CACHE STRING "Minimum macOS version")
     project(SakuraEditor LANGUAGES CXX)
 
     # sakura_core/util/string_ex.h が std::span を使うため C++20

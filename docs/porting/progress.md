@@ -1,5 +1,17 @@
 # 移植作業進捗ログ
 
+## 2026-11-23 — GitHub 公開と最初のリリース、対応 OS の下限の修正
+
+- [x] 履歴を noreply アドレスに書き換え、本家の履歴を全取得（shallow 解消）してから
+  github.com/naitsuku/sakura-editor-mac へ push。CI（macos-15）は初回から成功（約 19 分）
+- [x] Dependabot の actions/checkout v4→v7 を取り込み。リリースの DMG 名をタグに合わせ、.sha256 はファイル名だけを記録
+- [x] v2.4.3-mac.1 を公開。配布物の DMG を取得してチェックサム、署名（ad-hoc）、同梱物、バンドル ID、
+  埋め込みハッシュ（CI は浅い clone なので 7 桁）を確認
+- [x] **配布物の最小 OS が macOS 15 になっていた**（CMAKE_OSX_DEPLOYMENT_TARGET 未指定でビルド機の SDK の版になる。
+  Info.plist は 13.0 だった）。下限を 13.3 に設定（std::format の浮動小数点が 13.3 から）。
+  Info.plist と README も 13.3 に。-Wunguarded-availability-new で新しい API の使用がないこと、820 テスト、起動を確認
+  - 申し送り: 修正版は v2.4.3-mac.2 として出す必要がある。macOS 13 / 14 の実機では未確認
+
 ## 2026-11-08 — 公開用ファイルの整備
 
 - [x] 旧 wx 版の残り（sakura_wx/、tests/wx_tests/、phase*_prompt.md、sakura_core/platform/、wx 用のワークフロー）を削除。

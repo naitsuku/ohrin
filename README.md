@@ -21,7 +21,7 @@ It is not affiliated with or endorsed by the Sakura Editor Organization. Please 
 
 ## 動作環境
 
-- macOS 13 以降、Apple Silicon（arm64）
+- macOS 13.3 以降、Apple Silicon（arm64）
 - 開発と確認は macOS 26 で行っています。それより前の macOS では確認していません
 
 ## インストール

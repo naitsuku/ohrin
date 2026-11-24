@@ -810,7 +810,10 @@ void Initialize()
 	NSMenuItem* appItem = [NSMenuItem new];
 	[bar addItem:appItem];
 	NSMenu* appMenu = [NSMenu new];
-	[appMenu addItemWithTitle:@"サクラエディタを終了" action:@selector(terminate:) keyEquivalent:@"q"];
+	// アプリ名は Info.plist から取る（表示名 → バンドル名 → プロセス名）
+	NSDictionary* info = NSBundle.mainBundle.infoDictionary;
+	NSString* appName = info[@"CFBundleDisplayName"] ?: info[@"CFBundleName"] ?: NSProcessInfo.processInfo.processName;
+	[appMenu addItemWithTitle:[NSString stringWithFormat:@"%@を終了", appName] action:@selector(terminate:) keyEquivalent:@"q"];
 	appItem.submenu = appMenu;
 	NSApp.mainMenu = bar;
 

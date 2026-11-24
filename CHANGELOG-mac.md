@@ -1,6 +1,15 @@
-# 変更履歴 — サクラエディタ for Mac（非公式）
+# 変更履歴 — Ohrin（サクラエディタ非公式 macOS 移植版）
 
 本家の変更履歴は [CHANGELOG.md](CHANGELOG.md) にあります。版番号は「本家の版-mac.通し番号」です（例: v2.4.3-mac.1）。
+
+## 未リリース
+
+- アプリの名前を「サクラエディタ for Mac」から **Ohrin（桜林）** に変更しました。リポジトリは https://github.com/naitsuku/ohrin です（旧 URL からも転送されます）
+- アプリのファイル名が `Ohrin.app`、バンドル ID が `io.github.naitsuku.ohrin` になりました。macOS からは別のアプリとして扱われるため、次の点にご注意ください
+  - 古い `SakuraEditor.app` は「アプリケーション」フォルダーから削除してください
+  - 設定（`~/Library/Application Support/sakura/SakuraEditor.ini`）は、初回起動時に `Ohrin.ini` へコピーして引き継ぎます。元のファイルは残ります
+  - 初回起動時の確認、「このアプリケーションで開く」の既定の設定、Dock への登録はやり直しが必要です
+  - 書類フォルダーなどへのアクセスと、印刷時のローカルネットワークの許可を、もう一度求められます
 
 ## v2.4.3-mac.2（2026-11-23）
 

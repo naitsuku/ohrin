@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 # ============================================================
-# macOS 向け分岐（Sakura Editor for Mac）
+# macOS 向け分岐（Ohrin）
 #
 # sakura_core フォーク + winport 互換層（AppKit / CoreText）をビルドする。
 # return() で以下の Win32 向けロジックは一切実行しない。

@@ -12,8 +12,9 @@ zlib ライセンスのオープンソース。開発者 1 名 + Claude。
   winport に実装し、上流の CDlg* をそのまま使う）。開く／保存／フォントは mac 標準パネルを使う。
 - **目標プラットフォーム**: macOS 13+（Apple Silicon 優先）。Linux は当面対象外。
 - 旧方針の wxWidgets 版 `sakura_wx/` は 2026-11-08 に削除した（履歴には残っている）。
-- **公開名は「サクラエディタ for Mac（非公式）」**、リポジトリは github.com/naitsuku/sakura-editor-mac、
-  バンドル ID は `io.github.naitsuku.sakura-editor-mac`。名称は本家コミュニティに確認予定（確定まで「非公式」を明記）。
+- **公開名は「Ohrin（桜林）」**、リポジトリは github.com/naitsuku/ohrin、
+  バンドル ID は `io.github.naitsuku.ohrin`、アプリは `Ohrin.app`。独自名 Ohrin に変更済み（2026-11）。非公式の移植版であることは引き続き明記する。
+  設定ファイル名は実行ファイル名から決まるため、旧名の `SakuraEditor.ini` は初回起動時に `Ohrin.ini` へコピーする（`sakura_mac/legacy_settings.h`）。
 
 計画の詳細は `docs/porting/mac_native_plan.md`、進捗は `docs/porting/progress.md`。
 作業に入る前に必ず両方を確認すること。

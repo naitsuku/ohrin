@@ -1,6 +1,6 @@
 # 貢献の手引き
 
-サクラエディタ for Mac（非公式）への Issue・Pull Request を歓迎します。
+Ohrin（サクラエディタの非公式 macOS 移植版）への Issue・Pull Request を歓迎します。
 
 ## 報告先
 

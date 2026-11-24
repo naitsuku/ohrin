@@ -1,14 +1,28 @@
-﻿# サクラエディタ for Mac（非公式）
+﻿# Ohrin（桜林）
 
-Windows 用テキストエディタ [サクラエディタ](https://github.com/sakura-editor/sakura) を macOS で動かす、**非公式**の移植版です。
+サクラエディタの非公式 macOS 移植版です。Windows 用テキストエディタ [サクラエディタ](https://github.com/sakura-editor/sakura) を macOS で動かします。
 
 > [!IMPORTANT]
 > これはサクラエディタの公式版ではありません。Sakura Editor Organization とは関係がなく、承認も受けていません。
-> **Mac 版の不具合や要望は、このリポジトリの [Issues](https://github.com/naitsuku/sakura-editor-mac/issues) へお寄せください。**
+> **Mac 版の不具合や要望は、このリポジトリの [Issues](https://github.com/naitsuku/ohrin/issues) へお寄せください。**
 > サクラエディタ本家へは報告しないでください。
 
-*English: An unofficial macOS port of [Sakura Editor](https://github.com/sakura-editor/sakura), a Japanese text editor for Windows.
-It is not affiliated with or endorsed by the Sakura Editor Organization. Please report issues of the Mac version here, not upstream.*
+*English: Ohrin is an unofficial macOS port of [Sakura Editor](https://github.com/sakura-editor/sakura), a Japanese text editor for Windows.
+It is not affiliated with or endorsed by the Sakura Editor Organization. Please report issues of Ohrin here, not upstream.*
+
+## 名前の由来
+
+**Ohrin（桜林／おうりん）** は、サクラエディタを macOS へ移植したこのアプリの名前です。
+
+- **桜**：元になった [サクラエディタ](https://github.com/sakura-editor/sakura) から一字をもらいました。
+- **林**：桜を一本、別の土地に植え替えると、やがて林になります。Windows で育ったエディタを Mac に植え替え、根付いてほしいという願いを込めています。
+- **おうりん**：「桜林」を音読みすると、青森生まれのりんごの品種「王林」と同じ響きになります。桜とりんご（Mac）が一つの名前で出会うように、と付けました。
+
+綴りは「Ohrin」に統一しています。
+
+*Ohrin (桜林, "cherry grove") is an unofficial macOS port of Sakura Editor.
+"Sakura" (cherry blossom) comes from the original editor; "grove" stands for a tree replanted in new soil.
+Read aloud, 桜林 sounds like "Ōrin", a Japanese apple variety — a nod to the Mac.*
 
 ## 特徴
 
@@ -26,12 +40,17 @@ It is not affiliated with or endorsed by the Sakura Editor Organization. Please 
 
 ## インストール
 
-1. [Releases](https://github.com/naitsuku/sakura-editor-mac/releases) から `SakuraEditor-<版>.dmg` をダウンロードします
-2. DMG を開き、`SakuraEditor.app` を「アプリケーション」フォルダーへコピーします
+1. [Releases](https://github.com/naitsuku/ohrin/releases) から `Ohrin-<版>.dmg` をダウンロードします
+2. DMG を開き、`Ohrin.app` を「アプリケーション」フォルダーへコピーします
 3. 初回起動時に「開発元を確認できない」旨の警告が出ます（Apple の公証を受けていないため）。
    「システム設定」→「プライバシーとセキュリティ」の下にある「このまま開く」を押してください
 
-設定は `~/Library/Application Support/sakura/SakuraEditor.ini` に保存されます。
+設定は `~/Library/Application Support/sakura/Ohrin.ini` に保存されます。
+
+> [!NOTE]
+> 以前の `SakuraEditor.app`（サクラエディタ for Mac）をお使いの方は、「アプリケーション」フォルダーから削除してください。
+> 設定（`~/Library/Application Support/sakura/SakuraEditor.ini`）は、Ohrin の初回起動時に `Ohrin.ini` へコピーして引き継ぎます。
+> 元のファイルはそのまま残ります。
 
 ## 未対応・制限
 
@@ -52,7 +71,7 @@ git submodule update --init externals/Onigmo externals/bregonig externals/cmigem
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
 cmake --build build
 ctest --test-dir build --output-on-failure
-open build/bin/SakuraEditor.app
+open build/bin/Ohrin.app
 ```
 
 配布用の DMG は `tools/porting/make_dmg.sh` で作ります（Release ビルドの後、`build-release/` に出力）。

@@ -1,6 +1,6 @@
 ---
 name: 不具合の報告
-about: サクラエディタ for Mac（非公式）の不具合
+about: Ohrin（サクラエディタの非公式 macOS 移植版）の不具合
 labels: bug
 ---
 
@@ -20,7 +20,7 @@ Windows 版でも同じことが起きる場合は、本家の不具合の可能
 
 ## 環境
 
-- サクラエディタ for Mac の版（バージョン情報の 1 行目）:
+- Ohrin の版（バージョン情報の 1 行目）:
 - macOS の版:
 - Mac の機種（Apple Silicon / Intel）:
 

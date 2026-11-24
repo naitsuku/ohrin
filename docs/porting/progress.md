@@ -1,5 +1,16 @@
 # 移植作業進捗ログ
 
+## 2026-11-24 — 名称を Ohrin に変更
+
+- [x] 名称を Ohrin に変更（バンドル ID `io.github.naitsuku.ohrin`、アプリ名 `Ohrin.app`）。
+  ウィンドウタイトルは「Ohrin(非公式)」、バージョン情報に「サクラエディタの非公式 macOS 移植版」とリポジトリ URL。
+  DMG は `Ohrin-<版>.dmg`、ボリューム名 `Ohrin <版>`。README・CHANGELOG-mac・テンプレート・LICENSE などの表記も変更
+  - 設定ファイル名は実行ファイル名から決まる（`SakuraEditor.ini` → `Ohrin.ini`）。初回起動時に旧名の設定本体・
+    プロファイルマネージャー・各プロファイルの ini をコピーする（`sakura_mac/legacy_settings.h`、元は残す）
+  - 変えていないもの: 設定フォルダー名 `sakura`、Mutex などの内部識別子、メニュー書き出しファイルの見出し
+    `SakuraEditorMenu_Ver2`（本家と互換）、CMake の project 名とターゲット名、`sakura.icns`
+  - 申し送り: GitHub のリポジトリ名の変更（sakura-editor-mac → ohrin）は未実施。手元の origin も旧 URL のまま
+
 ## 2026-11-23 — GitHub 公開と最初のリリース、対応 OS の下限の修正
 
 - [x] 履歴を noreply アドレスに書き換え、本家の履歴を全取得（shallow 解消）してから
@@ -336,7 +347,7 @@
 
 ```bash
 cmake -S . -B build -G Ninja && cmake --build build
-./build/bin/SakuraEditor.app/Contents/MacOS/SakuraEditor <ファイル>
+./build/bin/Ohrin.app/Contents/MacOS/Ohrin <ファイル>
 ```
 
 診断用の環境変数: `WINPORT_TRACE=1`（SetWindowPos・キー・マウス・描画の記録）、

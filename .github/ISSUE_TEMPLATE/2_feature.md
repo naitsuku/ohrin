@@ -1,6 +1,6 @@
 ---
 name: 要望
-about: サクラエディタ for Mac（非公式）への要望
+about: Ohrin（サクラエディタの非公式 macOS 移植版）への要望
 labels: enhancement
 ---
 

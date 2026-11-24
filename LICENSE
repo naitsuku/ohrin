@@ -20,7 +20,7 @@ freely, subject to the following restrictions:
 
 
 --------------------------------------------------------------------------
-Sakura Editor for Mac (unofficial macOS port)
+Ohrin (unofficial macOS port of Sakura Editor)
 
 The macOS port — winport/, sakura_mac/, tests/mac_tests/, tools/porting/ and
 the changes marked SAKURA_WINPORT in sakura_core/ — is:

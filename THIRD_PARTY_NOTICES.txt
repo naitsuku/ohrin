@@ -1,5 +1,5 @@
-Third-party notices — Sakura Editor for Mac (unofficial)
-サードパーティーのライセンス — サクラエディタ for Mac（非公式）
+Third-party notices — Ohrin (unofficial macOS port of Sakura Editor)
+サードパーティーのライセンス — Ohrin（サクラエディタの非公式 macOS 移植版）
 ========================================================================
 
 The application binary includes the following third-party software.

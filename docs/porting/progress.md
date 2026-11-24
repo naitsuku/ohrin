@@ -1,5 +1,13 @@
 # 移植作業進捗ログ
 
+## 2026-11-24 — Ohrin のアイコン
+
+- [x] アプリのアイコンを Ohrin 用（ノートに桜とりんご）に差し替え。元画像は `sakura_mac/resources/AppIcon.png`
+  （1024px。角丸の板を macOS の格子どおり 824px に収め、周りは透明）。ビルドで `AppIcon.icns` を作る
+  （`make_icns.sh` は 1 枚の画像から 16〜1024px を作る）。Info.plist の CFBundleIconFile も AppIcon に
+  - macOS 26 では 16・32px の表示で暗い枠の中に入れて描かれる（icns の画像自体は正常）。新しい形式
+    （Icon Composer の .icon）にすれば解消する見込みだが未対応
+
 ## 2026-11-24 — 名称を Ohrin に変更
 
 - [x] 名称を Ohrin に変更（バンドル ID `io.github.naitsuku.ohrin`、アプリ名 `Ohrin.app`）。

@@ -95,13 +95,14 @@ target_link_libraries(sakura_core_mac PUBLIC "$<LINK_LIBRARY:WHOLE_ARCHIVE,winpo
 target_compile_options(sakura_core_mac PRIVATE -w -Wno-c++11-narrowing)
 target_precompile_headers(sakura_core_mac PRIVATE ${CMAKE_SOURCE_DIR}/sakura_core/StdAfx.h)
 
-# ---- アプリのアイコン（上流の .ico → .icns） ----
-set(_icns ${SAKURA_MAC_GEN_DIR}/sakura.icns)
+# ---- アプリのアイコン（resources/AppIcon.png、1024px → .icns） ----
+set(_icon_src ${CMAKE_CURRENT_SOURCE_DIR}/resources/AppIcon.png)
+set(_icns ${SAKURA_MAC_GEN_DIR}/AppIcon.icns)
 add_custom_command(
     OUTPUT ${_icns}
-    COMMAND ${CMAKE_SOURCE_DIR}/tools/porting/make_icns.sh ${CMAKE_SOURCE_DIR}/src/main/resources/images/icon_std.ico ${_icns}
-    DEPENDS ${CMAKE_SOURCE_DIR}/src/main/resources/images/icon_std.ico ${CMAKE_SOURCE_DIR}/tools/porting/make_icns.sh
-    COMMENT "Generating sakura.icns"
+    COMMAND ${CMAKE_SOURCE_DIR}/tools/porting/make_icns.sh ${_icon_src} ${_icns}
+    DEPENDS ${_icon_src} ${CMAKE_SOURCE_DIR}/tools/porting/make_icns.sh
+    COMMENT "Generating AppIcon.icns"
     VERBATIM
 )
 set_source_files_properties(${_icns} PROPERTIES MACOSX_PACKAGE_LOCATION Resources GENERATED TRUE)

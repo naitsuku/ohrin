@@ -3,7 +3,7 @@
 
 #ifdef SAKURA_WINPORT
 // [winport] 非公式の macOS 移植版であることを名前で示す
-#define _APP_NAME_1 "サクラエディタ for Mac"
+#define _APP_NAME_1 "Ohrin"
 #else
 #define _APP_NAME_1 "サクラエディタ"
 #endif

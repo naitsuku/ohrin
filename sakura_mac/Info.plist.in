@@ -11,9 +11,9 @@
 	<key>CFBundleName</key>
 	<string>${MACOSX_BUNDLE_BUNDLE_NAME}</string>
 	<key>CFBundleDisplayName</key>
-	<string>サクラエディタ for Mac</string>
+	<string>Ohrin</string>
 	<key>NSHumanReadableCopyright</key>
-	<string>Sakura Editor Organization および macOS 移植版 naitsuku（非公式）。zlib License</string>
+	<string>Ohrin — サクラエディタの非公式 macOS 移植版。© Sakura Editor Organization / naitsuku。zlib License</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>

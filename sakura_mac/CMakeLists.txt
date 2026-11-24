@@ -109,10 +109,10 @@ set_source_files_properties(${_icns} PROPERTIES MACOSX_PACKAGE_LOCATION Resource
 # ---- アプリ本体（.app） ----
 add_executable(sakura_mac MACOSX_BUNDLE main.mm ${_icns})
 set_target_properties(sakura_mac PROPERTIES
-    OUTPUT_NAME "SakuraEditor"
+    OUTPUT_NAME "Ohrin"
     MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_SOURCE_DIR}/Info.plist.in
-    MACOSX_BUNDLE_GUI_IDENTIFIER "io.github.naitsuku.sakura-editor-mac"
-    MACOSX_BUNDLE_BUNDLE_NAME "SakuraEditor"
+    MACOSX_BUNDLE_GUI_IDENTIFIER "io.github.naitsuku.ohrin"
+    MACOSX_BUNDLE_BUNDLE_NAME "Ohrin"
     MACOSX_BUNDLE_SHORT_VERSION_STRING "${SAKURA_MAJOR_VERSION}.${SAKURA_MINOR_VERSION}.${SAKURA_PATCH_VERSION}"
     MACOSX_BUNDLE_BUNDLE_VERSION "0"
 )

@@ -189,8 +189,9 @@ BOOL CDlgAbout::OnInitDialog( HWND hwndDlg, WPARAM wParam, LPARAM lParam )
 
 #ifdef SAKURA_WINPORT
 	// [winport] 非公式の移植版であること、問い合わせ先
-	cmemMsg.AppendString( L"macOS 移植版（非公式）。不具合は本家ではなく次へ:\r\n" );
-	cmemMsg.AppendString( L"https://github.com/naitsuku/sakura-editor-mac\r\n" );
+	cmemMsg.AppendString( L"Ohrin（桜林）— サクラエディタの非公式 macOS 移植版。\r\n" );
+	cmemMsg.AppendString( L"不具合は本家ではなく次へ:\r\n" );
+	cmemMsg.AppendString( L"https://github.com/naitsuku/ohrin\r\n" );
 #endif
 
 	// 段落区切り

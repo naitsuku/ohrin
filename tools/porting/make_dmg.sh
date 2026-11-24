@@ -10,21 +10,21 @@ cmake -S "$root" -B "$build" -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build "$build"
 ctest --test-dir "$build" --output-on-failure
 
-app=$build/bin/SakuraEditor.app
+app=$build/bin/Ohrin.app
 version=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$app/Contents/Info.plist")
-dmg=$build/SakuraEditor-$version.dmg
+dmg=$build/Ohrin-$version.dmg
 stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT
 
-cp -R "$app" "$stage/SakuraEditor.app"
+cp -R "$app" "$stage/Ohrin.app"
 # ライセンス（zlib と、Onigmo の BSD・bregonig の Artistic は配布物に全文を付ける）。署名の前にアプリの中へ入れる
 for f in LICENSE THIRD_PARTY_NOTICES.txt; do
-    cp "$root/$f" "$stage/SakuraEditor.app/Contents/Resources/"
+    cp "$root/$f" "$stage/Ohrin.app/Contents/Resources/"
     cp "$root/$f" "$stage/"
 done
 cp "$root/README.md" "$stage/README.md"
-codesign --force --deep --sign - "$stage/SakuraEditor.app"
+codesign --force --deep --sign - "$stage/Ohrin.app"
 ln -s /Applications "$stage/Applications"
 rm -f "$dmg"
-hdiutil create -volname "Sakura Editor for Mac $version" -srcfolder "$stage" -format UDZO -ov "$dmg" >/dev/null
+hdiutil create -volname "Ohrin $version" -srcfolder "$stage" -format UDZO -ov "$dmg" >/dev/null
 echo "$dmg"

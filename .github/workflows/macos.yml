@@ -1,4 +1,4 @@
-# Sakura Editor for Mac（非公式）のビルド・テスト・リリース
+# Ohrin（サクラエディタ非公式 macOS 移植版）のビルド・テスト・リリース
 #
 # - push / pull request: Debug でビルドしてテスト
 # - タグ v*（例: v2.4.3-mac.1）: Release の DMG を作り、下書きのリリースに添付する。
@@ -58,8 +58,8 @@ jobs:
         id: dmg
         run: |
           built=$(tools/porting/make_dmg.sh "$PWD/build-release" | tail -1)
-          # 配布名はタグに合わせる（例: SakuraEditor-2.4.3-mac.1.dmg）
-          dmg="$PWD/build-release/SakuraEditor-${GITHUB_REF_NAME#v}.dmg"
+          # 配布名はタグに合わせる（例: Ohrin-2.4.3-mac.3.dmg）
+          dmg="$PWD/build-release/Ohrin-${GITHUB_REF_NAME#v}.dmg"
           mv "$built" "$dmg"
           echo "path=$dmg" >> "$GITHUB_OUTPUT"
           # ダウンロードした人が shasum -c で確かめられるよう、ファイル名だけを記録する
@@ -70,7 +70,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           {
-            echo "サクラエディタ for Mac（非公式）${GITHUB_REF_NAME}"
+            echo "Ohrin（サクラエディタの非公式 macOS 移植版）${GITHUB_REF_NAME}"
             echo
             echo "変更点は CHANGELOG-mac.md を参照してください。"
             echo
@@ -81,5 +81,5 @@ jobs:
             cat "${{ steps.dmg.outputs.path }}.sha256"
             echo '```'
           } > notes.md
-          gh release create "$GITHUB_REF_NAME" --draft --title "サクラエディタ for Mac ${GITHUB_REF_NAME}" \
+          gh release create "$GITHUB_REF_NAME" --draft --title "Ohrin ${GITHUB_REF_NAME}" \
             --notes-file notes.md "${{ steps.dmg.outputs.path }}" "${{ steps.dmg.outputs.path }}.sha256"

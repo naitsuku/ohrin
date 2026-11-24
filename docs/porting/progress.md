@@ -3,7 +3,7 @@
 ## 2026-11-24 — 名称を Ohrin に変更
 
 - [x] 名称を Ohrin に変更（バンドル ID `io.github.naitsuku.ohrin`、アプリ名 `Ohrin.app`）。
-  ウィンドウタイトルは「Ohrin(非公式)」、バージョン情報に「サクラエディタの非公式 macOS 移植版」とリポジトリ URL。
+  ウィンドウタイトルは「Ohrin」（「(非公式)」は付けない）、バージョン情報に「サクラエディタの非公式 macOS 移植版」とリポジトリ URL。
   DMG は `Ohrin-<版>.dmg`、ボリューム名 `Ohrin <版>`。README・CHANGELOG-mac・テンプレート・LICENSE などの表記も変更
   - 設定ファイル名は実行ファイル名から決まる（`SakuraEditor.ini` → `Ohrin.ini`）。初回起動時に旧名の設定本体・
     プロファイルマネージャー・各プロファイルの ini をコピーする（`sakura_mac/legacy_settings.h`、元は残す）

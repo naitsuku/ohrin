@@ -2,7 +2,7 @@
 // このファイルのエンコーディング/改行コードは UTF-16LE(BOM)/CRLF です.
 
 #ifdef SAKURA_WINPORT
-// [winport] 非公式の macOS 移植版であることを名前で示す
+// [winport] 独自名 Ohrin（非公式の移植版であることはバージョン情報と README に書く）
 #define _APP_NAME_1 "Ohrin"
 #else
 #define _APP_NAME_1 "サクラエディタ"
@@ -14,9 +14,7 @@
 #define _APP_NAME_2 ""
 #endif
 
-#if defined(SAKURA_WINPORT)
-#define _APP_NAME_3 "非公式"
-#elif defined(_WIN64)
+#if defined(_WIN64)
 #define _APP_NAME_3 "64bit"
 #else
 #define _APP_NAME_3 "32bit"
@@ -28,7 +26,10 @@
 #define _APP_NAME_4 ""
 #endif
 
-#if defined(_WIN64) || defined(_DEBUG)
+#if defined(SAKURA_WINPORT)
+// [winport] ウィンドウタイトルなどは「Ohrin」だけにする（64bit 表記は付けない）
+#define _GSTR_APPNAME  _APP_NAME_1 _APP_NAME_2
+#elif defined(_WIN64) || defined(_DEBUG)
 #define _GSTR_APPNAME  _APP_NAME_1 _APP_NAME_2 "(" _APP_NAME_3 _APP_NAME_4 ")"
 #else
 #define _GSTR_APPNAME  _APP_NAME_1 _APP_NAME_2 _APP_NAME_3 _APP_NAME_4

@@ -9,6 +9,9 @@
     プロファイルマネージャー・各プロファイルの ini をコピーする（`sakura_mac/legacy_settings.h`、元は残す）
   - 変えていないもの: 設定フォルダー名 `sakura`、Mutex などの内部識別子、メニュー書き出しファイルの見出し
     `SakuraEditorMenu_Ver2`（本家と互換）、CMake の project 名とターゲット名、`sakura.icns`
+  - アプリメニューの「サクラエディタを終了」が winport に直書きされていたので、Info.plist の表示名から作るようにした
+  - 確認: クリーンビルド、823 テスト、DMG（`Ohrin-2.4.3.dmg`、ボリューム名 `Ohrin 2.4.3`）、起動してタイトル・バージョン情報・
+    メニュー、一時 HOME で旧設定の引き継ぎ（終了後も MRU が残る）
   - 申し送り: GitHub のリポジトリ名の変更（sakura-editor-mac → ohrin）は未実施。手元の origin も旧 URL のまま
 
 ## 2026-11-23 — GitHub 公開と最初のリリース、対応 OS の下限の修正
